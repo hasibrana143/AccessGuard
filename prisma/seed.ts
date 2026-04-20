@@ -194,47 +194,87 @@ async function main() {
   })
   console.log('Created demo projects')
 
-  // Create demo scans
+  // Create demo scans with historical data
   const now = new Date()
-  const scan1 = await prisma.scan.create({
+  const scans = []
+  
+  // Create scans for the last 30 days
+  for (let day = 0; day < 30; day++) {
+    const scanDate = new Date(now.getTime() - day * 86400000) // 86400000 = 1 day in ms
+    
+    // Scan for project 1 every 3 days
+    if (day % 3 === 0) {
+      const criticalCount = Math.max(1, 5 - Math.floor(day / 5))
+      const seriousCount = Math.max(2, 8 - Math.floor(day / 4))
+      const moderateCount = Math.max(1, 6 - Math.floor(day / 6))
+      const minorCount = Math.max(0, 4 - Math.floor(day / 7))
+      
+      const scan = await prisma.scan.create({
+        data: {
+          projectId: project1.id,
+          status: 'completed',
+          startedAt: new Date(scanDate.getTime() - 1800000),
+          completedAt: scanDate,
+          pagesScanned: 40 + Math.floor(Math.random() * 20),
+          violationsFound: criticalCount + seriousCount + moderateCount + minorCount,
+          summary: JSON.stringify({
+            critical: criticalCount,
+            serious: seriousCount,
+            moderate: moderateCount,
+            minor: minorCount
+          })
+        }
+      })
+      scans.push({ scan, project: project1, day })
+    }
+    
+    // Scan for project 2 every 5 days
+    if (day % 5 === 0) {
+      const criticalCount = Math.max(0, 2 - Math.floor(day / 10))
+      const seriousCount = Math.max(1, 4 - Math.floor(day / 7))
+      const moderateCount = Math.max(1, 4 - Math.floor(day / 8))
+      const minorCount = Math.max(0, 2 - Math.floor(day / 10))
+      
+      const scan = await prisma.scan.create({
+        data: {
+          projectId: project2.id,
+          status: 'completed',
+          startedAt: new Date(scanDate.getTime() - 1800000),
+          completedAt: scanDate,
+          pagesScanned: 25 + Math.floor(Math.random() * 15),
+          violationsFound: criticalCount + seriousCount + moderateCount + minorCount,
+          summary: JSON.stringify({
+            critical: criticalCount,
+            serious: seriousCount,
+            moderate: moderateCount,
+            minor: minorCount
+          })
+        }
+      })
+      scans.push({ scan, project: project2, day })
+    }
+  }
+  
+  // Create a running scan for demo
+  await prisma.scan.create({
     data: {
       projectId: project1.id,
-      status: 'completed',
-      startedAt: new Date(now.getTime() - 3600000),
-      completedAt: now,
-      pagesScanned: 45,
-      violationsFound: 23,
-      summary: JSON.stringify({
-        critical: 5,
-        serious: 8,
-        moderate: 6,
-        minor: 4
-      })
+      status: 'running',
+      startedAt: new Date(now.getTime() - 600000),
+      pagesScanned: 12,
+      violationsFound: 0
     }
   })
+  
+  console.log('Created demo scans with historical data')
 
-  const scan2 = await prisma.scan.create({
-    data: {
-      projectId: project2.id,
-      status: 'completed',
-      startedAt: new Date(now.getTime() - 7200000),
-      completedAt: new Date(now.getTime() - 3600000),
-      pagesScanned: 32,
-      violationsFound: 12,
-      summary: JSON.stringify({
-        critical: 2,
-        serious: 4,
-        moderate: 4,
-        minor: 2
-      })
-    }
-  })
-  console.log('Created demo scans')
-
-  // Create demo violations
+  // Create demo violations from the most recent scans
+  const latestScan1 = scans.find(s => s.project.id === project1.id && s.day === 0)
+  const latestScan2 = scans.find(s => s.project.id === project2.id && s.day === 0)
+  
   const violations = [
     {
-      scanId: scan1.id,
+      scanId: latestScan1?.scan.id || scans[0].scan.id,
       projectId: project1.id,
       ruleId: 'color-contrast',
       wcagCriteria: '1.4.3',
@@ -248,7 +288,7 @@ async function main() {
       aiConfidenceScore: 0.95
     },
     {
-      scanId: scan1.id,
+      scanId: latestScan1?.scan.id || scans[0].scan.id,
       projectId: project1.id,
       ruleId: 'image-alt',
       wcagCriteria: '1.1.1',
@@ -262,7 +302,7 @@ async function main() {
       aiConfidenceScore: 0.89
     },
     {
-      scanId: scan1.id,
+      scanId: latestScan1?.scan.id || scans[0].scan.id,
       projectId: project1.id,
       ruleId: 'label',
       wcagCriteria: '1.3.1',
@@ -276,7 +316,7 @@ async function main() {
       aiConfidenceScore: 0.97
     },
     {
-      scanId: scan1.id,
+      scanId: latestScan1?.scan.id || scans[0].scan.id,
       projectId: project1.id,
       ruleId: 'link-name',
       wcagCriteria: '2.4.4',
@@ -290,7 +330,7 @@ async function main() {
       aiConfidenceScore: 0.91
     },
     {
-      scanId: scan1.id,
+      scanId: latestScan1?.scan.id || scans[0].scan.id,
       projectId: project1.id,
       ruleId: 'heading-order',
       wcagCriteria: '1.3.1',
@@ -304,7 +344,7 @@ async function main() {
       aiConfidenceScore: 0.88
     },
     {
-      scanId: scan1.id,
+      scanId: latestScan1?.scan.id || scans[0].scan.id,
       projectId: project1.id,
       ruleId: 'keyboard-navigation',
       wcagCriteria: '2.1.1',
@@ -318,7 +358,7 @@ async function main() {
       aiConfidenceScore: 0.96
     },
     {
-      scanId: scan1.id,
+      scanId: latestScan1?.scan.id || scans[0].scan.id,
       projectId: project1.id,
       ruleId: 'focus-visible',
       wcagCriteria: '2.4.7',
@@ -332,7 +372,7 @@ async function main() {
       aiConfidenceScore: 0.94
     },
     {
-      scanId: scan1.id,
+      scanId: latestScan1?.scan.id || scans[0].scan.id,
       projectId: project1.id,
       ruleId: 'aria-roles',
       wcagCriteria: '4.1.2',
@@ -346,7 +386,7 @@ async function main() {
       aiConfidenceScore: 0.92
     },
     {
-      scanId: scan2.id,
+      scanId: latestScan2?.scan.id || scans.find(s => s.project.id === project2.id)?.scan.id || scans[0].scan.id,
       projectId: project2.id,
       ruleId: 'image-alt',
       wcagCriteria: '1.1.1',
@@ -360,7 +400,7 @@ async function main() {
       aiConfidenceScore: 0.93
     },
     {
-      scanId: scan2.id,
+      scanId: latestScan2?.scan.id || scans.find(s => s.project.id === project2.id)?.scan.id || scans[0].scan.id,
       projectId: project2.id,
       ruleId: 'color-contrast',
       wcagCriteria: '1.4.3',
@@ -374,7 +414,7 @@ async function main() {
       aiConfidenceScore: 0.91
     },
     {
-      scanId: scan2.id,
+      scanId: latestScan2?.scan.id || scans.find(s => s.project.id === project2.id)?.scan.id || scans[0].scan.id,
       projectId: project2.id,
       ruleId: 'page-title',
       wcagCriteria: '2.4.2',
@@ -388,7 +428,7 @@ async function main() {
       aiConfidenceScore: 0.89
     },
     {
-      scanId: scan2.id,
+      scanId: latestScan2?.scan.id || scans.find(s => s.project.id === project2.id)?.scan.id || scans[0].scan.id,
       projectId: project2.id,
       ruleId: 'document-lang',
       wcagCriteria: '3.1.1',
@@ -406,7 +446,33 @@ async function main() {
   for (const violation of violations) {
     await prisma.violation.create({ data: violation })
   }
-  console.log('Created demo violations')
+  
+  // Add some historical violations for trend data
+  for (const scanData of scans) {
+    // Add violations for older scans (these are "fixed" from previous scans)
+    const violationCount = Math.floor(Math.random() * 3) + 1
+    for (let i = 0; i < violationCount; i++) {
+      const severities = ['critical', 'serious', 'moderate', 'minor']
+      const rules = ['color-contrast', 'image-alt', 'label', 'link-name', 'heading-order']
+      await prisma.violation.create({
+        data: {
+          scanId: scanData.scan.id,
+          projectId: scanData.project.id,
+          ruleId: rules[Math.floor(Math.random() * rules.length)],
+          wcagCriteria: '1.4.3',
+          severity: severities[Math.floor(Math.random() * severities.length)] as 'critical' | 'serious' | 'moderate' | 'minor',
+          url: `https://${scanData.project.id === project1.id ? 'shop' : 'marketing'}.example.com/page-${i}`,
+          elementSelector: `.element-${i}`,
+          elementHtml: `<div class="element-${i}">Content</div>`,
+          description: 'Historical violation from previous scan',
+          status: scanData.day > 3 ? 'fixed' : 'open',
+          fixedAt: scanData.day > 3 ? scanData.scan.completedAt : null
+        }
+      })
+    }
+  }
+  
+  console.log('Created demo violations with historical data')
 
   console.log('Database seeding completed!')
 }

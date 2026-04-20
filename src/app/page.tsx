@@ -839,11 +839,13 @@ const LandingPage = ({ onGetStarted }: { onGetStarted: () => void }) => {
 // DASHBOARD COMPONENTS
 // ============================================================================
 
-const Sidebar = ({ activeView, setActiveView, isMobile, onClose }: {
+const Sidebar = ({ activeView, setActiveView, isMobile, onClose, user, onLogout }: {
   activeView: View;
   setActiveView: (view: View) => void;
   isMobile?: boolean;
   onClose?: () => void;
+  user?: User | null;
+  onLogout?: () => void;
 }) => {
   const navItems = [
     { id: 'dashboard' as View, label: 'Dashboard', icon: BarChart3 },
@@ -896,11 +898,13 @@ const Sidebar = ({ activeView, setActiveView, isMobile, onClose }: {
       <div className="p-4 border-t border-sidebar-border">
         <div className="flex items-center gap-3 p-2 rounded-lg bg-sidebar-accent/50">
           <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-coral/20 text-coral text-sm">DU</AvatarFallback>
+            <AvatarFallback className="bg-coral/20 text-coral text-sm">
+              {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+            </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">Demo User</p>
-            <p className="text-xs text-muted-foreground truncate">demo@accessguard.io</p>
+            <p className="text-sm font-medium truncate">{user?.name || 'User'}</p>
+            <p className="text-xs text-muted-foreground truncate">{user?.email || 'user@example.com'}</p>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -909,12 +913,12 @@ const Sidebar = ({ activeView, setActiveView, isMobile, onClose }: {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setActiveView('settings')}>
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive">
+              <DropdownMenuItem className="text-destructive" onClick={onLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Sign Out
               </DropdownMenuItem>
@@ -2573,7 +2577,7 @@ export default function AccessGuardApp() {
     <div className="min-h-screen bg-background flex">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
-        <Sidebar activeView={view} setActiveView={setView} />
+        <Sidebar activeView={view} setActiveView={setView} user={user} onLogout={handleLogout} />
       </div>
 
       {/* Mobile Sidebar */}
@@ -2588,6 +2592,8 @@ export default function AccessGuardApp() {
             setActiveView={setView}
             isMobile
             onClose={() => setIsSidebarOpen(false)}
+            user={user}
+            onLogout={handleLogout}
           />
         </SheetContent>
       </Sheet>
