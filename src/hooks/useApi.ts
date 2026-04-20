@@ -3,7 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
-import type { CreateProjectInput, Severity, ViolationStatus } from '@/types';
+import type { CreateProjectInput, Severity, ViolationStatus, Project, Violation, Scan, ViolationStats, RemediationResponse } from '@/types';
 
 // Query Keys
 export const queryKeys = {
@@ -19,15 +19,13 @@ export const queryKeys = {
 export function useProjects(orgSlug = 'demo-org') {
   return useQuery({
     queryKey: queryKeys.projects,
-    queryFn: async () => {
+    queryFn: async (): Promise<Project[]> => {
       const result = await api.getProjects(orgSlug);
       if (!result.success) throw new Error(result.error);
-      // API returns { success, data }, so result.data is { success, data: [...], pagination }
-      // We need to return the actual data array
-      const responseData = result.data as { data?: unknown[] };
-      return (responseData?.data || []) as typeof responseData.data;
+      // API returns { success, data: { success, data: [...], pagination } }
+      const responseData = result.data as { data?: Project[] };
+      return responseData?.data || [];
     },
-    // Don't retry on auth errors
     retry: false,
   });
 }
@@ -35,11 +33,11 @@ export function useProjects(orgSlug = 'demo-org') {
 export function useProject(id: string) {
   return useQuery({
     queryKey: queryKeys.project(id),
-    queryFn: async () => {
+    queryFn: async (): Promise<Project | null> => {
       const result = await api.getProject(id);
       if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: unknown };
-      return responseData?.data;
+      const responseData = result.data as { data?: Project };
+      return responseData?.data || null;
     },
     enabled: !!id,
     retry: false,
@@ -53,7 +51,7 @@ export function useCreateProject() {
     mutationFn: async (input: CreateProjectInput) => {
       const result = await api.createProject(input);
       if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: unknown };
+      const responseData = result.data as { data?: { project: Project; scan: Scan } };
       return responseData?.data;
     },
     onSuccess: () => {
@@ -73,16 +71,14 @@ export function useViolations(params: {
 } = {}) {
   return useQuery({
     queryKey: queryKeys.violations(params),
-    queryFn: async () => {
+    queryFn: async (): Promise<Violation[]> => {
       const result = await api.getViolations(params);
       if (!result.success) throw new Error(result.error);
-      // API wraps data: { success, data: [...], pagination }
-      const responseData = result.data as { data?: unknown[] };
-      return (responseData?.data || []) as typeof responseData.data;
+      // API returns { success, data: { success, data: [...], pagination } }
+      const responseData = result.data as { data?: Violation[] };
+      return responseData?.data || [];
     },
-    // Don't retry on auth errors
     retry: false,
-    // Return empty array on error instead of throwing
     placeholderData: [],
   });
 }
@@ -90,11 +86,11 @@ export function useViolations(params: {
 export function useViolationStats(projectId?: string) {
   return useQuery({
     queryKey: queryKeys.stats(projectId),
-    queryFn: async () => {
+    queryFn: async (): Promise<ViolationStats | null> => {
       const result = await api.getViolationStats(projectId);
       if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: unknown };
-      return responseData?.data;
+      const responseData = result.data as { data?: ViolationStats };
+      return responseData?.data || null;
     },
     retry: false,
   });
@@ -107,7 +103,7 @@ export function useUpdateViolationStatus() {
     mutationFn: async ({ id, status }: { id: string; status: ViolationStatus }) => {
       const result = await api.updateViolationStatus(id, status);
       if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: unknown };
+      const responseData = result.data as { data?: Violation };
       return responseData?.data;
     },
     onSuccess: () => {
@@ -121,12 +117,12 @@ export function useUpdateViolationStatus() {
 export function useScans(projectId?: string, limit = 20) {
   return useQuery({
     queryKey: queryKeys.scans(projectId),
-    queryFn: async () => {
+    queryFn: async (): Promise<Scan[]> => {
       const result = await api.getScans(projectId, undefined, limit);
       if (!result.success) throw new Error(result.error);
-      // API wraps data: { success, data: [...] }
-      const responseData = result.data as { data?: unknown[] };
-      return (responseData?.data || []) as typeof responseData.data;
+      // API returns { success, data: { success, data: [...] } }
+      const responseData = result.data as { data?: Scan[] };
+      return responseData?.data || [];
     },
     retry: false,
     placeholderData: [],
@@ -140,7 +136,7 @@ export function useCreateScan() {
     mutationFn: async (projectId: string) => {
       const result = await api.createScan(projectId);
       if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: unknown };
+      const responseData = result.data as { data?: Scan };
       return responseData?.data;
     },
     onSuccess: (_, projectId) => {
@@ -155,12 +151,12 @@ export function useCreateScan() {
 export function useRemediation(violationId: string | null, enabled = true) {
   return useQuery({
     queryKey: ['remediation', violationId],
-    queryFn: async () => {
+    queryFn: async (): Promise<RemediationResponse | null> => {
       if (!violationId) return null;
       const result = await api.getRemediation(violationId);
       if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: unknown };
-      return responseData?.data;
+      const responseData = result.data as { data?: RemediationResponse };
+      return responseData?.data || null;
     },
     enabled: !!violationId && enabled,
     retry: false,
@@ -174,7 +170,7 @@ export function useGenerateRemediation() {
     mutationFn: async ({ violationId, forceRegenerate = false }: { violationId: string; forceRegenerate?: boolean }) => {
       const result = await api.getRemediation(violationId, forceRegenerate);
       if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: unknown };
+      const responseData = result.data as { data?: RemediationResponse };
       return responseData?.data;
     },
     onSuccess: (_, { violationId }) => {
