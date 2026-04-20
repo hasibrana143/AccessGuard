@@ -2381,6 +2381,10 @@ export default function AccessGuardApp() {
       {/* Mobile Sidebar */}
       <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
         <SheetContent side="left" className="p-0 w-64">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Navigation Menu</SheetTitle>
+            <SheetDescription>Access main navigation options</SheetDescription>
+          </SheetHeader>
           <Sidebar
             activeView={view}
             setActiveView={setView}
