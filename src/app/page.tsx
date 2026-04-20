@@ -1264,7 +1264,7 @@ const DashboardView = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {violationsData?.data?.slice(0, 5).map((v) => (
+              {Array.isArray(violationsData) && violationsData.slice(0, 5).map((v) => (
                 <div
                   key={v.id}
                   className="flex items-start gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
@@ -1288,7 +1288,7 @@ const DashboardView = () => {
                   <Button variant="ghost" size="sm">View</Button>
                 </div>
               ))}
-              {(!violationsData?.data || violationsData.data.length === 0) && (
+              {(!Array.isArray(violationsData) || violationsData.length === 0) && (
                 <div className="py-8 text-center text-muted-foreground">
                   <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-emerald-500 opacity-50" />
                   <p>No violations found</p>
@@ -1671,17 +1671,16 @@ const ViolationsView = () => {
   const generateRemediation = useGenerateRemediation();
 
   const filteredViolations = useMemo(() => {
-    const data = violationsData?.data;
-    if (!data) return [];
-    if (!searchQuery) return data;
+    if (!Array.isArray(violationsData)) return [];
+    if (!searchQuery) return violationsData;
     
     const query = searchQuery.toLowerCase();
-    return data.filter(v => 
+    return violationsData.filter(v => 
       v.ruleId.toLowerCase().includes(query) ||
       v.description.toLowerCase().includes(query) ||
       v.url.toLowerCase().includes(query)
     );
-  }, [violationsData?.data, searchQuery]);
+  }, [violationsData, searchQuery]);
 
   const handleStatusUpdate = async (id: string, status: ViolationStatus) => {
     try {

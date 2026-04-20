@@ -24,6 +24,8 @@ export function useProjects(orgSlug = 'demo-org') {
       if (!result.success) throw new Error(result.error);
       return result.data!;
     },
+    // Don't retry on auth errors
+    retry: false,
   });
 }
 
@@ -36,6 +38,7 @@ export function useProject(id: string) {
       return result.data!;
     },
     enabled: !!id,
+    retry: false,
   });
 }
 
@@ -68,8 +71,13 @@ export function useViolations(params: {
     queryFn: async () => {
       const result = await api.getViolations(params);
       if (!result.success) throw new Error(result.error);
-      return result;
+      // Return just the data array, not the full response
+      return result.data!;
     },
+    // Don't retry on auth errors
+    retry: false,
+    // Return empty array on error instead of throwing
+    placeholderData: [],
   });
 }
 
@@ -81,6 +89,7 @@ export function useViolationStats(projectId?: string) {
       if (!result.success) throw new Error(result.error);
       return result.data!;
     },
+    retry: false,
   });
 }
 
@@ -109,6 +118,8 @@ export function useScans(projectId?: string, limit = 20) {
       if (!result.success) throw new Error(result.error);
       return result.data!;
     },
+    retry: false,
+    placeholderData: [],
   });
 }
 
@@ -140,6 +151,7 @@ export function useRemediation(violationId: string | null, enabled = true) {
       return result.data!;
     },
     enabled: !!violationId && enabled,
+    retry: false,
   });
 }
 
