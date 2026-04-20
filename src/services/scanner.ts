@@ -457,10 +457,73 @@ function getSelector(element: Element): string {
   return path.join(' > ');
 }
 
+// Calculate relative luminance according to WCAG 2.1
+function getRelativeLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map(c => {
+    c = c / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+// Parse CSS color to RGB values
+function parseColor(color: string): { r: number; g: number; b: number } | null {
+  // Handle hex colors
+  if (color.startsWith('#')) {
+    const hex = color.slice(1);
+    const bigint = parseInt(hex.length === 3 
+      ? hex.split('').map(c => c + c).join('') 
+      : hex, 16);
+    return {
+      r: (bigint >> 16) & 255,
+      g: (bigint >> 8) & 255,
+      b: bigint & 255
+    };
+  }
+  
+  // Handle rgb/rgba colors
+  const rgbMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  if (rgbMatch) {
+    return {
+      r: parseInt(rgbMatch[1]),
+      g: parseInt(rgbMatch[2]),
+      b: parseInt(rgbMatch[3])
+    };
+  }
+  
+  // Handle named colors (basic set)
+  const namedColors: Record<string, string> = {
+    black: '#000000', white: '#ffffff', red: '#ff0000', green: '#008000',
+    blue: '#0000ff', yellow: '#ffff00', cyan: '#00ffff', magenta: '#ff00ff',
+    gray: '#808080', grey: '#808080', silver: '#c0c0c0', maroon: '#800000',
+    olive: '#808000', navy: '#000080', purple: '#800080', teal: '#008080',
+    orange: '#ffa500', pink: '#ffc0cb', lime: '#00ff00', aqua: '#00ffff'
+  };
+  
+  const namedColor = namedColors[color.toLowerCase()];
+  if (namedColor) {
+    return parseColor(namedColor);
+  }
+  
+  return null;
+}
+
+// Calculate contrast ratio according to WCAG 2.1
 function calculateContrastRatio(color1: string, color2: string): number {
-  // Simplified contrast calculation - in production, use a proper library
-  // This is a rough estimate
-  return 3.5 + Math.random() * 2; // Placeholder for demo
+  const rgb1 = parseColor(color1);
+  const rgb2 = parseColor(color2);
+  
+  if (!rgb1 || !rgb2) {
+    return 1; // Default to no contrast if colors can't be parsed
+  }
+  
+  const L1 = getRelativeLuminance(rgb1.r, rgb1.g, rgb1.b);
+  const L2 = getRelativeLuminance(rgb2.r, rgb2.g, rgb2.b);
+  
+  const lighter = Math.max(L1, L2);
+  const darker = Math.min(L1, L2);
+  
+  return (lighter + 0.05) / (darker + 0.05);
 }
 
 function generateImageAltFix(img: Element): string {

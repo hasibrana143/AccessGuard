@@ -13,7 +13,20 @@ export const queryKeys = {
   violation: (id: string) => ['violations', id] as const,
   scans: (projectId?: string) => ['scans', projectId] as const,
   stats: (projectId?: string) => ['stats', projectId] as const,
+  trends: (projectId?: string, days?: number) => ['trends', projectId, days] as const,
 };
+
+// Trend data type
+export interface TrendDataPoint {
+  date: string;
+  violations: number;
+  critical: number;
+  serious: number;
+  moderate: number;
+  minor: number;
+  fixed: number;
+  scans: number;
+}
 
 // Projects
 export function useProjects(orgSlug = 'demo-org') {
@@ -177,5 +190,25 @@ export function useGenerateRemediation() {
       queryClient.invalidateQueries({ queryKey: ['remediation', violationId] });
       queryClient.invalidateQueries({ queryKey: ['violations'] });
     },
+  });
+}
+
+// Trends
+export function useTrendData(projectId?: string, days = 30) {
+  return useQuery({
+    queryKey: queryKeys.trends(projectId, days),
+    queryFn: async (): Promise<TrendDataPoint[]> => {
+      const params = new URLSearchParams();
+      if (projectId) params.append('projectId', projectId);
+      params.append('days', String(days));
+      
+      const response = await fetch(`/api/stats/trends?${params}`);
+      const result = await response.json();
+      
+      if (!result.success) throw new Error(result.error);
+      return result.data || [];
+    },
+    retry: false,
+    placeholderData: [],
   });
 }

@@ -292,9 +292,14 @@ export async function scanUrlServer(url: string, config?: ScanConfig): Promise<{
 
       html = await response.text();
     } catch (fetchError) {
-      // If fetch fails, generate realistic violations based on common patterns
-      console.log(`Fetch failed for ${url}, generating analysis based on URL patterns...`);
-      return generateRealisticViolations(url);
+      // Return error instead of fake data - real scanning requires actual access
+      const errorMsg = fetchError instanceof Error ? fetchError.message : 'Failed to fetch URL';
+      console.log(`Fetch failed for ${url}: ${errorMsg}`);
+      return {
+        violations: [],
+        pagesScanned: 0,
+        error: `Cannot access URL: ${errorMsg}. Please ensure the URL is publicly accessible.`
+      };
     }
 
     // Analyze the HTML for violations
@@ -316,127 +321,6 @@ export async function scanUrlServer(url: string, config?: ScanConfig): Promise<{
       error: errorMessage,
     };
   }
-}
-
-// Generate realistic violations when direct scanning isn't possible
-function generateRealisticViolations(url: string): {
-  violations: ServerViolation[];
-  pagesScanned: number;
-} {
-  const baseUrl = new URL(url).origin;
-
-  // Common violations found on most websites
-  const commonViolations: ServerViolation[] = [
-    {
-      ruleId: 'image-alt',
-      wcagCriteria: '1.1.1',
-      severity: 'critical',
-      url: baseUrl,
-      elementSelector: 'img.hero-image',
-      elementHtml: '<img src="/images/hero.jpg" class="hero-image">',
-      description: 'Image element missing alt attribute. All images must have alternative text to convey their purpose.',
-      remediationCode: '<img src="/images/hero.jpg" class="hero-image" alt="Hero image showing company branding">',
-      aiExplanation: 'Added a descriptive alt attribute that describes the image content and purpose.',
-      aiConfidenceScore: 0.92,
-      status: 'open',
-    },
-    {
-      ruleId: 'label',
-      wcagCriteria: '1.3.1',
-      severity: 'serious',
-      url: `${baseUrl}/contact`,
-      elementSelector: '#email-input',
-      elementHtml: '<input type="email" id="email-input" placeholder="Enter your email">',
-      description: 'Form field missing associated label. Each form control must have a label for screen reader users.',
-      remediationCode: '<label for="email-input" class="sr-only">Email address</label>\n<input type="email" id="email-input" placeholder="Enter your email">',
-      aiExplanation: 'Added a label element with the for attribute matching the input id. Used sr-only class to hide visually while keeping it accessible to screen readers.',
-      aiConfidenceScore: 0.97,
-      status: 'open',
-    },
-    {
-      ruleId: 'link-name',
-      wcagCriteria: '2.4.4',
-      severity: 'serious',
-      url: `${baseUrl}/blog`,
-      elementSelector: '.read-more',
-      elementHtml: '<a href="/blog/post-1" class="read-more">Read more</a>',
-      description: 'Link text "Read more" is too generic. Link text should describe the destination or purpose of the link.',
-      remediationCode: '<a href="/blog/post-1" class="read-more">Read more about our latest article</a>',
-      aiExplanation: 'Added context to the link text to describe where the link leads, helping all users understand the destination.',
-      aiConfidenceScore: 0.89,
-      status: 'open',
-    },
-    {
-      ruleId: 'keyboard-navigation',
-      wcagCriteria: '2.1.1',
-      severity: 'critical',
-      url: baseUrl,
-      elementSelector: '.dropdown-toggle',
-      elementHtml: '<div class="dropdown-toggle" onclick="toggleDropdown()">Menu</div>',
-      description: 'Clickable div element is not keyboard accessible. Use a button element or add tabindex and keyboard event handlers.',
-      remediationCode: '<button type="button" class="dropdown-toggle" onclick="toggleDropdown()">Menu</button>',
-      aiExplanation: 'Changed div to button element, which is natively keyboard accessible. The button element can receive focus and be activated with Enter or Space keys.',
-      aiConfidenceScore: 0.95,
-      status: 'open',
-    },
-    {
-      ruleId: 'document-lang',
-      wcagCriteria: '3.1.1',
-      severity: 'moderate',
-      url: baseUrl,
-      elementSelector: 'html',
-      elementHtml: '<html>',
-      description: 'Document missing language attribute. Screen readers need to know the language to pronounce content correctly.',
-      remediationCode: '<html lang="en">',
-      aiExplanation: 'Added lang="en" attribute to the html element. This tells screen readers to use English pronunciation rules.',
-      aiConfidenceScore: 0.99,
-      status: 'open',
-    },
-    {
-      ruleId: 'page-title',
-      wcagCriteria: '2.4.2',
-      severity: 'serious',
-      url: `${baseUrl}/about`,
-      elementSelector: 'title',
-      elementHtml: '<title>About</title>',
-      description: 'Page title is too generic. Include the site name to help users identify the page.',
-      remediationCode: '<title>About Us | Site Name</title>',
-      aiExplanation: 'Updated the page title to include both the page name and site name, making it more useful for users navigating between tabs.',
-      aiConfidenceScore: 0.91,
-      status: 'open',
-    },
-    {
-      ruleId: 'heading-order',
-      wcagCriteria: '1.3.1',
-      severity: 'moderate',
-      url: `${baseUrl}/services`,
-      elementSelector: '.content h3',
-      elementHtml: '<h3>Our Services</h3>',
-      description: 'Heading level may be skipped. Heading levels should be in sequential order for proper document structure.',
-      remediationCode: '<h2>Our Services</h2>',
-      aiExplanation: 'Ensured proper heading hierarchy by using the appropriate heading level.',
-      aiConfidenceScore: 0.85,
-      status: 'open',
-    },
-    {
-      ruleId: 'color-contrast',
-      wcagCriteria: '1.4.3',
-      severity: 'serious',
-      url: `${baseUrl}/pricing`,
-      elementSelector: '.price-label',
-      elementHtml: '<span class="price-label" style="color: #999;">$99/mo</span>',
-      description: 'Insufficient color contrast ratio. Text must have a contrast ratio of at least 4.5:1 against its background.',
-      remediationCode: '<span class="price-label" style="color: #666;">$99/mo</span>',
-      aiExplanation: 'Darkened the text color to achieve a contrast ratio of at least 4.5:1 against the background.',
-      aiConfidenceScore: 0.88,
-      status: 'open',
-    },
-  ];
-
-  return {
-    violations: commonViolations,
-    pagesScanned: 1,
-  };
 }
 
 // Crawl multiple pages (placeholder for future implementation)

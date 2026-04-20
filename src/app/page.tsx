@@ -42,7 +42,8 @@ import {
   useProjects, useCreateProject,
   useViolations, useViolationStats, useUpdateViolationStatus,
   useScans, useCreateScan,
-  useRemediation, useGenerateRemediation
+  useRemediation, useGenerateRemediation,
+  useTrendData
 } from '@/hooks/useApi';
 import type { View, Project, Violation, Severity, ViolationStatus, CreateProjectInput } from '@/types';
 
@@ -73,40 +74,6 @@ const SEVERITY_TEXT: Record<Severity, string> = {
 
 const WCAG_LEVELS = ['A', 'AA', 'AAA'] as const;
 const WCAG_CATEGORIES = ['perceivable', 'operable', 'understandable', 'robust'] as const;
-
-interface TrendData {
-  date: string;
-  violations: number;
-  critical: number;
-  serious: number;
-  moderate: number;
-  minor: number;
-  fixed: number;
-}
-
-// Generate sample trend data
-const generateTrendData = (): TrendData[] => {
-  const data: TrendData[] = [];
-  const now = new Date();
-  
-  for (let i = 29; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    
-    const baseViolations = 50 - Math.floor(i * 0.5);
-    data.push({
-      date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      violations: Math.max(5, baseViolations + Math.floor(Math.random() * 10)),
-      critical: Math.max(1, Math.floor(baseViolations * 0.15) + Math.floor(Math.random() * 3)),
-      serious: Math.max(2, Math.floor(baseViolations * 0.35) + Math.floor(Math.random() * 5)),
-      moderate: Math.max(1, Math.floor(baseViolations * 0.35) + Math.floor(Math.random() * 3)),
-      minor: Math.max(0, Math.floor(baseViolations * 0.15)),
-      fixed: Math.floor(Math.random() * 5)
-    });
-  }
-  
-  return data;
-};
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -1064,8 +1031,7 @@ const DashboardView = () => {
   const { data: statsData } = useViolationStats();
   const { data: violationsData } = useViolations({ limit: 5 });
   const { data: scansData } = useScans(undefined, 5);
-
-  const trendData = useMemo(() => generateTrendData(), []);
+  const { data: trendData } = useTrendData(undefined, 30);
 
   const stats = statsData?.severity || { critical: 0, serious: 0, moderate: 0, minor: 0, total: 0 };
   const avgRiskScore = projects && projects.length > 0
@@ -2210,7 +2176,7 @@ const ReportsView = () => {
 // SETTINGS VIEW
 // ============================================================================
 
-const SettingsView = () => {
+const SettingsView = ({ user }: { user?: User | null }) => {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
@@ -2236,11 +2202,11 @@ const SettingsView = () => {
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label>Name</Label>
-                <Input defaultValue="Demo User" />
+                <Input defaultValue={user?.name || ''} placeholder="Your name" />
               </div>
               <div className="grid gap-2">
                 <Label>Email</Label>
-                <Input defaultValue="demo@accessguard.io" />
+                <Input defaultValue={user?.email || ''} placeholder="your@email.com" />
               </div>
               <Button className="bg-coral hover:bg-coral/90 text-coral-foreground">
                 Save Changes
@@ -2256,7 +2222,7 @@ const SettingsView = () => {
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label>Organization Name</Label>
-                <Input defaultValue="Demo Organization" />
+                <Input defaultValue={user?.organization?.name || ''} placeholder="Organization name" />
               </div>
               <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                 <div className="flex items-center gap-3">
@@ -2264,8 +2230,8 @@ const SettingsView = () => {
                     <Building2 className="h-5 w-5 text-coral" />
                   </div>
                   <div>
-                    <p className="font-medium">Agency Plan</p>
-                    <p className="text-sm text-muted-foreground">$199/month • 10 websites</p>
+                    <p className="font-medium">{user?.organization?.plan || 'Starter'} Plan</p>
+                    <p className="text-sm text-muted-foreground">Manage your subscription</p>
                   </div>
                 </div>
                 <Button variant="outline">Upgrade</Button>
@@ -2419,8 +2385,8 @@ interface LoginViewProps {
 
 const LoginView = ({ onLogin, onBack }: LoginViewProps) => {
   const { toast } = useToast();
-  const [email, setEmail] = useState('demo@accessguard.com');
-  const [password, setPassword] = useState('demo123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -2506,7 +2472,7 @@ const LoginView = ({ onLogin, onBack }: LoginViewProps) => {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     required
                   />
                   <Button
@@ -2532,12 +2498,6 @@ const LoginView = ({ onLogin, onBack }: LoginViewProps) => {
                 )}
               </Button>
             </form>
-
-            <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-              <p className="text-sm font-medium mb-2">Demo Credentials:</p>
-              <p className="text-xs text-muted-foreground">Email: demo@accessguard.com</p>
-              <p className="text-xs text-muted-foreground">Password: demo123</p>
-            </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button variant="link" className="text-sm text-muted-foreground">
@@ -2654,7 +2614,7 @@ export default function AccessGuardApp() {
               {view === 'violations' && <ViolationsView />}
               {view === 'scans' && <ScansView />}
               {view === 'reports' && <ReportsView />}
-              {view === 'settings' && <SettingsView />}
+              {view === 'settings' && <SettingsView user={user} />}
             </motion.div>
           </AnimatePresence>
         </main>
