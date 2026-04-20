@@ -151,7 +151,7 @@ async function main() {
       name: 'Demo User',
       role: 'admin',
       orgId: org.id,
-      password: '$2a$10$EpRnTzVlqHNP0.fUbXUwSOyuiXe/QLSUG6xNekdHgTGmrpHEfIoxm' // demo123
+      password: '965567bb78d7be40e7060376387e76633560b4e73f4a37d46f7cafb6f73cdcf6' // demo123 (SHA-256)
     }
   })
   console.log('Created demo user')
@@ -222,7 +222,8 @@ async function main() {
             serious: seriousCount,
             moderate: moderateCount,
             minor: minorCount
-          })
+          }),
+          createdAt: scanDate
         }
       })
       scans.push({ scan, project: project1, day })
@@ -248,7 +249,8 @@ async function main() {
             serious: seriousCount,
             moderate: moderateCount,
             minor: minorCount
-          })
+          }),
+          createdAt: scanDate
         }
       })
       scans.push({ scan, project: project2, day })
@@ -466,7 +468,8 @@ async function main() {
           elementHtml: `<div class="element-${i}">Content</div>`,
           description: 'Historical violation from previous scan',
           status: scanData.day > 3 ? 'fixed' : 'open',
-          fixedAt: scanData.day > 3 ? scanData.scan.completedAt : null
+          fixedAt: scanData.day > 3 ? scanData.scan.completedAt : null,
+          createdAt: scanData.scan.completedAt || new Date()
         }
       })
     }

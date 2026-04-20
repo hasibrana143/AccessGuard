@@ -16,11 +16,15 @@ Work Log:
   - Historical violations with varying statuses (open/fixed)
   - Running scan demo for project 1
   - Proper timestamps for all data
+- Fixed password hash in seed file to match login API (SHA-256)
+- Fixed createdAt dates for scans and violations to have proper historical distribution
+- Added allowedDevOrigins to next.config.ts to fix cross-origin warning
 
 Stage Summary:
 - All demo data is now real database data
 - Sidebar shows logged-in user information
-- Trend charts have realistic historical data
+- Trend charts have realistic historical data distributed across 30 days
 - Database seeding creates comprehensive demo data for testing
+- Login works correctly with demo@accessguard.com / demo123
 - Lint passes with no errors
 - Application is fully functional with real data
