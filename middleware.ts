@@ -15,14 +15,6 @@ function isPublicRoute(pathname: string): boolean {
   );
 }
 
-// API routes that require authentication
-const protectedApiRoutes = [
-  '/api/projects',
-  '/api/violations',
-  '/api/scans',
-  '/api/remediate',
-];
-
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const response = NextResponse.next();
