@@ -1,0 +1,143 @@
+// AccessGuard - ADA Compliance SaaS Platform
+// Prisma Schema for SQLite
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Organizations (multi-tenant)
+model Organization {
+  id                  String   @id @default(cuid())
+  name                String
+  slug                String   @unique
+  plan                String   @default("starter") // starter, agency, enterprise
+  stripeCustomerId    String?
+  stripeSubscriptionId String?
+  settings            String   @default("{}") // JSON string
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  
+  users               User[]
+  projects            Project[]
+  githubConnections   GithubConnection[]
+  auditLogs           AuditLog[]
+}
+
+// Users
+model User {
+  id           String   @id @default(cuid())
+  orgId        String
+  email        String   @unique
+  name         String?
+  password     String?
+  role         String   @default("member") // admin, member, viewer
+  avatar       String?
+  githubToken  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+// Projects (Websites to scan)
+model Project {
+  id                String   @id @default(cuid())
+  orgId             String
+  name              String
+  url               String
+  description       String?
+  crawlConfig       String   @default("{\"maxPages\":100,\"excludePaths\":[],\"includeSubdomains\":false}") // JSON string
+  lastScanAt        DateTime?
+  riskScore         Int?     // 0-100
+  nextScheduledScan DateTime?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  organization      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  scans             Scan[]
+  violations        Violation[]
+}
+
+// Scans
+model Scan {
+  id             String   @id @default(cuid())
+  projectId      String
+  status         String   @default("pending") // pending, running, completed, failed
+  startedAt      DateTime @default(now())
+  completedAt    DateTime?
+  pagesScanned   Int      @default(0)
+  violationsFound Int     @default(0)
+  summary        String?   // JSON string with aggregated stats
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+  
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  violations     Violation[]
+}
+
+// Violations (Core data)
+model Violation {
+  id                String   @id @default(cuid())
+  scanId            String
+  projectId         String
+  ruleId            String   // 'color-contrast', 'missing-alt', etc.
+  wcagCriteria      String?  // '1.4.3', '4.1.2'
+  severity          String   // critical, serious, moderate, minor
+  url               String   // page where found
+  elementSelector   String?  // CSS selector
+  elementHtml       String?  // HTML snippet
+  description       String
+  remediationCode   String?  // AI-generated fix
+  aiExplanation     String?  // AI explanation
+  aiConfidenceScore Float?   // 0-1
+  status            String   @default("open") // open, fixed, ignored, false_positive
+  githubPrUrl       String?
+  createdAt         DateTime @default(now())
+  fixedAt           DateTime?
+  
+  scan              Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// GitHub Connections
+model GithubConnection {
+  id             String   @id @default(cuid())
+  orgId          String
+  installationId String   @unique
+  repositories   String   @default("[]") // JSON string
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+// Audit Logs (for legal compliance)
+model AuditLog {
+  id        String   @id @default(cuid())
+  orgId     String
+  action    String
+  metadata  String   @default("{}") // JSON string
+  createdAt DateTime @default(now())
+  
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+// WCAG Rules Reference (pre-populated)
+model WcagRule {
+  id          String   @id @default(cuid())
+  ruleId      String   @unique
+  name        String
+  description String
+  wcagCriteria String
+  level       String   // A, AA, AAA
+  category    String   // perceptible, operable, understandable, robust
+  howToFix    String
+  createdAt   DateTime @default(now())
+}
