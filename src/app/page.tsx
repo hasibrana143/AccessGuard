@@ -959,10 +959,26 @@ const Sidebar = ({ activeView, setActiveView, isMobile, onClose }: {
   );
 };
 
-const DashboardHeader = ({ onMenuClick, title, subtitle }: { 
+// User interface for authentication
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role?: string;
+  organization?: {
+    id: string;
+    name: string;
+    slug: string;
+    plan: string;
+  };
+}
+
+const DashboardHeader = ({ onMenuClick, title, subtitle, user, onLogout }: { 
   onMenuClick: () => void;
   title?: string;
   subtitle?: string;
+  user?: User | null;
+  onLogout?: () => void;
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border">
@@ -979,7 +995,7 @@ const DashboardHeader = ({ onMenuClick, title, subtitle }: {
             />
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1000,6 +1016,39 @@ const DashboardHeader = ({ onMenuClick, title, subtitle }: {
               <TooltipContent>Help & Support</TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          
+          {/* User Menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="flex items-center gap-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-coral/10 text-coral text-sm">
+                    {user?.name?.charAt(0) || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="hidden sm:inline text-sm">{user?.name || 'User'}</span>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex flex-col">
+                  <span>{user?.name}</span>
+                  <span className="text-xs text-muted-foreground font-normal">{user?.email}</span>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => window.location.href = '/settings'}>
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onLogout} className="text-red-500 focus:text-red-500">
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>
@@ -2360,15 +2409,204 @@ const SettingsView = () => {
 };
 
 // ============================================================================
+// LOGIN VIEW
+// ============================================================================
+
+interface LoginViewProps {
+  onLogin: (user: User) => void;
+  onBack: () => void;
+}
+
+const LoginView = ({ onLogin, onBack }: LoginViewProps) => {
+  const { toast } = useToast();
+  const [email, setEmail] = useState('demo@accessguard.com');
+  const [password, setPassword] = useState('demo123');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: 'Welcome back!',
+          description: `Logged in as ${data.data.user.name}`,
+        });
+        onLogin(data.data.user);
+      } else {
+        toast({
+          title: 'Login Failed',
+          description: data.error || 'Invalid credentials',
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to connect to server',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-coral/5 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <Button
+          variant="ghost"
+          onClick={onBack}
+          className="mb-6"
+        >
+          <ArrowRight className="h-4 w-4 mr-2 rotate-180" />
+          Back to Home
+        </Button>
+
+        <Card className="border-2">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <div className="p-2 rounded-lg bg-coral/10">
+                <Shield className="h-8 w-8 text-coral" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl">Welcome Back</CardTitle>
+            <CardDescription>
+              Sign in to your AccessGuard account
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="demo@accessguard.com"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <Button
+                type="submit"
+                className="w-full bg-coral hover:bg-coral/90 text-coral-foreground h-11"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Signing in...</>
+                ) : (
+                  'Sign In'
+                )}
+              </Button>
+            </form>
+
+            <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm font-medium mb-2">Demo Credentials:</p>
+              <p className="text-xs text-muted-foreground">Email: demo@accessguard.com</p>
+              <p className="text-xs text-muted-foreground">Password: demo123</p>
+            </div>
+          </CardContent>
+          <CardFooter className="flex flex-col gap-4">
+            <Button variant="link" className="text-sm text-muted-foreground">
+              Forgot your password?
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
 // MAIN APP
 // ============================================================================
 
 export default function AccessGuardApp() {
   const [view, setView] = useState<View>('landing');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [mounted, setMounted] = useState(false);
 
+  // Check for saved session after mount (client-side only)
+  useEffect(() => {
+    const savedUser = localStorage.getItem('accessguard_user');
+    // Defer all state updates to next tick to avoid synchronous setState in effect
+    queueMicrotask(() => {
+      if (savedUser) {
+        try {
+          const parsedUser = JSON.parse(savedUser);
+          setUser(parsedUser);
+          setView('dashboard');
+        } catch {
+          localStorage.removeItem('accessguard_user');
+        }
+      }
+      setMounted(true);
+    });
+  }, []);
+
+  const handleLogin = (loggedInUser: User) => {
+    setUser(loggedInUser);
+    localStorage.setItem('accessguard_user', JSON.stringify(loggedInUser));
+    setView('dashboard');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('accessguard_user');
+    setView('landing');
+  };
+
+  // Show loading while checking auth
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-coral" />
+      </div>
+    );
+  }
+
+  // Show login page
+  if (view === 'login') {
+    return <LoginView onLogin={handleLogin} onBack={() => setView('landing')} />;
+  }
+
+  // Show landing page
   if (view === 'landing') {
-    return <LandingPage onGetStarted={() => setView('dashboard')} />;
+    return <LandingPage onGetStarted={() => setView('login')} />;
   }
 
   return (
@@ -2396,7 +2634,11 @@ export default function AccessGuardApp() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-screen">
-        <DashboardHeader onMenuClick={() => setIsSidebarOpen(true)} />
+        <DashboardHeader 
+          onMenuClick={() => setIsSidebarOpen(true)} 
+          user={user}
+          onLogout={handleLogout}
+        />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
           <AnimatePresence mode="wait">
