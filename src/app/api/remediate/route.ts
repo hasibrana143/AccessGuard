@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ZAI from 'z-ai-web-dev-sdk';
 import { db } from '@/lib/db';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
 interface RemediationRequest {
   violationId: string;
@@ -141,6 +142,14 @@ Provide the fixed code, a brief explanation, and a confidence score (0-1). Forma
 
 // POST /api/remediate - Generate AI remediation for a violation
 export async function POST(request: NextRequest) {
+  // Rate limiting (stricter for AI calls)
+  const clientId = getClientIdentifier(request);
+  const rateResult = checkRateLimit(`remediate:${clientId}`, rateLimits.remediation);
+  
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   try {
     const body = await request.json();
     const { violationId, forceRegenerate = false } = body;

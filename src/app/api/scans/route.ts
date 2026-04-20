@@ -1,9 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { scanUrlServer, type ServerViolation } from '@/services/server-scanner';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
+
+// Sanitize error messages for production
+function sanitizeError(error: unknown): string {
+  if (error instanceof Error) {
+    // Don't expose internal error details
+    if (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
+      return 'Unable to connect to the target URL';
+    }
+    if (error.message.includes('timeout')) {
+      return 'Request timed out';
+    }
+    // Generic error for other cases
+    return 'An unexpected error occurred';
+  }
+  return 'An unexpected error occurred';
+}
 
 // GET /api/scans - List scans
 export async function GET(request: NextRequest) {
+  // Rate limiting
+  const clientId = getClientIdentifier(request);
+  const rateResult = checkRateLimit(`scans-get:${clientId}`, rateLimits.default);
+  
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
@@ -46,6 +71,14 @@ export async function GET(request: NextRequest) {
 
 // POST /api/scans - Create and execute a scan synchronously
 export async function POST(request: NextRequest) {
+  // Rate limiting (stricter for scans)
+  const clientId = getClientIdentifier(request);
+  const rateResult = checkRateLimit(`scans-post:${clientId}`, rateLimits.scan);
+  
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   try {
     const body = await request.json();
     const { projectId } = body;
@@ -66,6 +99,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Project not found' },
         { status: 404 }
+      );
+    }
+
+    // Validate URL format
+    try {
+      new URL(project.url);
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Invalid project URL' },
+        { status: 400 }
       );
     }
 
@@ -171,22 +214,21 @@ export async function POST(request: NextRequest) {
       });
 
     } catch (scanError) {
-      const errorMessage = scanError instanceof Error ? scanError.message : 'Unknown error';
-      console.error(`Scan ${scan.id} failed:`, errorMessage);
-
+      console.error(`Scan ${scan.id} failed:`, scanError);
+      
       // Update scan as failed
       await db.scan.update({
         where: { id: scan.id },
         data: {
           status: 'failed',
-          errorMessage,
+          errorMessage: sanitizeError(scanError),
           completedAt: new Date()
         }
       });
 
       return NextResponse.json({
         success: false,
-        error: `Scan failed: ${errorMessage}`
+        error: `Scan failed: ${sanitizeError(scanError)}`
       }, { status: 500 });
     }
 
@@ -201,6 +243,14 @@ export async function POST(request: NextRequest) {
 
 // PATCH /api/scans - Update scan status
 export async function PATCH(request: NextRequest) {
+  // Rate limiting
+  const clientId = getClientIdentifier(request);
+  const rateResult = checkRateLimit(`scans-patch:${clientId}`, rateLimits.default);
+  
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   try {
     const body = await request.json();
     const { id, status } = body;

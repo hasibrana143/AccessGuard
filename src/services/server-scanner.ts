@@ -3,7 +3,7 @@
 
 import type { Violation, Severity } from '@/types';
 
-interface ServerViolation {
+export interface ServerViolation {
   ruleId: string;
   wcagCriteria: string;
   severity: Severity;
@@ -397,6 +397,7 @@ function generateRealisticViolations(url: string): {
       wcagCriteria: '2.4.2',
       severity: 'serious',
       url: `${baseUrl}/about`,
+      elementSelector: 'title',
       elementHtml: '<title>About</title>',
       description: 'Page title is too generic. Include the site name to help users identify the page.',
       remediationCode: '<title>About Us | Site Name</title>',

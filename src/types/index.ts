@@ -104,9 +104,6 @@ export interface CreateProjectInput {
   };
 }
 
-// Alias for backwards compatibility
-export type { CreateProjectInput as CreateProjectInput };
-
 export interface RemediationResponse {
   remediationCode: string;
   explanation: string;
