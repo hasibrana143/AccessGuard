@@ -1314,7 +1314,7 @@ const DashboardView = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {scansData?.slice(0, 5).map((scan) => (
+              {Array.isArray(scansData) && scansData.slice(0, 5).map((scan) => (
                 <div
                   key={scan.id}
                   className="flex items-center gap-3 p-3 rounded-lg bg-muted/30"
@@ -1353,7 +1353,7 @@ const DashboardView = () => {
                   </div>
                 </div>
               ))}
-              {(!scansData || scansData.length === 0) && (
+              {(!Array.isArray(scansData) || scansData.length === 0) && (
                 <div className="py-8 text-center text-muted-foreground">
                   <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p>No scans yet</p>
