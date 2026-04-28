@@ -1,0 +1,7 @@
+{
+  "name": "web-server",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "cd /home/z/my-project && node node_modules/.bin/next dev -p 3000"
+  }
+}
