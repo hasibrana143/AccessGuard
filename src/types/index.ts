@@ -1,6 +1,6 @@
 // AccessGuard Types
 
-export type View = 'landing' | 'login' | 'dashboard' | 'projects' | 'violations' | 'scans' | 'reports' | 'settings';
+export type View = 'landing' | 'login' | 'register' | 'dashboard' | 'projects' | 'violations' | 'scans' | 'reports' | 'settings';
 
 export type Severity = 'critical' | 'serious' | 'moderate' | 'minor';
 export type ViolationStatus = 'open' | 'fixed' | 'ignored' | 'false_positive';
