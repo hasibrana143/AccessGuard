@@ -1436,11 +1436,12 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
     try {
       const result = await createScan.mutateAsync(projectId);
       toast({ 
-        title: 'Scan Started', 
-        description: `Scanning "${projectName}" for violations...` 
+        title: 'Scan Completed', 
+        description: `Found ${result?.scan?.violationsFound || 0} violations on "${projectName}".` 
       });
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to start scan', variant: 'destructive' });
+      const errorMsg = error instanceof Error ? error.message : 'Failed to start scan';
+      toast({ title: 'Scan Failed', description: errorMsg, variant: 'destructive' });
     }
   };
 

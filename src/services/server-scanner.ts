@@ -282,7 +282,20 @@ export async function scanUrlServer(url: string, config?: ScanConfig): Promise<{
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Provide specific error messages for common HTTP errors
+        const statusMessages: Record<number, string> = {
+          400: 'Bad Request',
+          401: 'Unauthorized',
+          403: 'Forbidden',
+          404: 'Not Found',
+          429: 'Too Many Requests',
+          500: 'Internal Server Error',
+          502: 'Bad Gateway',
+          503: 'Service Unavailable',
+          504: 'Gateway Timeout',
+        };
+        const statusText = statusMessages[response.status] || response.statusText;
+        throw new Error(`HTTP ${response.status}: ${statusText}`);
       }
 
       const contentType = response.headers.get('content-type') || '';

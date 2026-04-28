@@ -216,20 +216,42 @@ export async function POST(request: NextRequest) {
     } catch (scanError) {
       console.error(`Scan ${scan.id} failed:`, scanError);
       
+      // Determine error type for better user feedback
+      const errorMsg = scanError instanceof Error ? scanError.message : 'Unknown error';
+      let userMessage = 'Scan failed';
+      let statusCode = 500;
+      
+      if (errorMsg.includes('429') || errorMsg.includes('Too Many Requests')) {
+        userMessage = 'The target website is rate limiting requests. Please try again in a few minutes.';
+        statusCode = 429;
+      } else if (errorMsg.includes('403') || errorMsg.includes('Forbidden')) {
+        userMessage = 'The target website blocked the scan. The site may have bot protection.';
+        statusCode = 403;
+      } else if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
+        userMessage = 'The URL was not found. Please check the website address.';
+        statusCode = 404;
+      } else if (errorMsg.includes('timeout')) {
+        userMessage = 'The scan timed out. The website may be slow or unavailable.';
+        statusCode = 504;
+      } else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('ENOTFOUND')) {
+        userMessage = 'Could not connect to the website. Please check the URL is correct and accessible.';
+        statusCode = 502;
+      }
+      
       // Update scan as failed
       await db.scan.update({
         where: { id: scan.id },
         data: {
           status: 'failed',
-          errorMessage: sanitizeError(scanError),
+          errorMessage: userMessage,
           completedAt: new Date()
         }
       });
 
       return NextResponse.json({
         success: false,
-        error: `Scan failed: ${sanitizeError(scanError)}`
-      }, { status: 500 });
+        error: userMessage
+      }, { status: statusCode });
     }
 
   } catch (error) {
