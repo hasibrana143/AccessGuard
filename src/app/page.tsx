@@ -1161,7 +1161,7 @@ const DashboardView = ({ user }: { user?: User | null }) => {
                 <CardDescription>30-day violation history</CardDescription>
               </div>
               <Select defaultValue="30">
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-32" aria-label="Select time range for trend chart">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1494,9 +1494,9 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
                 />
               </div>
               <div className="grid gap-2">
-                <Label>Scan Frequency</Label>
+                <Label htmlFor="scan-frequency">Scan Frequency</Label>
                 <Select defaultValue="daily">
-                  <SelectTrigger>
+                  <SelectTrigger id="scan-frequency">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1764,7 +1764,7 @@ const ViolationsView = () => {
               />
             </div>
             <Select value={severityFilter} onValueChange={setSeverityFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-40" aria-label="Filter by severity">
                 <SelectValue placeholder="Severity" />
               </SelectTrigger>
               <SelectContent>
@@ -1776,7 +1776,7 @@ const ViolationsView = () => {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-40" aria-label="Filter by status">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
