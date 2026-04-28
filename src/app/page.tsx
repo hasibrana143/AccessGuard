@@ -961,6 +961,7 @@ const DashboardHeader = ({ onMenuClick, title, subtitle, user, onLogout }: {
           <div className="relative hidden sm:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              id="header-search"
               placeholder="Search violations, projects..."
               className="w-72 pl-9 bg-muted/50"
               autoComplete="search"
@@ -1750,6 +1751,7 @@ const ViolationsView = () => {
             <div className="relative flex-1 min-w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
+                id="violations-search"
                 placeholder="Search violations..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -2210,12 +2212,12 @@ const SettingsView = ({ user }: { user?: User | null }) => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
-                <Label>Name</Label>
-                <Input defaultValue={user?.name || ''} placeholder="Your name" autoComplete="name" />
+                <Label htmlFor="profile-name">Name</Label>
+                <Input id="profile-name" defaultValue={user?.name || ''} placeholder="Your name" autoComplete="name" />
               </div>
               <div className="grid gap-2">
-                <Label>Email</Label>
-                <Input defaultValue={user?.email || ''} placeholder="your@email.com" autoComplete="email" />
+                <Label htmlFor="profile-email">Email</Label>
+                <Input id="profile-email" defaultValue={user?.email || ''} placeholder="your@email.com" autoComplete="email" />
               </div>
               <Button className="bg-coral hover:bg-coral/90 text-coral-foreground">
                 Save Changes
@@ -2230,8 +2232,8 @@ const SettingsView = ({ user }: { user?: User | null }) => {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
-                <Label>Organization Name</Label>
-                <Input defaultValue={user?.organization?.name || ''} placeholder="Organization name" autoComplete="organization" />
+                <Label htmlFor="org-name">Organization Name</Label>
+                <Input id="org-name" defaultValue={user?.organization?.name || ''} placeholder="Organization name" autoComplete="organization" />
               </div>
               <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                 <div className="flex items-center gap-3">
