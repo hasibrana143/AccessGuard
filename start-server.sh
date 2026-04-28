@@ -2,8 +2,7 @@
 cd /home/z/my-project
 while true; do
   echo "Starting Next.js server..."
-  HOSTNAME="0.0.0.0" node node_modules/.bin/next dev -p 3000
-  EXIT_CODE=$?
-  echo "Server exited with code $EXIT_CODE"
+  node node_modules/.bin/next dev -p 3000 2>&1
+  echo "Server died. Restarting in 2 seconds..."
   sleep 2
 done
