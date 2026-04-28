@@ -963,6 +963,7 @@ const DashboardHeader = ({ onMenuClick, title, subtitle, user, onLogout }: {
             <Input
               placeholder="Search violations, projects..."
               className="w-72 pl-9 bg-muted/50"
+              autoComplete="search"
             />
           </div>
         </div>
@@ -1463,6 +1464,7 @@ const ProjectsView = () => {
                   value={newProject.name}
                   onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
                   placeholder="My Website"
+                  autoComplete="organization"
                 />
               </div>
               <div className="grid gap-2">
@@ -1473,6 +1475,7 @@ const ProjectsView = () => {
                   value={newProject.url}
                   onChange={(e) => setNewProject({ ...newProject, url: e.target.value })}
                   placeholder="https://example.com"
+                  autoComplete="url"
                 />
               </div>
               <div className="grid gap-2">
@@ -1483,6 +1486,7 @@ const ProjectsView = () => {
                   onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
                   placeholder="Brief description of the project"
                   rows={3}
+                  autoComplete="off"
                 />
               </div>
               <div className="grid gap-2">
@@ -1750,6 +1754,7 @@ const ViolationsView = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
+                autoComplete="search"
               />
             </div>
             <Select value={severityFilter} onValueChange={setSeverityFilter}>
@@ -2206,11 +2211,11 @@ const SettingsView = ({ user }: { user?: User | null }) => {
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label>Name</Label>
-                <Input defaultValue={user?.name || ''} placeholder="Your name" />
+                <Input defaultValue={user?.name || ''} placeholder="Your name" autoComplete="name" />
               </div>
               <div className="grid gap-2">
                 <Label>Email</Label>
-                <Input defaultValue={user?.email || ''} placeholder="your@email.com" />
+                <Input defaultValue={user?.email || ''} placeholder="your@email.com" autoComplete="email" />
               </div>
               <Button className="bg-coral hover:bg-coral/90 text-coral-foreground">
                 Save Changes
@@ -2226,7 +2231,7 @@ const SettingsView = ({ user }: { user?: User | null }) => {
             <CardContent className="space-y-4">
               <div className="grid gap-2">
                 <Label>Organization Name</Label>
-                <Input defaultValue={user?.organization?.name || ''} placeholder="Organization name" />
+                <Input defaultValue={user?.organization?.name || ''} placeholder="Organization name" autoComplete="organization" />
               </div>
               <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                 <div className="flex items-center gap-3">
@@ -2466,6 +2471,7 @@ const LoginView = ({ onLogin, onBack }: LoginViewProps) => {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="demo@accessguard.com"
                   required
+                  autoComplete="email"
                 />
               </div>
               <div className="space-y-2">
@@ -2478,6 +2484,7 @@ const LoginView = ({ onLogin, onBack }: LoginViewProps) => {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your password"
                     required
+                    autoComplete="current-password"
                   />
                   <Button
                     type="button"
