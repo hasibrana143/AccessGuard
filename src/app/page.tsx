@@ -2747,6 +2747,7 @@ export default function AccessGuardApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [sessionValidated, setSessionValidated] = useState(false);
 
   // Check for saved session after mount (client-side only)
   useEffect(() => {
@@ -2765,6 +2766,28 @@ export default function AccessGuardApp() {
       setMounted(true);
     });
   }, []);
+
+  // Validate user session - check if organization exists
+  useEffect(() => {
+    if (user?.organization?.slug) {
+      fetch(`/api/projects?orgId=${user.organization.slug}`)
+        .then(res => {
+          if (res.status === 404) {
+            // Organization not found - session is stale, log out
+            console.log('Session stale - organization not found, logging out');
+            localStorage.removeItem('accessguard_user');
+            setUser(null);
+            setView('landing');
+          }
+          setSessionValidated(true);
+        })
+        .catch(() => {
+          setSessionValidated(true);
+        });
+    } else {
+      setSessionValidated(true);
+    }
+  }, [user?.organization?.slug]);
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
