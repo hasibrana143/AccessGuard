@@ -14,7 +14,7 @@ import type {
 const API_BASE = '/api';
 
 class ApiService {
-  private async fetch<T>(url: string, options?: RequestInit): Promise<ApiResponse<T>> {
+  private async fetch<T>(url: string, options?: RequestInit): Promise<ApiResponse<T> & { status?: number }> {
     try {
       const response = await fetch(url, {
         ...options,
@@ -27,10 +27,10 @@ class ApiService {
       const data = await response.json();
 
       if (!response.ok) {
-        return { success: false, error: data.error || 'Request failed' };
+        return { success: false, error: data.error || 'Request failed', status: response.status };
       }
 
-      return { success: true, data };
+      return { success: true, data, status: response.status };
     } catch (error) {
       return {
         success: false,

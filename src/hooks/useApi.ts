@@ -34,7 +34,14 @@ export function useProjects(orgSlug = 'default-org') {
     queryKey: queryKeys.projects,
     queryFn: async (): Promise<Project[]> => {
       const result = await api.getProjects(orgSlug);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) {
+        // If organization not found, return empty array - user needs to re-login
+        if (result.status === 404) {
+          console.warn('Organization not found, user session may be stale');
+          return [];
+        }
+        throw new Error(result.error);
+      }
       // API returns { success, data: { success, data: [...], pagination } }
       const responseData = result.data as { data?: Project[] };
       return responseData?.data || [];

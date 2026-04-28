@@ -127,7 +127,7 @@ async function main() {
   console.log('Created WCAG rules')
 
   // Create default organization for new registrations
-  await prisma.organization.upsert({
+  const defaultOrg = await prisma.organization.upsert({
     where: { slug: 'default-org' },
     update: {},
     create: {
@@ -141,6 +141,23 @@ async function main() {
     }
   })
   console.log('Created default organization')
+
+  // Create a test user for easy testing
+  // Password is 'testpass123' (hashed with SHA-256)
+  const hashedPassword = 'db7c2f16a80da551219fc9350c899062d122767020def3c71797453f365e7c4c'
+  
+  await prisma.user.upsert({
+    where: { email: 'test@accessguard.dev' },
+    update: {},
+    create: {
+      email: 'test@accessguard.dev',
+      name: 'Test User',
+      password: hashedPassword,
+      role: 'admin',
+      orgId: defaultOrg.id
+    }
+  })
+  console.log('Created test user (email: test@accessguard.dev, password: testpass123)')
 
   console.log('Database seeding completed!')
   console.log('No demo projects created - users will create their own real projects.')
