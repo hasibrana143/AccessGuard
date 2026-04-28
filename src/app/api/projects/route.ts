@@ -87,11 +87,18 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, url, description, crawlConfig, orgSlug = 'default-org' } = body;
+    const { name, url, description, crawlConfig, orgSlug } = body;
 
     if (!name || !url) {
       return NextResponse.json(
         { success: false, error: 'Name and URL are required' },
+        { status: 400 }
+      );
+    }
+
+    if (!orgSlug) {
+      return NextResponse.json(
+        { success: false, error: 'Organization is required' },
         { status: 400 }
       );
     }

@@ -1414,8 +1414,13 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
       return;
     }
 
+    if (!orgSlug) {
+      toast({ title: 'Error', description: 'Organization not found. Please log in again.', variant: 'destructive' });
+      return;
+    }
+
     try {
-      const result = await createProject.mutateAsync(newProject);
+      const result = await createProject.mutateAsync({ ...newProject, orgSlug });
       toast({ 
         title: 'Project Created', 
         description: `"${newProject.name}" has been added and scanning has started.` 

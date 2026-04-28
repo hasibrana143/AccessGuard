@@ -97,6 +97,7 @@ export interface CreateProjectInput {
   name: string;
   url: string;
   description?: string;
+  orgSlug?: string;
   crawlConfig?: {
     maxPages: number;
     excludePaths: string[];
