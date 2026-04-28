@@ -40,7 +40,7 @@ class ApiService {
   }
 
   // Projects
-  async getProjects(orgSlug = 'demo-org'): Promise<ApiResponse<Project[]>> {
+  async getProjects(orgSlug = 'default-org'): Promise<ApiResponse<Project[]>> {
     return this.fetch<Project[]>(`${API_BASE}/projects?orgId=${orgSlug}`);
   }
 

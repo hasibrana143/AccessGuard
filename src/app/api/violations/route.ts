@@ -102,7 +102,7 @@ export async function PUT(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { projectId, orgSlug = 'demo-org' } = body;
+    const { projectId, orgSlug = 'default-org' } = body;
 
     let projectIds: string[] = [];
 

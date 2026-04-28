@@ -29,7 +29,7 @@ export interface TrendDataPoint {
 }
 
 // Projects
-export function useProjects(orgSlug = 'demo-org') {
+export function useProjects(orgSlug = 'default-org') {
   return useQuery({
     queryKey: queryKeys.projects,
     queryFn: async (): Promise<Project[]> => {

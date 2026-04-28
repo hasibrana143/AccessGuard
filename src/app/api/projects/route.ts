@@ -5,7 +5,7 @@ import { db } from '@/lib/db';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const orgSlug = searchParams.get('orgId') || 'demo-org';
+    const orgSlug = searchParams.get('orgId') || 'default-org';
 
     const org = await db.organization.findFirst({
       where: { slug: orgSlug }
@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, url, description, crawlConfig, orgSlug = 'demo-org' } = body;
+    const { name, url, description, crawlConfig, orgSlug = 'default-org' } = body;
 
     if (!name || !url) {
       return NextResponse.json(

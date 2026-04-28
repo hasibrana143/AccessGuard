@@ -1032,8 +1032,9 @@ const DashboardHeader = ({ onMenuClick, title, subtitle, user, onLogout }: {
 // DASHBOARD VIEW
 // ============================================================================
 
-const DashboardView = () => {
-  const { data: projects, isLoading: projectsLoading } = useProjects();
+const DashboardView = ({ user }: { user?: User | null }) => {
+  const orgSlug = user?.organization?.slug;
+  const { data: projects, isLoading: projectsLoading } = useProjects(orgSlug);
   const { data: statsData } = useViolationStats();
   const { data: violationsData } = useViolations({ limit: 5 });
   const { data: scansData } = useScans(undefined, 5);
@@ -1392,9 +1393,10 @@ const DashboardView = () => {
 // PROJECTS VIEW
 // ============================================================================
 
-const ProjectsView = () => {
+const ProjectsView = ({ user }: { user?: User | null }) => {
   const { toast } = useToast();
-  const { data: projects, isLoading } = useProjects();
+  const orgSlug = user?.organization?.slug;
+  const { data: projects, isLoading } = useProjects(orgSlug);
   const createProject = useCreateProject();
   const createScan = useCreateScan();
 
@@ -2021,9 +2023,10 @@ const ViolationsView = () => {
 // SCANS VIEW
 // ============================================================================
 
-const ScansView = () => {
+const ScansView = ({ user }: { user?: User | null }) => {
+  const orgSlug = user?.organization?.slug;
   const { data: scans, isLoading } = useScans(undefined, 50);
-  const { data: projects } = useProjects();
+  const { data: projects } = useProjects(orgSlug);
 
   return (
     <div className="space-y-6">
@@ -2859,10 +2862,10 @@ export default function AccessGuardApp() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {view === 'dashboard' && <DashboardView />}
-              {view === 'projects' && <ProjectsView />}
+              {view === 'dashboard' && <DashboardView user={user} />}
+              {view === 'projects' && <ProjectsView user={user} />}
               {view === 'violations' && <ViolationsView />}
-              {view === 'scans' && <ScansView />}
+              {view === 'scans' && <ScansView user={user} />}
               {view === 'reports' && <ReportsView />}
               {view === 'settings' && <SettingsView user={user} />}
             </motion.div>
