@@ -1,0 +1,145 @@
+// GitHub integration for AccessGuard
+import { Octokit } from '@octokit/rest';
+
+// Check if GitHub is configured
+export function isGitHubConfigured(): boolean {
+  return !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
+}
+
+// Get OAuth URL
+export function getGitHubOAuthUrl(state: string): string {
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  const redirectUri = process.env.GITHUB_REDIRECT_URI || 'http://localhost:3000/api/github/callback';
+  const scope = 'repo user:email';
+  return `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${state}`;
+}
+
+// Exchange code for token
+export async function exchangeCodeForToken(code: string): Promise<{ access_token: string; error?: string }> {
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    return { access_token: '', error: 'GitHub not configured' };
+  }
+
+  try {
+    const response = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+      }),
+    });
+
+    const data = await response.json();
+    if (data.error) {
+      return { access_token: '', error: data.error_description || data.error };
+    }
+    return { access_token: data.access_token };
+  } catch (error) {
+    return { access_token: '', error: String(error) };
+  }
+}
+
+// Get Octokit client
+function getOctokit(token: string): Octokit {
+  return new Octokit({ auth: token });
+}
+
+// Get authenticated user
+export async function getGitHubUser(token: string): Promise<{ login: string; avatar_url: string; name: string } | null> {
+  try {
+    const octokit = getOctokit(token);
+    const { data } = await octokit.users.getAuthenticated();
+    return { login: data.login, avatar_url: data.avatar_url, name: data.name || data.login };
+  } catch {
+    return null;
+  }
+}
+
+// Get user repositories
+export async function getUserRepositories(token: string): Promise<Array<{ full_name: string; name: string; private: boolean }>> {
+  try {
+    const octokit = getOctokit(token);
+    const { data } = await octokit.repos.listForAuthenticatedUser({ per_page: 100, sort: 'updated' });
+    return data.map(repo => ({ full_name: repo.full_name, name: repo.name, private: repo.private }));
+  } catch {
+    return [];
+  }
+}
+
+// Create branch
+export async function createBranch(token: string, owner: string, repo: string, branchName: string, baseBranch = 'main'): Promise<boolean> {
+  try {
+    const octokit = getOctokit(token);
+    // Get base branch ref
+    const { data: ref } = await octokit.git.getRef({ owner, repo, ref: `heads/${baseBranch}` });
+    // Create new branch
+    await octokit.git.createRef({ owner, repo, ref: `refs/heads/${branchName}`, sha: ref.object.sha });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Create or update file
+export async function createFile(token: string, owner: string, repo: string, path: string, content: string, message: string, branch: string): Promise<boolean> {
+  try {
+    const octokit = getOctokit(token);
+    const contentEncoded = Buffer.from(content).toString('base64');
+    await octokit.repos.createOrUpdateFileContents({ owner, repo, path, message, content: contentEncoded, branch });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Create pull request
+export async function createPullRequest(token: string, owner: string, repo: string, title: string, body: string, head: string, base = 'main'): Promise<{ url: string } | null> {
+  try {
+    const octokit = getOctokit(token);
+    const { data } = await octokit.pulls.create({ owner, repo, title, body, head, base });
+    return { url: data.html_url };
+  } catch {
+    return null;
+  }
+}
+
+// Generate branch name for fixes
+export function generateFixBranchName(ruleId: string): string {
+  const timestamp = Date.now();
+  return `accessguard/fix-${ruleId}-${timestamp}`;
+}
+
+// Generate PR title
+export function generatePRTitle(violations: Array<{ ruleId: string }>): string {
+  if (violations.length === 1) {
+    return `Fix accessibility issue: ${violations[0].ruleId}`;
+  }
+  return `Fix ${violations.length} accessibility issues`;
+}
+
+// Generate PR body
+export function generatePRBody(violations: Array<{ ruleId: string; description: string; wcagCriteria?: string }>, projectUrl: string): string {
+  const violationsList = violations.map(v => 
+    `- **${v.ruleId}**${v.wcagCriteria ? ` (WCAG ${v.wcagCriteria})` : ''}: ${v.description}`
+  ).join('\n');
+
+  return `
+## Accessibility Fixes
+
+This PR fixes ${violations.length} accessibility violation(s) found on ${projectUrl}.
+
+### Violations Fixed
+${violationsList}
+
+---
+*Generated by [AccessGuard](https://accessguard.io)*
+`;
+}

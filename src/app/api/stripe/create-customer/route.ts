@@ -1,0 +1,107 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
+import { createCustomer } from '@/lib/stripe';
+
+// POST /api/stripe/create-customer - Create a Stripe customer and link to organization
+export async function POST(request: NextRequest) {
+  try {
+    // Get token from Authorization header
+    const authHeader = request.headers.get('Authorization');
+    const token = extractTokenFromHeader(authHeader);
+
+    if (!token) {
+      return NextResponse.json(
+        { success: false, error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // Verify token
+    const payload = verifyToken(token);
+
+    if (!payload) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid or expired token' },
+        { status: 401 }
+      );
+    }
+
+    // Get user and organization
+    const user = await db.user.findUnique({
+      where: { id: payload.userId },
+      include: {
+        organization: true,
+      },
+    });
+
+    if (!user || !user.organization) {
+      return NextResponse.json(
+        { success: false, error: 'User or organization not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check if user is admin
+    if (user.role !== 'admin') {
+      return NextResponse.json(
+        { success: false, error: 'Only admins can create billing accounts' },
+        { status: 403 }
+      );
+    }
+
+    // Check if organization already has a Stripe customer
+    if (user.organization.stripeCustomerId) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          customerId: user.organization.stripeCustomerId,
+          message: 'Customer already exists',
+        },
+      });
+    }
+
+    // Parse request body for additional metadata
+    let body = {};
+    try {
+      body = await request.json();
+    } catch {
+      // Body is optional
+    }
+
+    const { email, name } = body as { email?: string; name?: string };
+
+    // Create Stripe customer
+    const customer = await createCustomer(
+      email ?? user.email,
+      name ?? user.organization.name,
+      {
+        orgId: user.orgId,
+        userId: user.id,
+      }
+    );
+
+    // Update organization with Stripe customer ID
+    await db.organization.update({
+      where: { id: user.orgId },
+      data: {
+        stripeCustomerId: customer.id,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        customerId: customer.id,
+        email: customer.email,
+        name: customer.name,
+      },
+    });
+  } catch (error) {
+    console.error('Create customer error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to create customer' },
+      { status: 500 }
+    );
+  }
+}

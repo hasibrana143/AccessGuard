@@ -23,7 +23,7 @@ interface ScanConfig {
   includeSubdomains: boolean;
 }
 
-interface AdvancedScanConfig {
+export interface AdvancedScanConfig {
   requestDelay?: number; // Delay between requests in ms
   userAgent?: 'default' | 'chrome' | 'firefox' | 'safari' | 'googlebot';
   timeout?: number; // Request timeout in ms
