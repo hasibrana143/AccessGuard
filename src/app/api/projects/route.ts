@@ -65,7 +65,9 @@ export async function GET(request: NextRequest) {
           ...project,
           violations: violationSummary,
           totalViolations: totalOpen,
-          riskScore: project.riskScore ?? riskScore
+          riskScore: project.riskScore ?? riskScore,
+          isVerified: project.isVerified,
+          scanConfig: project.scanConfig
         };
       })
     );
@@ -149,6 +151,52 @@ export async function POST(request: NextRequest) {
     console.error('Error creating project:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to create project' },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH /api/projects - Update project settings
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, scanConfig, crawlConfig, name, description } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: 'Project ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const updateData: Record<string, unknown> = {};
+    
+    if (scanConfig !== undefined) {
+      updateData.scanConfig = scanConfig;
+    }
+    if (crawlConfig !== undefined) {
+      updateData.crawlConfig = crawlConfig;
+    }
+    if (name !== undefined) {
+      updateData.name = name;
+    }
+    if (description !== undefined) {
+      updateData.description = description;
+    }
+
+    const project = await db.project.update({
+      where: { id },
+      data: updateData
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: project
+    });
+  } catch (error) {
+    console.error('Error updating project:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to update project' },
       { status: 500 }
     );
   }

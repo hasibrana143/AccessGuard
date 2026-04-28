@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { scanWithBrowser, scanFromHTML, type BrowserViolation } from '@/services/browser-scanner';
-import { scanUrlServer, type ServerViolation } from '@/services/server-scanner';
+import { scanUrlServer, type ServerViolation, type AdvancedScanConfig } from '@/services/server-scanner';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
 // Sanitize error messages for production
@@ -221,7 +221,32 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    console.log(`Starting scan ${scan.id} for ${project.url} (browser: ${useBrowser})`);
+    // Parse scan configuration from project
+    let scanConfig: AdvancedScanConfig = {
+      requestDelay: 500,
+      userAgent: 'default',
+      timeout: 30000,
+      retryCount: 3,
+    };
+    
+    try {
+      if (project.scanConfig) {
+        const parsed = JSON.parse(project.scanConfig);
+        scanConfig = { ...scanConfig, ...parsed };
+      }
+    } catch (e) {
+      console.log('Failed to parse scanConfig, using defaults');
+    }
+
+    // Check if project is verified - verified projects get better access
+    const isVerified = project.isVerified;
+    if (isVerified) {
+      console.log('Project is verified - using verified scanner access');
+      // Use Googlebot UA for verified projects (many sites whitelist crawlers)
+      scanConfig.userAgent = 'googlebot';
+    }
+
+    console.log(`Starting scan ${scan.id} for ${project.url} (browser: ${useBrowser}, verified: ${isVerified})`);
 
     try {
       let result;
@@ -234,11 +259,11 @@ export async function POST(request: NextRequest) {
         // If browser scanner fails, try simple scanner as fallback
         if (result.error && !result.error.includes('403') && !result.error.includes('429')) {
           console.log('Browser scanner failed, trying simple scanner...');
-          result = await scanUrlServer(project.url);
+          result = await scanUrlServer(project.url, undefined, scanConfig);
         }
       } else {
-        console.log('Using simple HTTP scanner...');
-        result = await scanUrlServer(project.url);
+        console.log('Using simple HTTP scanner...', scanConfig);
+        result = await scanUrlServer(project.url, undefined, scanConfig);
       }
 
       if (result.error) {

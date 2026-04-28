@@ -44,6 +44,9 @@ model Project {
   url               String
   description       String?
   crawlConfig       String       @default("{\"maxPages\":100,\"excludePaths\":[],\"includeSubdomains\":false}")
+  scanConfig        String       @default("{\"requestDelay\":500,\"userAgent\":\"default\",\"timeout\":30000,\"retryCount\":3}")
+  verificationToken String?      // For domain ownership verification
+  isVerified        Boolean      @default(false)
   lastScanAt        DateTime?
   riskScore         Int?
   nextScheduledScan DateTime?

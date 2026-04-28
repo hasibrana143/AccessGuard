@@ -23,6 +23,28 @@ interface ScanConfig {
   includeSubdomains: boolean;
 }
 
+interface AdvancedScanConfig {
+  requestDelay?: number; // Delay between requests in ms
+  userAgent?: 'default' | 'chrome' | 'firefox' | 'safari' | 'googlebot';
+  timeout?: number; // Request timeout in ms
+  retryCount?: number; // Number of retries on failure
+  retryDelay?: number; // Delay between retries in ms
+}
+
+// User-Agent strings for different browsers
+const USER_AGENTS = {
+  default: 'Mozilla/5.0 (compatible; AccessGuard/1.0; +https://accessguard.io)',
+  chrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  firefox: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+  safari: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+  googlebot: 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+};
+
+// Delay utility
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // WCAG Rule implementations - pattern matching for HTML analysis
 export function detectViolations(html: string, url: string): ServerViolation[] {
   const violations: ServerViolation[] = [];
@@ -258,60 +280,114 @@ export function detectViolations(html: string, url: string): ServerViolation[] {
   return violations;
 }
 
-// Fetch and scan a URL
-export async function scanUrlServer(url: string, config?: ScanConfig): Promise<{
+// Fetch and scan a URL with retry support and bot protection handling
+export async function scanUrlServer(
+  url: string, 
+  config?: ScanConfig,
+  advancedConfig?: AdvancedScanConfig
+): Promise<{
   violations: ServerViolation[];
   pagesScanned: number;
   error?: string;
 }> {
+  const {
+    requestDelay = 500,
+    userAgent = 'default',
+    timeout = 30000,
+    retryCount = 3,
+    retryDelay = 2000,
+  } = advancedConfig || {};
+
   try {
     // Validate URL
     const parsedUrl = new URL(url);
-    console.log(`Scanning ${url}...`);
+    console.log(`Scanning ${url} with ${userAgent} user-agent...`);
 
-    // Try to fetch the page
+    // Try to fetch the page with retry logic
     let html: string;
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; AccessGuard/1.0; +https://accessguard.io)',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-        redirect: 'follow',
-        signal: AbortSignal.timeout(30000), // 30 second timeout
-      });
+    let lastError: string | null = null;
+    
+    for (let attempt = 1; attempt <= retryCount; attempt++) {
+      try {
+        // Add delay between retries
+        if (attempt > 1) {
+          console.log(`Retry attempt ${attempt}/${retryCount} after ${retryDelay}ms delay...`);
+          await delay(retryDelay * attempt); // Exponential backoff
+        }
 
-      if (!response.ok) {
-        // Provide specific error messages for common HTTP errors
-        const statusMessages: Record<number, string> = {
-          400: 'Bad Request',
-          401: 'Unauthorized',
-          403: 'Forbidden',
-          404: 'Not Found',
-          429: 'Too Many Requests',
-          500: 'Internal Server Error',
-          502: 'Bad Gateway',
-          503: 'Service Unavailable',
-          504: 'Gateway Timeout',
-        };
-        const statusText = statusMessages[response.status] || response.statusText;
-        throw new Error(`HTTP ${response.status}: ${statusText}`);
+        // Also add delay between requests if configured
+        if (requestDelay > 0 && attempt === 1) {
+          await delay(requestDelay);
+        }
+
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': USER_AGENTS[userAgent],
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          },
+          redirect: 'follow',
+          signal: AbortSignal.timeout(timeout),
+        });
+
+        if (!response.ok) {
+          // Provide specific error messages for common HTTP errors
+          const statusMessages: Record<number, string> = {
+            400: 'Bad Request',
+            401: 'Unauthorized',
+            403: 'Forbidden - The website blocked our scanner. Try using a different User-Agent or verify your domain ownership.',
+            404: 'Not Found',
+            429: 'Too Many Requests - Rate limited. Wait a few minutes or verify domain ownership to bypass.',
+            500: 'Internal Server Error',
+            502: 'Bad Gateway',
+            503: 'Service Unavailable',
+            504: 'Gateway Timeout',
+          };
+          const statusText = statusMessages[response.status] || response.statusText;
+          lastError = `HTTP ${response.status}: ${statusText}`;
+          
+          // For rate limiting and forbidden, try different user-agent on next attempt
+          if (response.status === 403 || response.status === 429) {
+            // Will retry with different settings
+            continue;
+          }
+          
+          throw new Error(lastError);
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('text/html')) {
+          throw new Error(`Unsupported content type: ${contentType}`);
+        }
+
+        html = await response.text();
+        lastError = null;
+        break; // Success, exit retry loop
+
+      } catch (fetchError) {
+        const errorMsg = fetchError instanceof Error ? fetchError.message : 'Failed to fetch URL';
+        lastError = errorMsg;
+        console.log(`Attempt ${attempt} failed for ${url}: ${errorMsg}`);
+        
+        // If this was the last attempt, return error
+        if (attempt === retryCount) {
+          return {
+            violations: [],
+            pagesScanned: 0,
+            error: `Cannot access URL after ${retryCount} attempts: ${errorMsg}. Try using Manual HTML Upload or verify your domain ownership.`
+          };
+        }
       }
+    }
 
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('text/html')) {
-        throw new Error(`Unsupported content type: ${contentType}`);
-      }
-
-      html = await response.text();
-    } catch (fetchError) {
-      // Return error instead of fake data - real scanning requires actual access
-      const errorMsg = fetchError instanceof Error ? fetchError.message : 'Failed to fetch URL';
-      console.log(`Fetch failed for ${url}: ${errorMsg}`);
+    if (!html!) {
       return {
         violations: [],
         pagesScanned: 0,
-        error: `Cannot access URL: ${errorMsg}. Please ensure the URL is publicly accessible.`
+        error: lastError || 'Failed to fetch URL'
       };
     }
 

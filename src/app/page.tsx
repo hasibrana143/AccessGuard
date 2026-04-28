@@ -1403,12 +1403,20 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isHtmlUploadOpen, setIsHtmlUploadOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [htmlUploadProject, setHtmlUploadProject] = useState<{ id: string; name: string } | null>(null);
+  const [settingsProject, setSettingsProject] = useState<{ id: string; name: string; url: string; isVerified?: boolean; scanConfig?: string } | null>(null);
   const [manualHtml, setManualHtml] = useState('');
   const [newProject, setNewProject] = useState<CreateProjectInput>({
     name: '',
     url: '',
     description: ''
+  });
+  const [scanSettings, setScanSettings] = useState({
+    requestDelay: 500,
+    userAgent: 'default' as const,
+    timeout: 30000,
+    retryCount: 3
   });
 
   const handleCreateProject = async () => {
@@ -1484,6 +1492,25 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
   const openHtmlUpload = (projectId: string, projectName: string) => {
     setHtmlUploadProject({ id: projectId, name: projectName });
     setIsHtmlUploadOpen(true);
+  };
+
+  const openSettings = (project: { id: string; name: string; url: string; isVerified?: boolean; scanConfig?: string }) => {
+    setSettingsProject(project);
+    // Parse existing scan config if available
+    if (project.scanConfig) {
+      try {
+        const parsed = JSON.parse(project.scanConfig);
+        setScanSettings({
+          requestDelay: parsed.requestDelay || 500,
+          userAgent: parsed.userAgent || 'default',
+          timeout: parsed.timeout || 30000,
+          retryCount: parsed.retryCount || 3
+        });
+      } catch (e) {
+        // Use defaults
+      }
+    }
+    setIsSettingsOpen(true);
   };
 
   return (
@@ -1621,9 +1648,14 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
                         <Code className="h-4 w-4 mr-2" />
                         Manual HTML Scan
                       </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => openSettings(project)}>
+                        <Settings className="h-4 w-4 mr-2" />
+                        Scan Settings
+                      </DropdownMenuItem>
                       <DropdownMenuItem>
                         <Edit className="h-4 w-4 mr-2" />
-                        Edit
+                        Edit Project
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <Download className="h-4 w-4 mr-2" />
@@ -1768,6 +1800,142 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
               disabled={!manualHtml.trim()}
             >
               Scan HTML
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Project Settings Dialog */}
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Scan Settings - {settingsProject?.name}</DialogTitle>
+            <DialogDescription>
+              Configure scan options to handle bot protection and rate limiting.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* Domain Verification Status */}
+            {settingsProject && (
+              <div className="p-4 rounded-lg bg-muted/50">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium">Domain Verification</span>
+                  {settingsProject.isVerified ? (
+                    <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Verified
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-orange-500 border-orange-500/20">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Not Verified
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {settingsProject.isVerified 
+                    ? 'Your domain is verified. Scans will use enhanced access mode.'
+                    : 'Verify your domain to bypass some bot protection measures.'}
+                </p>
+              </div>
+            )}
+
+            {/* Scan Configuration */}
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="userAgent">User-Agent</Label>
+                <Select 
+                  value={scanSettings.userAgent} 
+                  onValueChange={(v) => setScanSettings({ ...scanSettings, userAgent: v as 'default' | 'chrome' | 'firefox' | 'safari' | 'googlebot' })}
+                >
+                  <SelectTrigger id="userAgent">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">AccessGuard Scanner (Default)</SelectItem>
+                    <SelectItem value="chrome">Chrome Browser</SelectItem>
+                    <SelectItem value="firefox">Firefox Browser</SelectItem>
+                    <SelectItem value="safari">Safari Browser</SelectItem>
+                    <SelectItem value="googlebot">Googlebot (for verified sites)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Some sites block specific user agents. Try Chrome or Firefox if scans are blocked.
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="requestDelay">Request Delay (ms)</Label>
+                <Input
+                  id="requestDelay"
+                  type="number"
+                  value={scanSettings.requestDelay}
+                  onChange={(e) => setScanSettings({ ...scanSettings, requestDelay: parseInt(e.target.value) || 500 })}
+                  min={0}
+                  max={10000}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Delay between requests to avoid rate limiting. Increase if getting 429 errors.
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="retryCount">Retry Attempts</Label>
+                <Input
+                  id="retryCount"
+                  type="number"
+                  value={scanSettings.retryCount}
+                  onChange={(e) => setScanSettings({ ...scanSettings, retryCount: parseInt(e.target.value) || 3 })}
+                  min={1}
+                  max={10}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Number of retry attempts if the scan fails.
+                </p>
+              </div>
+            </div>
+
+            {/* Manual Upload Option */}
+            <div className="p-4 rounded-lg bg-coral/5 border border-coral/20">
+              <div className="flex items-start gap-3">
+                <Code className="h-5 w-5 text-coral mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-sm">Can&apos;t scan automatically?</h4>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    If your site has strict bot protection, use Manual HTML Upload instead. 
+                    Right-click on your webpage, select &quot;View Page Source&quot;, copy all, and paste in the manual scan dialog.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-coral hover:bg-coral/90 text-coral-foreground"
+              onClick={async () => {
+                // Save settings
+                try {
+                  const response = await fetch('/api/projects', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      id: settingsProject?.id,
+                      scanConfig: JSON.stringify(scanSettings)
+                    })
+                  });
+                  if (response.ok) {
+                    toast({ title: 'Settings Saved', description: 'Scan settings have been updated.' });
+                    setIsSettingsOpen(false);
+                  }
+                } catch (e) {
+                  toast({ title: 'Error', description: 'Failed to save settings', variant: 'destructive' });
+                }
+              }}
+            >
+              Save Settings
             </Button>
           </DialogFooter>
         </DialogContent>
