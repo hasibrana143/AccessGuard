@@ -959,7 +959,8 @@ const DashboardHeader = ({ onMenuClick, title, subtitle, user, onLogout }: {
             <Menu className="h-5 w-5" />
           </Button>
           <div className="relative hidden sm:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Label htmlFor="header-search" className="sr-only">Search violations and projects</Label>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <Input
               id="header-search"
               placeholder="Search violations, projects..."
@@ -1751,7 +1752,8 @@ const ViolationsView = () => {
         <CardContent className="py-4">
           <div className="flex flex-wrap items-center gap-4">
             <div className="relative flex-1 min-w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="violations-search" className="sr-only">Search violations</Label>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input
                 id="violations-search"
                 placeholder="Search violations..."
@@ -2498,6 +2500,7 @@ const LoginView = ({ onLogin, onBack, onSwitchToRegister }: LoginViewProps) => {
                     size="sm"
                     className="absolute right-0 top-0 h-full px-3"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
@@ -2688,6 +2691,7 @@ const RegisterView = ({ onRegister, onBack, onSwitchToLogin }: RegisterViewProps
                     size="sm"
                     className="absolute right-0 top-0 h-full px-3"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
