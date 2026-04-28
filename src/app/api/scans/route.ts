@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { scanWithBrowser, scanFromHTML, type BrowserViolation } from '@/services/browser-scanner';
 import { scanUrlServer, type ServerViolation } from '@/services/server-scanner';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/scans - Create and execute a scan synchronously
+// POST /api/scans - Create and execute a scan
 export async function POST(request: NextRequest) {
   // Rate limiting (stricter for scans)
   const clientId = getClientIdentifier(request);
@@ -81,8 +82,109 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { projectId } = body;
+    const { projectId, html, useBrowser = true } = body;
 
+    // Handle manual HTML upload
+    if (html) {
+      const project = await db.project.findUnique({
+        where: { id: projectId }
+      });
+
+      if (!project) {
+        return NextResponse.json(
+          { success: false, error: 'Project not found' },
+          { status: 404 }
+        );
+      }
+
+      const scan = await db.scan.create({
+        data: {
+          projectId,
+          status: 'running'
+        }
+      });
+
+      try {
+        const result = scanFromHTML(html, project.url);
+        
+        const violationsToCreate = result.violations.map((v: BrowserViolation) => ({
+          scanId: scan.id,
+          projectId,
+          ruleId: v.ruleId,
+          wcagCriteria: v.wcagCriteria,
+          severity: v.severity,
+          url: v.url,
+          elementSelector: v.elementSelector,
+          elementHtml: v.elementHtml,
+          description: v.description,
+          remediationCode: v.remediationCode,
+          aiExplanation: v.aiExplanation,
+          aiConfidenceScore: v.aiConfidenceScore,
+          status: 'open' as const
+        }));
+
+        if (violationsToCreate.length > 0) {
+          const batchSize = 10;
+          for (let i = 0; i < violationsToCreate.length; i += batchSize) {
+            const batch = violationsToCreate.slice(i, i + batchSize);
+            await db.violation.createMany({ data: batch });
+          }
+        }
+
+        const severityCounts = {
+          critical: result.violations.filter(v => v.severity === 'critical').length,
+          serious: result.violations.filter(v => v.severity === 'serious').length,
+          moderate: result.violations.filter(v => v.severity === 'moderate').length,
+          minor: result.violations.filter(v => v.severity === 'minor').length,
+        };
+
+        let riskScore = 100;
+        riskScore -= severityCounts.critical * 10;
+        riskScore -= severityCounts.serious * 5;
+        riskScore -= severityCounts.moderate * 2;
+        riskScore -= severityCounts.minor * 1;
+        riskScore = Math.max(0, Math.min(100, riskScore));
+
+        await db.scan.update({
+          where: { id: scan.id },
+          data: {
+            status: 'completed',
+            completedAt: new Date(),
+            pagesScanned: 1,
+            violationsFound: result.violations.length,
+            summary: JSON.stringify(severityCounts)
+          }
+        });
+
+        await db.project.update({
+          where: { id: projectId },
+          data: { lastScanAt: new Date(), riskScore }
+        });
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            scan: {
+              id: scan.id,
+              status: 'completed',
+              violationsFound: result.violations.length,
+              pagesScanned: 1,
+              summary: severityCounts
+            }
+          },
+          message: `Manual scan completed. Found ${result.violations.length} violations.`
+        });
+
+      } catch (error) {
+        await db.scan.update({
+          where: { id: scan.id },
+          data: { status: 'failed', errorMessage: 'Manual scan failed', completedAt: new Date() }
+        });
+        return NextResponse.json({ success: false, error: 'Manual scan failed' }, { status: 500 });
+      }
+    }
+
+    // Regular URL scan
     if (!projectId) {
       return NextResponse.json(
         { success: false, error: 'Project ID is required' },
@@ -90,7 +192,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify project exists
     const project = await db.project.findUnique({
       where: { id: projectId }
     });
@@ -120,18 +221,32 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    console.log(`Starting scan ${scan.id} for ${project.url}`);
+    console.log(`Starting scan ${scan.id} for ${project.url} (browser: ${useBrowser})`);
 
     try {
-      // Run the actual accessibility scan (synchronous)
-      const result = await scanUrlServer(project.url);
+      let result;
+      
+      // Try browser scanner first (if enabled), fall back to simple scanner
+      if (useBrowser) {
+        console.log('Using browser-based scanner...');
+        result = await scanWithBrowser(project.url, { waitTime: 3000 });
+        
+        // If browser scanner fails, try simple scanner as fallback
+        if (result.error && !result.error.includes('403') && !result.error.includes('429')) {
+          console.log('Browser scanner failed, trying simple scanner...');
+          result = await scanUrlServer(project.url);
+        }
+      } else {
+        console.log('Using simple HTTP scanner...');
+        result = await scanUrlServer(project.url);
+      }
 
       if (result.error) {
         throw new Error(result.error);
       }
 
       // Create violations from scan results
-      const violationsToCreate = result.violations.map((v: ServerViolation) => ({
+      const violationsToCreate = result.violations.map((v: BrowserViolation | ServerViolation) => ({
         scanId: scan.id,
         projectId,
         ruleId: v.ruleId,
@@ -158,10 +273,10 @@ export async function POST(request: NextRequest) {
 
       // Calculate summary
       const severityCounts = {
-        critical: result.violations.filter((v: ServerViolation) => v.severity === 'critical').length,
-        serious: result.violations.filter((v: ServerViolation) => v.severity === 'serious').length,
-        moderate: result.violations.filter((v: ServerViolation) => v.severity === 'moderate').length,
-        minor: result.violations.filter((v: ServerViolation) => v.severity === 'minor').length,
+        critical: result.violations.filter((v: BrowserViolation | ServerViolation) => v.severity === 'critical').length,
+        serious: result.violations.filter((v: BrowserViolation | ServerViolation) => v.severity === 'serious').length,
+        moderate: result.violations.filter((v: BrowserViolation | ServerViolation) => v.severity === 'moderate').length,
+        minor: result.violations.filter((v: BrowserViolation | ServerViolation) => v.severity === 'minor').length,
       };
 
       // Calculate risk score
@@ -222,10 +337,10 @@ export async function POST(request: NextRequest) {
       let statusCode = 500;
       
       if (errorMsg.includes('429') || errorMsg.includes('Too Many Requests')) {
-        userMessage = 'The target website is rate limiting requests. Please try again in a few minutes.';
+        userMessage = 'The target website is rate limiting requests. Please try again later or use the manual HTML upload option.';
         statusCode = 429;
       } else if (errorMsg.includes('403') || errorMsg.includes('Forbidden')) {
-        userMessage = 'The target website blocked the scan. The site may have bot protection.';
+        userMessage = 'The target website blocked the scan. Please use the manual HTML upload option to scan protected pages.';
         statusCode = 403;
       } else if (errorMsg.includes('404') || errorMsg.includes('Not Found')) {
         userMessage = 'The URL was not found. Please check the website address.';

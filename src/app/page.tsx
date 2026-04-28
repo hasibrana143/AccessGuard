@@ -1402,6 +1402,9 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
   const createScan = useCreateScan();
 
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isHtmlUploadOpen, setIsHtmlUploadOpen] = useState(false);
+  const [htmlUploadProject, setHtmlUploadProject] = useState<{ id: string; name: string } | null>(null);
+  const [manualHtml, setManualHtml] = useState('');
   const [newProject, setNewProject] = useState<CreateProjectInput>({
     name: '',
     url: '',
@@ -1443,6 +1446,44 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
       const errorMsg = error instanceof Error ? error.message : 'Failed to start scan';
       toast({ title: 'Scan Failed', description: errorMsg, variant: 'destructive' });
     }
+  };
+
+  const handleManualScan = async () => {
+    if (!htmlUploadProject || !manualHtml.trim()) {
+      toast({ title: 'Error', description: 'Please paste HTML content to scan', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/scans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          projectId: htmlUploadProject.id, 
+          html: manualHtml 
+        }),
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({ 
+          title: 'Manual Scan Completed', 
+          description: `Found ${result.data?.scan?.violationsFound || 0} violations.` 
+        });
+        setIsHtmlUploadOpen(false);
+        setManualHtml('');
+        setHtmlUploadProject(null);
+      } else {
+        toast({ title: 'Scan Failed', description: result.error, variant: 'destructive' });
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to submit manual scan', variant: 'destructive' });
+    }
+  };
+
+  const openHtmlUpload = (projectId: string, projectName: string) => {
+    setHtmlUploadProject({ id: projectId, name: projectName });
+    setIsHtmlUploadOpen(true);
   };
 
   return (
@@ -1576,6 +1617,10 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Scan Now
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openHtmlUpload(project.id, project.name)}>
+                        <Code className="h-4 w-4 mr-2" />
+                        Manual HTML Scan
+                      </DropdownMenuItem>
                       <DropdownMenuItem>
                         <Edit className="h-4 w-4 mr-2" />
                         Edit
@@ -1646,18 +1691,27 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
                   )}
                 </div>
               </CardContent>
-              <CardFooter className="pt-0">
+              <CardFooter className="pt-0 flex gap-2">
                 <Button
                   variant="outline"
-                  className="w-full"
+                  className="flex-1"
                   onClick={() => handleScan(project.id, project.name)}
                   disabled={createScan.isPending}
                 >
                   {createScan.isPending ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Scanning...</>
                   ) : (
-                    <><RefreshCw className="h-4 w-4 mr-2" />Scan Now</>
+                    <><RefreshCw className="h-4 w-4 mr-2" />Scan</>
                   )}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => openHtmlUpload(project.id, project.name)}
+                  title="Paste HTML for manual scan (useful for protected sites)"
+                >
+                  <Code className="h-4 w-4 mr-2" />
+                  Manual
                 </Button>
               </CardFooter>
             </Card>
@@ -1678,6 +1732,46 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
           )}
         </div>
       )}
+
+      {/* Manual HTML Upload Dialog */}
+      <Dialog open={isHtmlUploadOpen} onOpenChange={setIsHtmlUploadOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Manual HTML Scan</DialogTitle>
+            <DialogDescription>
+              Paste the HTML source code of "{htmlUploadProject?.name}" to scan for accessibility issues. 
+              This is useful when the website has bot protection.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="manual-html">HTML Source Code</Label>
+              <Textarea
+                id="manual-html"
+                placeholder="<!DOCTYPE html>&#10;<html>&#10;  <head>...</head>&#10;  <body>...</body>&#10;</html>"
+                value={manualHtml}
+                onChange={(e) => setManualHtml(e.target.value)}
+                className="min-h-64 font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Tip: Right-click on the webpage, select "View Page Source", copy all, and paste here.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHtmlUploadOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-coral hover:bg-coral/90 text-coral-foreground"
+              onClick={handleManualScan}
+              disabled={!manualHtml.trim()}
+            >
+              Scan HTML
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
