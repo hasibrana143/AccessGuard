@@ -1444,13 +1444,17 @@ const ProjectsView = ({ user }: { user?: User | null }) => {
   };
 
   const handleScan = async (projectId: string, projectName: string) => {
+    console.log('handleScan called with projectId:', projectId);
     try {
+      console.log('Calling createScan.mutateAsync...');
       const result = await createScan.mutateAsync(projectId);
+      console.log('Scan result:', result);
       toast({ 
         title: 'Scan Completed', 
         description: `Found ${result?.scan?.violationsFound || 0} violations on "${projectName}".` 
       });
     } catch (error) {
+      console.error('Scan error:', error);
       const errorMsg = error instanceof Error ? error.message : 'Failed to start scan';
       toast({ title: 'Scan Failed', description: errorMsg, variant: 'destructive' });
     }
