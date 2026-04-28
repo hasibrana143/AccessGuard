@@ -156,8 +156,9 @@ export function useCreateScan() {
     mutationFn: async (projectId: string) => {
       const result = await api.createScan(projectId);
       if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: Scan };
-      return responseData?.data;
+      // API returns { success: true, data: { scan: {...}, project: {...} } }
+      const responseData = result.data as { scan?: { id: string; status: string; violationsFound: number; pagesScanned: number }; project?: { id: string; riskScore: number } };
+      return responseData;
     },
     onSuccess: (_, projectId) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.scans(projectId) });
