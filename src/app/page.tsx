@@ -2475,7 +2475,7 @@ const LoginView = ({ onLogin, onBack, onSwitchToRegister }: LoginViewProps) => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="demo@accessguard.com"
+                  placeholder="test@accessguard.dev"
                   required
                   autoComplete="email"
                 />
@@ -2488,7 +2488,7 @@ const LoginView = ({ onLogin, onBack, onSwitchToRegister }: LoginViewProps) => {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
+                    placeholder="testpass123"
                     required
                     autoComplete="current-password"
                   />
