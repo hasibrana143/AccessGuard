@@ -3022,14 +3022,10 @@ export default function AccessGuardApp() {
   const [view, setView] = useState<View>('landing');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [mounted, setMounted] = useState(false);
   const [sessionValidated, setSessionValidated] = useState(false);
 
   // Check for saved session after mount (client-side only)
   useEffect(() => {
-    // Set mounted immediately
-    setMounted(true);
-    
     const savedUser = localStorage.getItem('accessguard_user');
     if (savedUser) {
       try {
@@ -3081,15 +3077,6 @@ export default function AccessGuardApp() {
     localStorage.removeItem('accessguard_user');
     setView('landing');
   };
-
-  // Show loading while checking auth
-  if (!mounted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-coral" />
-      </div>
-    );
-  }
 
   // Show login page
   if (view === 'login') {
