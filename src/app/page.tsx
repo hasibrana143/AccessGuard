@@ -3027,20 +3027,19 @@ export default function AccessGuardApp() {
 
   // Check for saved session after mount (client-side only)
   useEffect(() => {
+    // Set mounted immediately
+    setMounted(true);
+    
     const savedUser = localStorage.getItem('accessguard_user');
-    // Defer all state updates to next tick to avoid synchronous setState in effect
-    queueMicrotask(() => {
-      if (savedUser) {
-        try {
-          const parsedUser = JSON.parse(savedUser);
-          setUser(parsedUser);
-          setView('dashboard');
-        } catch {
-          localStorage.removeItem('accessguard_user');
-        }
+    if (savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
+        setView('dashboard');
+      } catch {
+        localStorage.removeItem('accessguard_user');
       }
-      setMounted(true);
-    });
+    }
   }, []);
 
   // Validate user session - check if organization exists
