@@ -12,6 +12,7 @@ model Organization {
   name                 String
   slug                 String             @unique
   plan                 String             @default("starter")
+  subscriptionStatus   String             @default("active")
   stripeCustomerId     String?
   stripeSubscriptionId String?
   settings             String             @default("{}")
@@ -21,6 +22,7 @@ model Organization {
   githubConnections    GithubConnection[]
   projects             Project[]
   users                User[]
+  teamInvites          TeamInvite[]
 }
 
 model User {
@@ -38,24 +40,26 @@ model User {
 }
 
 model Project {
-  id                String       @id @default(cuid())
+  id                String           @id @default(cuid())
   orgId             String
   name              String
   url               String
   description       String?
-  crawlConfig       String       @default("{\"maxPages\":100,\"excludePaths\":[],\"includeSubdomains\":false}")
-  scanConfig        String       @default("{\"requestDelay\":500,\"userAgent\":\"default\",\"timeout\":30000,\"retryCount\":3}")
-  verificationToken String?      // For domain ownership verification
-  isVerified        Boolean      @default(false)
+  crawlConfig       String           @default("{\"maxPages\":100,\"excludePaths\":[],\"includeSubdomains\":false}")
+  scanConfig        String           @default("{\"requestDelay\":500,\"userAgent\":\"default\",\"timeout\":30000,\"retryCount\":3}")
+  verificationToken String?          // For domain ownership verification
+  isVerified        Boolean          @default(false)
   lastScanAt        DateTime?
   riskScore         Int?
   nextScheduledScan DateTime?
-  isActive          Boolean      @default(true)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
-  organization      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  isActive          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  organization      Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
   scans             Scan[]
   violations        Violation[]
+  complianceReports ComplianceReport[]
+  scheduledScans    ScheduledScan[]
 }
 
 model Scan {
@@ -113,6 +117,59 @@ model AuditLog {
   metadata     String       @default("{}")
   createdAt    DateTime     @default(now())
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model TeamInvite {
+  id         String   @id @default(cuid())
+  orgId      String
+  email      String
+  role       String   @default("member")
+  token      String   @unique
+  invitedBy  String?
+  acceptedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model ComplianceReport {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  reportType      String   @default("wcag")
+  format          String   @default("pdf")
+  status          String   @default("pending")
+  summary         String?
+  metadata        String   @default("{}")
+  dateRange       String   @default("{}")
+  fileUrl         String?
+  generatedAt     DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model ScheduledScan {
+  id             String   @id @default(cuid())
+  projectId      String
+  frequency      String   @default("weekly")
+  cron           String   @default("0 2 * * 1")
+  nextRunAt      DateTime
+  lastRunAt      DateTime?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model WcagRule {

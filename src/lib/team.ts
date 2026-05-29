@@ -69,3 +69,41 @@ export function getInviteExpiry(): Date {
   expiry.setDate(expiry.getDate() + 7);
   return expiry;
 }
+
+// Get pending invites for an organization
+export async function getPendingInvites(orgId: string): Promise<Array<{
+  id: string;
+  email: string;
+  role: string;
+  invitedBy: string | null;
+  createdAt: Date;
+  expiresAt: Date;
+}>> {
+  const { db } = await import('@/lib/db');
+  const invites = await db.teamInvite.findMany({
+    where: { orgId, acceptedAt: null },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      invitedBy: true,
+      createdAt: true,
+      expiresAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  return invites;
+}
+
+// Cancel a team invite
+export async function cancelTeamInvite(inviteId: string, orgId: string): Promise<boolean> {
+  const { db } = await import('@/lib/db');
+  try {
+    await db.teamInvite.delete({
+      where: { id: inviteId, orgId },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}

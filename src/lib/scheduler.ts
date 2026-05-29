@@ -106,3 +106,8 @@ export function formatScheduleDate(date: Date | null): string {
     minute: '2-digit',
   });
 }
+
+// Get scheduler API key
+export function getSchedulerApiKey(): string {
+  return process.env.SCHEDULER_API_KEY || 'scheduler-default-key';
+}

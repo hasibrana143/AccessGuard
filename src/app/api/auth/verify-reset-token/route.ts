@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyToken, isTokenExpired } from '@/lib/password-reset';
 
+// Type for password reset token
+type PasswordResetToken = {
+  id: string;
+  email: string;
+  token: string;
+  expiresAt: Date;
+  used: boolean;
+  createdAt: Date;
+};
+
 // GET /api/auth/verify-reset-token?token=xxx
 // Verify if a reset token is valid and not expired
 export async function GET(request: NextRequest) {
@@ -25,10 +35,10 @@ export async function GET(request: NextRequest) {
     });
 
     // Find the matching token by verifying the hash
-    let matchedToken = null;
+    let matchedToken: PasswordResetToken | null = null;
     for (const resetToken of resetTokens) {
       if (verifyToken(resetToken.token, token)) {
-        matchedToken = resetToken;
+        matchedToken = resetToken as PasswordResetToken;
         break;
       }
     }

@@ -62,3 +62,21 @@ export function extractTokenFromHeader(authHeader: string | null): string | null
   }
   return authHeader.slice(7);
 }
+
+// Auth options for NextAuth.js compatibility
+export const authOptions = {
+  providers: [],
+  secret: JWT_SECRET,
+  session: {
+    strategy: 'jwt' as const,
+    maxAge: 7 * 24 * 60 * 60, // 7 days
+  },
+  jwt: {
+    secret: JWT_SECRET,
+  },
+  pages: {
+    signIn: '/auth/login',
+    signOut: '/auth/login',
+    error: '/auth/login',
+  },
+};

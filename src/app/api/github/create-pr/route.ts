@@ -7,13 +7,54 @@ import {
   createPullRequest,
   validateWriteAccess,
   isGitHubConfigured,
+  getRepositoryDetails,
 } from '@/lib/github';
 import {
   createFixBranchName,
   generatePrTitle,
   generatePrBody,
   generateDemoPreview,
+  type ViolationForPR,
 } from '@/lib/github-pr';
+
+// Type for violation with project
+type ViolationWithProject = {
+  id: string;
+  scanId: string;
+  projectId: string;
+  ruleId: string;
+  wcagCriteria: string | null;
+  severity: string;
+  url: string;
+  elementSelector: string | null;
+  elementHtml: string | null;
+  description: string;
+  remediationCode: string | null;
+  aiExplanation: string | null;
+  aiConfidenceScore: number | null;
+  status: string;
+  githubPrUrl: string | null;
+  createdAt: Date;
+  fixedAt: Date | null;
+  project: { name: string; url: string };
+};
+
+// Helper to convert Prisma result to ViolationForPR
+function toViolationForPR(v: ViolationWithProject): ViolationForPR {
+  return {
+    id: v.id,
+    ruleId: v.ruleId,
+    severity: v.severity,
+    url: v.url,
+    description: v.description,
+    wcagCriteria: v.wcagCriteria,
+    elementSelector: v.elementSelector,
+    elementHtml: v.elementHtml,
+    remediationCode: v.remediationCode,
+    aiExplanation: v.aiExplanation,
+    project: v.project,
+  };
+}
 
 // POST /api/github/create-pr - Create a PR with accessibility fixes
 export async function POST(request: NextRequest) {
@@ -62,7 +103,7 @@ export async function POST(request: NextRequest) {
 
     // Demo mode - return preview without creating PR
     if (demoMode || !isGitHubConfigured()) {
-      const preview = generateDemoPreview(violationsWithFixes);
+      const preview = generateDemoPreview(violationsWithFixes.map(toViolationForPR));
       
       return NextResponse.json({
         success: true,
@@ -115,10 +156,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get repositories to find default branch
-    const repos = await getUserRepositories(githubToken);
-    const targetRepo = repos.find(r => r.fullName === repository);
-    const defaultBranch = targetRepo?.defaultBranch || 'main';
+    // Get repository details including default branch
+    const repoDetails = await getRepositoryDetails(githubToken, owner, repo);
+    const defaultBranch = repoDetails?.defaultBranch || 'main';
 
     // Create branch name
     const branchName = customBranch || createFixBranchName('accessibility-fixes');
@@ -127,8 +167,8 @@ export async function POST(request: NextRequest) {
     await createBranch(githubToken, owner, repo, branchName, defaultBranch);
 
     // Generate PR content
-    const prTitle = generatePrTitle(violationsWithFixes);
-    const prBody = generatePrBody(violationsWithFixes, violations[0].project);
+    const prTitle = generatePrTitle(violationsWithFixes.map(toViolationForPR));
+    const prBody = generatePrBody(violationsWithFixes.map(toViolationForPR), violations[0].project);
 
     // Create a summary file with all fixes
     const summaryContent = generateSummaryFile(violationsWithFixes);
@@ -136,10 +176,10 @@ export async function POST(request: NextRequest) {
       githubToken,
       owner,
       repo,
-      branchName,
       'accessguard-fixes/summary.md',
       summaryContent,
-      `docs: Add accessibility fix summary for ${violationsWithFixes.length} issues`
+      `docs: Add accessibility fix summary for ${violationsWithFixes.length} issues`,
+      branchName
     );
 
     // Create individual fix files for each violation
@@ -151,10 +191,10 @@ export async function POST(request: NextRequest) {
         githubToken,
         owner,
         repo,
-        branchName,
         fixFileName,
         fixContent,
-        `fix(a11y): ${violation.ruleId} - ${violation.description.slice(0, 50)}`
+        `fix(a11y): ${violation.ruleId} - ${violation.description.slice(0, 50)}`,
+        branchName
       );
     }
 
@@ -169,21 +209,28 @@ export async function POST(request: NextRequest) {
       defaultBranch
     );
 
+    if (!pr) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create pull request' },
+        { status: 500 }
+      );
+    }
+
     // Update violations with PR URL
     await db.violation.updateMany({
       where: {
         id: { in: violationIds },
       },
       data: {
-        githubPrUrl: pr.htmlUrl,
+        githubPrUrl: pr.url,
       },
     });
 
     return NextResponse.json({
       success: true,
       data: {
-        prUrl: pr.htmlUrl,
-        prNumber: pr.number,
+        prUrl: pr.url,
+        prNumber: 'N/A', // PR number would require additional API call
         branchName,
         filesCreated: violationsWithFixes.length + 1, // +1 for summary
         violationsUpdated: violationIds.length,
@@ -199,7 +246,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Generate summary file content
-function generateSummaryFile(violations: (typeof db.violation extends { findMany: infer R } ? R extends Promise<infer T> ? T : never : never)[0] & { project: { name: string; url: string } }[]): string {
+function generateSummaryFile(violations: ViolationWithProject[]): string {
   const lines: string[] = [
     '# AccessGuard Accessibility Fixes Summary',
     '',
@@ -235,7 +282,7 @@ function generateSummaryFile(violations: (typeof db.violation extends { findMany
 }
 
 // Generate individual fix file content
-function generateFixFile(violation: typeof db.violation extends { findMany: infer R } ? R extends Promise<infer T> ? T extends (infer U)[] ? U : never : never : never): string {
+function generateFixFile(violation: ViolationWithProject): string {
   const lines: string[] = [
     `# Fix: ${violation.ruleId}`,
     '',

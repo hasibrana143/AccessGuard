@@ -130,3 +130,28 @@ export function constructWebhookEvent(payload: string | Buffer, signature: strin
     return null;
   }
 }
+
+// Reactivate a canceled subscription
+export async function reactivateSubscription(subscriptionId: string): Promise<Stripe.Subscription | null> {
+  const stripe = getStripeClient();
+  if (!stripe) return null;
+  try {
+    return stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: false,
+    });
+  } catch {
+    return null;
+  }
+}
+
+// Get Stripe price ID for a plan
+export function getStripePriceId(planId: PlanType): string {
+  const plan = PRICING_PLANS.find(p => p.id === planId);
+  return plan?.priceId || '';
+}
+
+// Get plan from price ID
+export function getPlanFromPriceId(priceId: string): PlanType {
+  const plan = PRICING_PLANS.find(p => p.priceId === priceId);
+  return plan?.id || 'starter';
+}

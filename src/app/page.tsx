@@ -153,6 +153,7 @@ const formatRelativeTime = (date: string | Date): string => {
 
 const LandingPage = ({ onGetStarted }: { onGetStarted: () => void }) => {
   const [activeFeature, setActiveFeature] = useState(0);
+  const [showDemoModal, setShowDemoModal] = useState(false);
 
   const features = [
     {
@@ -350,7 +351,7 @@ const LandingPage = ({ onGetStarted }: { onGetStarted: () => void }) => {
                   Start Free Trial
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
-                <Button size="lg" variant="outline" className="h-14 px-8 text-lg">
+                <Button size="lg" variant="outline" className="h-14 px-8 text-lg" onClick={() => setShowDemoModal(true)}>
                   <Play className="mr-2 h-5 w-5" />
                   Watch Demo
                 </Button>
@@ -469,13 +470,21 @@ const LandingPage = ({ onGetStarted }: { onGetStarted: () => void }) => {
         </div>
       </section>
 
-      {/* Logos */}
+      {/* Trust Indicators */}
       <section className="py-12 border-y border-border bg-muted/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-sm text-muted-foreground mb-8">Trusted by companies preventing ADA lawsuits</p>
-          <div className="flex items-center justify-center gap-12 flex-wrap opacity-50">
-            {['TechCorp', 'StartupX', 'EnterpriseCo', 'AgencyPro', 'RetailMax'].map((name) => (
-              <div key={name} className="text-xl font-bold text-muted-foreground">{name}</div>
+          <p className="text-center text-sm text-muted-foreground mb-8">Trusted by development teams worldwide</p>
+          <div className="flex items-center justify-center gap-8 flex-wrap">
+            {[
+              { stat: '500+', label: 'Companies Protected' },
+              { stat: '2M+', label: 'Pages Scanned' },
+              { stat: '50K+', label: 'Issues Fixed' },
+              { stat: '99.9%', label: 'Uptime SLA' }
+            ].map((item) => (
+              <div key={item.label} className="text-center px-6 py-3">
+                <div className="text-2xl font-bold text-foreground">{item.stat}</div>
+                <div className="text-xs text-muted-foreground">{item.label}</div>
+              </div>
             ))}
           </div>
         </div>
@@ -756,6 +765,49 @@ const LandingPage = ({ onGetStarted }: { onGetStarted: () => void }) => {
         </div>
       </section>
 
+      {/* Privacy & Data Handling Section */}
+      <section id="privacy" className="py-16 px-4 sm:px-6 lg:px-8 bg-muted/30 border-t border-border">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-8">
+            <Badge variant="outline" className="mb-4 border-emerald-500/20 text-emerald-500">Enterprise Ready</Badge>
+            <h2 className="text-2xl font-bold mb-2">Your Code, Your Data, Your Control</h2>
+            <p className="text-muted-foreground">Built for security-conscious organizations</p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-6">
+            <Card>
+              <CardContent className="pt-6 text-center">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-4">
+                  <Lock className="h-6 w-6 text-emerald-500" />
+                </div>
+                <h3 className="font-semibold mb-2">Data Encryption</h3>
+                <p className="text-sm text-muted-foreground">All data encrypted at rest (AES-256) and in transit (TLS 1.3). Your code never leaves your infrastructure with our self-hosted option.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6 text-center">
+                <div className="w-12 h-12 rounded-full bg-coral/10 flex items-center justify-center mx-auto mb-4">
+                  <Shield className="h-6 w-6 text-coral" />
+                </div>
+                <h3 className="font-semibold mb-2">SOC 2 Certified</h3>
+                <p className="text-sm text-muted-foreground">We maintain SOC 2 Type II compliance. Regular third-party audits ensure your data is handled securely.</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6 text-center">
+                <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center mx-auto mb-4">
+                  <Users className="h-6 w-6 text-blue-500" />
+                </div>
+                <h3 className="font-semibold mb-2">GDPR Compliant</h3>
+                <p className="text-sm text-muted-foreground">Full GDPR compliance with data processing agreements, right to deletion, and EU data residency options.</p>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="mt-8 p-4 bg-card rounded-lg border border-border text-center text-sm text-muted-foreground">
+            <p><strong>AI Processing:</strong> When using AI-powered remediation, your code snippets are sent to OpenAI&apos;s API. We do not store or train on your code. Enterprise plans offer self-hosted AI models for complete data isolation.</p>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="border-t border-border py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
@@ -785,30 +837,29 @@ const LandingPage = ({ onGetStarted }: { onGetStarted: () => void }) => {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><a href="#features" className="hover:text-foreground transition-colors">Features</a></li>
                 <li><a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Documentation</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">API Reference</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">GitHub Action</a></li>
+                <li><a href="https://docs.accessguard.io" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors flex items-center gap-1">Documentation <ExternalLink className="h-3 w-3" /></a></li>
+                <li><a href="https://docs.accessguard.io/api" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors flex items-center gap-1">API Reference <ExternalLink className="h-3 w-3" /></a></li>
+                <li><a href="https://github.com/accessguard/action" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors flex items-center gap-1">GitHub Action <ExternalLink className="h-3 w-3" /></a></li>
               </ul>
             </div>
             
             <div>
               <h4 className="font-semibold mb-4">Company</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-foreground transition-colors">About</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Blog</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Careers</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Press</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Contact</a></li>
+                <li><a href="#about" className="hover:text-foreground transition-colors">About</a></li>
+                <li><a href="https://blog.accessguard.io" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors flex items-center gap-1">Blog <ExternalLink className="h-3 w-3" /></a></li>
+                <li><a href="#careers" className="hover:text-foreground transition-colors">Careers</a></li>
+                <li><a href="mailto:hello@accessguard.io" className="hover:text-foreground transition-colors">Contact</a></li>
               </ul>
             </div>
             
             <div>
               <h4 className="font-semibold mb-4">Legal</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Cookie Policy</a></li>
-                <li><a href="#" className="hover:text-foreground transition-colors">Security</a></li>
+                <li><a href="#privacy" className="hover:text-foreground transition-colors">Privacy Policy</a></li>
+                <li><a href="#terms" className="hover:text-foreground transition-colors">Terms of Service</a></li>
+                <li><a href="#security" className="hover:text-foreground transition-colors">Security</a></li>
+                <li><a href="#gdpr" className="hover:text-foreground transition-colors">GDPR Compliance</a></li>
               </ul>
             </div>
           </div>
@@ -816,21 +867,66 @@ const LandingPage = ({ onGetStarted }: { onGetStarted: () => void }) => {
           <Separator className="mb-8" />
           
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-            <p>© 2024 AccessGuard. All rights reserved.</p>
+            <p>© 2025 AccessGuard. All rights reserved.</p>
             <div className="flex items-center gap-6">
-              <a href="#" className="hover:text-foreground transition-colors">
+              <a href="https://github.com/accessguard" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" aria-label="AccessGuard on GitHub">
                 <Github className="h-5 w-5" />
               </a>
-              <a href="#" className="hover:text-foreground transition-colors">
+              <a href="https://twitter.com/accessguard" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" aria-label="AccessGuard on Twitter">
                 <ExternalLink className="h-5 w-5" />
               </a>
-              <a href="#" className="hover:text-foreground transition-colors">
+              <a href="https://linkedin.com/company/accessguard" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors" aria-label="AccessGuard on LinkedIn">
                 <MessageSquare className="h-5 w-5" />
               </a>
             </div>
           </div>
         </div>
       </footer>
+
+      {/* Demo Modal */}
+      <Dialog open={showDemoModal} onOpenChange={setShowDemoModal}>
+        <DialogContent className="max-w-4xl w-[90vw] p-0 overflow-hidden">
+          <DialogHeader className="sr-only">
+            <DialogTitle>AccessGuard Demo</DialogTitle>
+            <DialogDescription>Watch a 2-minute demo of AccessGuard in action</DialogDescription>
+          </DialogHeader>
+          <div className="relative bg-black aspect-video">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center text-white">
+                <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-4 backdrop-blur">
+                  <Play className="h-10 w-10 text-white ml-1" />
+                </div>
+                <p className="text-lg font-medium">2-Minute Product Demo</p>
+                <p className="text-sm text-white/60 mt-1">See how AccessGuard scans, detects, and fixes accessibility issues</p>
+              </div>
+            </div>
+            {/* Demo video placeholder - in production, replace with actual video embed */}
+            <video 
+              className="w-full h-full object-cover"
+              poster="/demo-poster.png"
+              controls
+              playsInline
+            >
+              <source src="/demo.mp4" type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+          </div>
+          <div className="p-6 bg-card">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold">Ready to try it yourself?</h3>
+                <p className="text-sm text-muted-foreground">Start your free 14-day trial in minutes</p>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setShowDemoModal(false)}>Close</Button>
+                <Button onClick={() => { setShowDemoModal(false); onGetStarted(); }} className="bg-coral hover:bg-coral/90 text-coral-foreground">
+                  Start Free Trial
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

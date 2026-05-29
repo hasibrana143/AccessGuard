@@ -1,7 +1,22 @@
 // GitHub PR Utilities for AccessGuard
 // Helper functions for creating PRs with accessibility fixes
 
-import type { Violation } from '@/types';
+import type { Severity } from '@/types';
+
+// Flexible violation type that works with both strict types and Prisma results
+export type ViolationForPR = {
+  id: string;
+  ruleId: string;
+  severity: Severity | string;
+  url: string;
+  description: string;
+  wcagCriteria?: string | null;
+  elementSelector?: string | null;
+  elementHtml?: string | null;
+  remediationCode?: string | null;
+  aiExplanation?: string | null;
+  project?: { name: string; url: string };
+};
 
 // Generate a branch name for accessibility fixes
 export function createFixBranchName(ruleId: string, timestamp?: Date): string {
@@ -14,7 +29,7 @@ export function createFixBranchName(ruleId: string, timestamp?: Date): string {
 }
 
 // Generate a PR title from violations
-export function generatePrTitle(violations: Violation[]): string {
+export function generatePrTitle(violations: ViolationForPR[]): string {
   if (violations.length === 0) {
     return 'AccessGuard: Accessibility fixes';
   }
@@ -41,7 +56,7 @@ export function generatePrTitle(violations: Violation[]): string {
 }
 
 // Generate PR body with violation details
-export function generatePrBody(violations: Violation[], project?: { name: string; url: string }): string {
+export function generatePrBody(violations: ViolationForPR[], project?: { name: string; url: string }): string {
   const lines: string[] = [
     '## AccessGuard - Accessibility Fixes',
     '',
@@ -75,7 +90,7 @@ export function generatePrBody(violations: Violation[], project?: { name: string
     if (!acc[v.ruleId]) acc[v.ruleId] = [];
     acc[v.ruleId].push(v);
     return acc;
-  }, {} as Record<string, Violation[]>);
+  }, {} as Record<string, ViolationForPR[]>);
   
   lines.push('### Issues Fixed');
   lines.push('');
@@ -125,7 +140,7 @@ export function generatePrBody(violations: Violation[], project?: { name: string
 // Apply fixes to file content
 export function applyFixesToFile(
   originalContent: string,
-  violations: Violation[],
+  violations: ViolationForPR[],
   filePath: string
 ): { content: string; fixesApplied: number; errors: string[] } {
   const errors: string[] = [];
@@ -140,7 +155,7 @@ export function applyFixesToFile(
       acc[v.elementSelector].push(v);
     }
     return acc;
-  }, {} as Record<string, Violation[]>);
+  }, {} as Record<string, ViolationForPR[]>);
   
   for (const [selector, selectorViolations] of Object.entries(violationsBySelector)) {
     // For now, we'll create a comment block with the fixes
@@ -161,7 +176,7 @@ export function applyFixesToFile(
 // Generate a fix comment block
 function generateFixComment(
   selector: string,
-  violations: Violation[],
+  violations: ViolationForPR[],
   filePath: string
 ): string {
   const lines: string[] = [];
@@ -223,7 +238,7 @@ export function parsePrUrl(url: string): { owner: string; repo: string; pullNumb
 }
 
 // Generate preview content for demo mode
-export function generateDemoPreview(violations: Violation[]): {
+export function generateDemoPreview(violations: ViolationForPR[]): {
   branchName: string;
   prTitle: string;
   prBody: string;
