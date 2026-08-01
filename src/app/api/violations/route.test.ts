@@ -21,9 +21,26 @@ describe('Violations API', () => {
   beforeAll(async () => {
     const org = await db.organization.findFirst({ where: { slug: 'default-org' } });
     testOrgId = org?.id || '';
-    mockedGetServerSession.mockResolvedValue({
-      user: { id: 'test-user', role: 'admin', orgId: testOrgId, orgSlug: 'default-org' },
-    } as never);
+
+    // Ensure the test user exists with a verified email (write endpoints enforce it)
+    if (testOrgId) {
+      const testUser = await db.user.upsert({
+        where: { email: 'test-user@accessguard.dev' },
+        create: {
+          email: 'test-user@accessguard.dev',
+          name: 'Test User',
+          password: 'not-used',
+          role: 'admin',
+          orgId: testOrgId,
+          emailVerifiedAt: new Date(),
+        },
+        update: { emailVerifiedAt: new Date() },
+      });
+
+      mockedGetServerSession.mockResolvedValue({
+        user: { id: testUser.id, email: 'test-user@accessguard.dev', role: 'admin', orgId: testOrgId, orgSlug: 'default-org' },
+      } as never);
+    }
   });
 
   afterAll(() => {

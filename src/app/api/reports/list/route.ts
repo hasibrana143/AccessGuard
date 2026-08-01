@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
-import { requireAuth, requireProjectAccess } from '@/lib/rbac';
+import { requireAuth, requireVerifiedEmail, requireProjectAccess } from '@/lib/rbac';
 
 export async function GET(request: NextRequest) {
   try {
@@ -110,7 +110,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const auth = await requireAuth(request);
+    const auth = await requireVerifiedEmail(request);
     if (auth instanceof NextResponse) return auth;
 
     const existing = await db.complianceReport.findFirst({

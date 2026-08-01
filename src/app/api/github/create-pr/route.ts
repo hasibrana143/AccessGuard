@@ -10,7 +10,7 @@ import {
   getRepositoryDetails,
 } from '@/lib/github';
 import { logger } from '@/lib/error-logger';
-import { requireAuth } from '@/lib/rbac';
+import { requireVerifiedEmail } from '@/lib/rbac';
 import {
   createFixBranchName,
   generatePrTitle,
@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const auth = await requireAuth(request);
+    const auth = await requireVerifiedEmail(request);
     if (auth instanceof NextResponse) return auth;
 
     // Fetch violations (scoped to the user's org)

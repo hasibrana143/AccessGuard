@@ -1,18 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { generateMfaSecret, generateQrDataUrl, verifyMfaCode, encryptMfaSecret, readMfaSecret } from '@/lib/mfa';
+import { requireVerifiedEmail } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
+
+// MFA enrollment must be performed by the authenticated user themselves:
+// the target userId must match the session/API-token identity (anti-IDOR).
+async function requireOwnMfaTarget(
+  request: NextRequest,
+  userId: string | null
+): Promise<{ userId: string } | NextResponse> {
+  if (!userId) {
+    return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
+  }
+  const auth = await requireVerifiedEmail(request);
+  if (auth instanceof NextResponse) return auth;
+  if (auth.user.id !== userId) {
+    return NextResponse.json(
+      { success: false, error: 'Insufficient permissions' },
+      { status: 403 }
+    );
+  }
+  return { userId };
+}
 
 // GET /api/auth/mfa/setup - Start MFA enrollment (returns secret + QR)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const userIdParam = searchParams.get('userId');
     const email = searchParams.get('email');
 
-    if (!userId) {
-      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
-    }
+    const forbidden = await requireOwnMfaTarget(request, userIdParam);
+    if (forbidden instanceof NextResponse) return forbidden;
+    const userId = forbidden.userId;
 
     const user = await db.user.findUnique({ where: { id: userId } });
     if (!user) {
@@ -49,9 +70,13 @@ export async function GET(request: NextRequest) {
 // POST /api/auth/mfa/setup - Verify code and enable MFA
 export async function POST(request: NextRequest) {
   try {
-    const { userId, code } = await request.json();
+    const { userId: userIdParam, code } = await request.json();
 
-    if (!userId || !code) {
+    const forbidden = await requireOwnMfaTarget(request, userIdParam);
+    if (forbidden instanceof NextResponse) return forbidden;
+    const userId = forbidden.userId;
+
+    if (!code) {
       return NextResponse.json({ success: false, error: 'User ID and code are required' }, { status: 400 });
     }
 
@@ -96,11 +121,11 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const userIdParam = searchParams.get('userId');
 
-    if (!userId) {
-      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
-    }
+    const forbidden = await requireOwnMfaTarget(request, userIdParam);
+    if (forbidden instanceof NextResponse) return forbidden;
+    const userId = forbidden.userId;
 
     const user = await db.user.findUnique({ where: { id: userId } });
     if (!user) {

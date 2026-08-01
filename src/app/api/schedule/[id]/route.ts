@@ -2,10 +2,38 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getCronDescription, getNextRunTime, validateCronExpression } from '@/lib/scheduler';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
+import { requireVerifiedEmail } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
+}
+
+// Auth + ownership: the scheduled scan must belong to the caller's org.
+async function requireOwnedSchedule(
+  request: NextRequest,
+  scheduleId: string
+): Promise<NextResponse | null> {
+  const auth = await requireVerifiedEmail(request);
+  if (auth instanceof NextResponse) return auth;
+
+  const scheduledScan = await db.scheduledScan.findUnique({
+    where: { id: scheduleId },
+    select: { id: true, project: { select: { orgId: true } } },
+  });
+  if (!scheduledScan) {
+    return NextResponse.json(
+      { success: false, error: 'Scheduled scan not found' },
+      { status: 404 }
+    );
+  }
+  if (scheduledScan.project.orgId !== auth.user.orgId) {
+    return NextResponse.json(
+      { success: false, error: 'Insufficient permissions' },
+      { status: 403 }
+    );
+  }
+  return null;
 }
 
 // GET /api/schedule/[id] - Get a specific scheduled scan
@@ -19,6 +47,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   try {
     const { id } = await params;
+
+    const owned = await requireOwnedSchedule(request, id);
+    if (owned) return owned;
 
     const scheduledScan = await db.scheduledScan.findUnique({
       where: { id },
@@ -87,6 +118,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
 
+    const owned = await requireOwnedSchedule(request, id);
+    if (owned) return owned;
+
     const scheduledScan = await db.scheduledScan.findUnique({
       where: { id },
     });
@@ -135,6 +169,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     const body = await request.json();
     const { cron, enabled } = body;
+
+    const owned = await requireOwnedSchedule(request, id);
+    if (owned) return owned;
 
     const scheduledScan = await db.scheduledScan.findUnique({
       where: { id },

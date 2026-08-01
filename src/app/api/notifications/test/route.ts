@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sendWebhookNotification } from '@/lib/notifications';
+import { requireOrgAccess } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
 
 // POST /api/notifications/test - Send a test webhook message
@@ -15,8 +16,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const access = await requireOrgAccess(request, orgId);
+    if (access instanceof NextResponse) return access;
+
     const org = await db.organization.findUnique({
-      where: { id: orgId },
+      where: { id: access.org.id },
       select: { settings: true, name: true },
     });
 

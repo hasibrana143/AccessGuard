@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
+import { requireOrgAccess } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
 
 // POST /api/projects/import - Bulk import projects from CSV
@@ -24,6 +25,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const access = await requireOrgAccess(request, orgSlug);
+    if (access instanceof NextResponse) return access;
+    const org = access.org;
+
     if (!Array.isArray(projects) || projects.length === 0) {
       return NextResponse.json(
         { success: false, error: 'At least one project is required' },
@@ -38,17 +43,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const org = await db.organization.findFirst({ where: { slug: orgSlug } });
-    if (!org) {
-      return NextResponse.json(
-        { success: false, error: 'Organization not found' },
-        { status: 404 }
-      );
-    }
-
     // Enforce plan website limit (count against currently existing projects)
     const { checkWebsiteLimit } = await import('@/lib/plan-limits');
-    const limitCheck = await checkWebsiteLimit(org.id, org.plan, org.settings);
+    const limitCheck = await checkWebsiteLimit(org.id, org.plan || 'free', org.settings);
     if (!limitCheck.allowed) {
       return NextResponse.json(
         {

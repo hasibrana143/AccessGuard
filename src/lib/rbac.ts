@@ -21,6 +21,47 @@ const FORBIDDEN = NextResponse.json(
   { status: 403 }
 );
 
+const VERIFICATION_REQUIRED = NextResponse.json(
+  { success: false, error: 'Email verification required. Check your inbox and verify your email first.' },
+  { status: 403 }
+);
+
+const WRITE_METHODS = ['POST', 'PATCH', 'PUT', 'DELETE'];
+
+// Mutating endpoints require a verified email. Read endpoints stay open so
+// the verification banner can guide users toward confirming their inbox.
+export async function requireVerifiedEmail(
+  request: NextRequest
+): Promise<{ user: AuthedUser } | NextResponse> {
+  const auth = await requireAuth(request);
+  if (auth instanceof NextResponse) return auth;
+
+  const user = await db.user.findUnique({
+    where: { id: auth.user.id },
+    select: { emailVerifiedAt: true },
+  });
+  if (!user || !user.emailVerifiedAt) return VERIFICATION_REQUIRED;
+  return auth;
+}
+
+async function isEmailVerified(userId: string): Promise<boolean> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { emailVerifiedAt: true },
+  });
+  return Boolean(user?.emailVerifiedAt);
+}
+
+// Shared guard: verify the email when the request mutates state.
+async function enforceVerificationOnWrite(
+  request: NextRequest,
+  userId: string
+): Promise<true | NextResponse> {
+  if (!WRITE_METHODS.includes(request.method)) return true;
+  if (!(await isEmailVerified(userId))) return VERIFICATION_REQUIRED;
+  return true;
+}
+
 export async function requireAuth(
   request: NextRequest
 ): Promise<{ user: AuthedUser } | NextResponse> {
@@ -53,6 +94,8 @@ export async function requireRole(
   const result = await requireAuth(request);
   if (result instanceof NextResponse) return result;
   if (!allowed.includes(result.user.role)) return FORBIDDEN;
+  const verified = await enforceVerificationOnWrite(request, result.user.id);
+  if (verified instanceof NextResponse) return verified;
   return result;
 }
 
@@ -81,6 +124,8 @@ export async function requireOrgAccess(
       { status: 403 }
     );
   }
+  const verified = await enforceVerificationOnWrite(request, auth.user.id);
+  if (verified instanceof NextResponse) return verified;
   return { user: auth.user, org };
 }
 
@@ -108,6 +153,8 @@ export async function requireProjectAccess(
       { status: 403 }
     );
   }
+  const verified = await enforceVerificationOnWrite(request, auth.user.id);
+  if (verified instanceof NextResponse) return verified;
   return { user: auth.user, project };
 }
 
@@ -129,5 +176,7 @@ export async function requireScanAccess(
   if (!scan) {
     return NextResponse.json({ success: false, error: 'Scan not found' }, { status: 404 });
   }
+  const verified = await enforceVerificationOnWrite(request, auth.user.id);
+  if (verified instanceof NextResponse) return verified;
   return { user: auth.user, scan };
 }

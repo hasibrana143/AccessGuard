@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getToken } from 'next-auth/jwt';
+import { requireVerifiedEmail } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
 
 const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
@@ -10,6 +11,9 @@ export async function POST(request: NextRequest) {
   if (!token || !token.sub) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
+
+  const verified = await requireVerifiedEmail(request);
+  if (verified instanceof NextResponse) return verified;
 
   try {
     const body = await request.json();

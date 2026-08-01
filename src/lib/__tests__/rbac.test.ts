@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireRole } from '@/lib/rbac';
+import { requireAuth, requireRole, requireOrgAccess, requireVerifiedEmail } from '@/lib/rbac';
 
 vi.mock('next-auth', () => ({
   getServerSession: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
-  db: { user: { findUnique: vi.fn() } },
+  db: {
+    user: { findUnique: vi.fn() },
+    organization: { findFirst: vi.fn() },
+  },
 }));
 
 import { getServerSession } from 'next-auth';
@@ -15,9 +18,11 @@ import { db } from '@/lib/db';
 
 const mockedGetServerSession = vi.mocked(getServerSession);
 const mockedFindUnique = vi.mocked(db.user.findUnique);
+const mockedOrgFindFirst = vi.mocked(db.organization.findFirst);
 
-function createRequest(): NextRequest {
+function createRequest(method = 'GET'): NextRequest {
   return new NextRequest(new URL('http://localhost:3000/api/test'), {
+    method,
     headers: { 'Content-Type': 'application/json' },
   });
 }
@@ -31,6 +36,7 @@ const memberSession = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockedFindUnique.mockResolvedValue({ emailVerifiedAt: new Date() } as never);
 });
 
 afterEach(() => {
@@ -114,5 +120,61 @@ describe('requireRole (contract)', () => {
     expect(result instanceof NextResponse).toBe(true);
     if (!(result instanceof NextResponse)) return;
     expect(result.status).toBe(401);
+  });
+});
+
+describe('email verification enforcement', () => {
+  it('blocks write requests with 403 when the email is unverified', async () => {
+    mockedGetServerSession.mockResolvedValue(adminSession as never);
+    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+
+    const result = await requireRole(createRequest('POST'));
+    expect(result instanceof NextResponse).toBe(true);
+    if (!(result instanceof NextResponse)) return;
+    expect(result.status).toBe(403);
+    expect(await result.json()).toMatchObject({ error: 'Email verification required. Check your inbox and verify your email first.' });
+  });
+
+  it('allows writes when the email is verified', async () => {
+    mockedGetServerSession.mockResolvedValue(adminSession as never);
+    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01') } as never);
+
+    const result = await requireRole(createRequest('POST'));
+    expect(result instanceof NextResponse).toBe(false);
+  });
+
+  it('does not enforce verification on read requests', async () => {
+    mockedGetServerSession.mockResolvedValue(adminSession as never);
+    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+
+    const result = await requireRole(createRequest('GET'));
+    expect(result instanceof NextResponse).toBe(false);
+  });
+
+  it('enforces verification on org-scoped writes', async () => {
+    mockedGetServerSession.mockResolvedValue(adminSession as never);
+    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+    mockedOrgFindFirst.mockResolvedValue({
+      id: 'org-1', slug: 'org-1', name: 'Org', plan: 'agency', settings: null,
+    } as never);
+
+    const result = await requireOrgAccess(createRequest('POST'), 'org-1');
+    expect(result instanceof NextResponse).toBe(true);
+    if (!(result instanceof NextResponse)) return;
+    expect(result.status).toBe(403);
+  });
+
+  it('requireVerifiedEmail rejects unverified users and accepts verified ones', async () => {
+    mockedGetServerSession.mockResolvedValue(adminSession as never);
+
+    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+    const rejected = await requireVerifiedEmail(createRequest());
+    expect(rejected instanceof NextResponse).toBe(true);
+    if (!(rejected instanceof NextResponse)) return;
+    expect(rejected.status).toBe(403);
+
+    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: new Date() } as never);
+    const accepted = await requireVerifiedEmail(createRequest());
+    expect(accepted instanceof NextResponse).toBe(false);
   });
 });

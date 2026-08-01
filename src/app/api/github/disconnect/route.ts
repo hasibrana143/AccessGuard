@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
+import { requireVerifiedEmail } from '@/lib/rbac';
 import { revokeToken, isGitHubConfigured } from '@/lib/github';
 import { logger } from '@/lib/error-logger';
 import { decryptSecret, isEncrypted } from '@/lib/crypto';
@@ -26,6 +27,9 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    const verified = await requireVerifiedEmail(request);
+    if (verified instanceof NextResponse) return verified;
 
     // Get current user
     const user = await db.user.findUnique({

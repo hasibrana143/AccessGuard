@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { requireVerifiedEmail } from '@/lib/rbac';
 import { getStripeClient } from '@/lib/stripe';
 import { logger } from '@/lib/error-logger';
 
 // POST /api/stripe/coupon - Apply a coupon to the organization's subscription
 export async function POST(request: NextRequest) {
   try {
+    const verified = await requireVerifiedEmail(request);
+    if (verified instanceof NextResponse) return verified;
+
     const session = await getServerSession(authOptions);
     if (!session?.user) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });

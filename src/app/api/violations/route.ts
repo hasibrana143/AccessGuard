@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
-import { requireAuth, requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
+import { requireAuth, requireVerifiedEmail, requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
 
 // GET /api/violations - List violations with filters (scoped to the user's org)
 export async function GET(request: NextRequest) {
@@ -88,7 +88,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const auth = await requireAuth(request);
+    const auth = await requireVerifiedEmail(request);
     if (auth instanceof NextResponse) return auth;
 
     const existing = await db.violation.findFirst({

@@ -148,13 +148,14 @@ async function main() {
   
   await prisma.user.upsert({
     where: { email: 'test@accessguard.dev' },
-    update: {},
+    update: { emailVerifiedAt: new Date() },
     create: {
       email: 'test@accessguard.dev',
       name: 'Test User',
       password: hashedPassword,
       role: 'admin',
-      orgId: defaultOrg.id
+      orgId: defaultOrg.id,
+      emailVerifiedAt: new Date()
     }
   })
   console.log('Created test user (email: test@accessguard.dev, password: testpass123)')

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { logger } from '@/lib/error-logger';
-import { requireAuth } from '@/lib/rbac';
+import { requireVerifiedEmail } from '@/lib/rbac';
 
 const BATCH_LIMIT = 50;
 
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const auth = await requireAuth(request);
+    const auth = await requireVerifiedEmail(request);
     if (auth instanceof NextResponse) return auth;
 
     const violations = await db.violation.findMany({

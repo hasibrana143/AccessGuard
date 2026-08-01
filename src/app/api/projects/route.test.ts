@@ -31,8 +31,23 @@ describe('Projects API', () => {
       update: {}
     });
     testOrgId = org.id;
+
+    // Ensure the test user exists with a verified email (write endpoints enforce it)
+    const testUser = await db.user.upsert({
+      where: { email: 'test-user@accessguard.dev' },
+      create: {
+        email: 'test-user@accessguard.dev',
+        name: 'Test User',
+        password: 'not-used',
+        role: 'admin',
+        orgId: testOrgId,
+        emailVerifiedAt: new Date(),
+      },
+      update: { emailVerifiedAt: new Date() },
+    });
+
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'test-user', role: 'admin', orgId: testOrgId, orgSlug: 'test-org' },
+      user: { id: testUser.id, email: 'test-user@accessguard.dev', role: 'admin', orgId: testOrgId, orgSlug: 'test-org' },
     } as never);
   });
 
@@ -49,6 +64,10 @@ describe('Projects API', () => {
     
     await db.project.deleteMany({
       where: { organization: { slug: 'test-org' } }
+    });
+
+    await db.user.deleteMany({
+      where: { email: 'test-user@accessguard.dev' },
     });
   });
 

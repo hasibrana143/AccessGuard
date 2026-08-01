@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireVerifiedEmail } from '@/lib/rbac';
 import { PRICING_PLANS, type PlanType, type SubscriptionStatus } from '@/lib/stripe';
 
 // GET /api/stripe/subscription - Get subscription status
@@ -59,8 +60,11 @@ export async function GET() {
 }
 
 // POST /api/stripe/subscription - Create subscription (demo)
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    const verified = await requireVerifiedEmail(request);
+    if (verified instanceof NextResponse) return verified;
+
     const { priceId } = await request.json();
     let plan: PlanType = 'starter';
     if (priceId?.includes('agency')) plan = 'agency';
@@ -81,8 +85,11 @@ export async function POST(request: Request) {
 }
 
 // DELETE /api/stripe/subscription - Cancel subscription (demo)
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
+    const verified = await requireVerifiedEmail(request);
+    if (verified instanceof NextResponse) return verified;
+
     await db.organization.update({
       where: { slug: 'demo-org' },
       data: { plan: 'starter', subscriptionStatus: 'canceled' }

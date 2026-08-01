@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { logger } from '@/lib/error-logger';
 import { generateRemediation, WCAG_RULES } from './remediation';
-import { requireAuth } from '@/lib/rbac';
+import { requireVerifiedEmail } from '@/lib/rbac';
 
 // POST /api/remediate - Generate AI remediation for a violation
 export async function POST(request: NextRequest) {
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const auth = await requireAuth(request);
+    const auth = await requireVerifiedEmail(request);
     if (auth instanceof NextResponse) return auth;
 
     // Get the violation from the database (scoped to the user's org)

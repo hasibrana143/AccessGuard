@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
+import { requireProjectAccess } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
 
 export async function PATCH(request: NextRequest) {
@@ -12,6 +13,13 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { ids, status, projectId } = body;
 
+    if (!projectId) {
+      return NextResponse.json({ success: false, error: 'Project ID is required' }, { status: 400 });
+    }
+
+    const access = await requireProjectAccess(request, projectId);
+    if (access instanceof NextResponse) return access;
+
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ success: false, error: 'Violation IDs array is required' }, { status: 400 });
     }
@@ -21,8 +29,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid status' }, { status: 400 });
     }
 
-    const where: Record<string, unknown> = { id: { in: ids } };
-    if (projectId) where.projectId = projectId;
+    const where: Record<string, unknown> = { id: { in: ids }, projectId: access.project.id };
 
     const result = await db.violation.updateMany({
       where,

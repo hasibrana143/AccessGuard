@@ -97,8 +97,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'ID required' }, { status: 400 });
     }
 
-    const { requireAuth } = await import('@/lib/rbac');
-    const auth = await requireAuth(request);
+    const { requireVerifiedEmail } = await import('@/lib/rbac');
+    const auth = await requireVerifiedEmail(request);
     if (auth instanceof NextResponse) return auth;
 
     const existing = await db.complianceReport.findFirst({

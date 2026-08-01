@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
+import { requireVerifiedEmail } from '@/lib/rbac';
 import { createSubscription, createCustomer, getStripePriceId } from '@/lib/stripe';
 import { logger } from '@/lib/error-logger';
 type PlanId = 'starter' | 'agency' | 'enterprise';
@@ -28,6 +29,9 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    const verified = await requireVerifiedEmail(request);
+    if (verified instanceof NextResponse) return verified;
 
     // Parse request body
     const body = await request.json();

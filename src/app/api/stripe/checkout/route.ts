@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { db } from '@/lib/db';
+import { requireOrgAccess } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
 
 const stripe = process.env.STRIPE_SECRET_KEY 
@@ -38,9 +39,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const access = await requireOrgAccess(request, orgId);
+    if (access instanceof NextResponse) return access;
+
     // Verify organization exists
     const org = await db.organization.findUnique({
-      where: { id: orgId },
+      where: { id: access.org.id },
     });
 
     if (!org) {

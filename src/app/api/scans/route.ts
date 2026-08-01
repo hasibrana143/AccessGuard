@@ -4,7 +4,7 @@ import { scanFromHTML, type ScannerViolation } from '@/services/scanner';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { enqueueScan } from '@/lib/queue';
 import { logger } from '@/lib/error-logger';
-import { requireAuth, requireProjectAccess } from '@/lib/rbac';
+import { requireAuth, requireVerifiedEmail, requireProjectAccess } from '@/lib/rbac';
 
 // GET /api/scans - List scans
 export async function GET(request: NextRequest) {
@@ -211,7 +211,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const auth = await requireAuth(request);
+    const auth = await requireVerifiedEmail(request);
     if (auth instanceof NextResponse) return auth;
 
     const existing = await db.scan.findFirst({
