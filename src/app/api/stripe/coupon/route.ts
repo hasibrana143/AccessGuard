@@ -3,13 +3,14 @@ import { db } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { requireVerifiedEmail } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 import { getStripeClient } from '@/lib/stripe';
 import { logger } from '@/lib/error-logger';
 
 // POST /api/stripe/coupon - Apply a coupon to the organization's subscription
 export async function POST(request: NextRequest) {
   try {
-    const verified = await requireVerifiedEmail(request);
+    const verified = await requireVerifiedEmail(request, { permission: PERMISSIONS.MANAGE_BILLING });
     if (verified instanceof NextResponse) return verified;
 
     const session = await getServerSession(authOptions);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { requireOrgAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 import { logger } from '@/lib/error-logger';
 
 // POST /api/projects/import - Bulk import projects from CSV
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const access = await requireOrgAccess(request, orgSlug);
+    const access = await requireOrgAccess(request, orgSlug, { permission: PERMISSIONS.CREATE_PROJECTS });
     if (access instanceof NextResponse) return access;
     const org = access.org;
 

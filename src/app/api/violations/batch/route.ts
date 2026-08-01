@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { requireProjectAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 import { logger } from '@/lib/error-logger';
 
 export async function PATCH(request: NextRequest) {
@@ -17,7 +18,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Project ID is required' }, { status: 400 });
     }
 
-    const access = await requireProjectAccess(request, projectId);
+    const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.MANAGE_VIOLATIONS });
     if (access instanceof NextResponse) return access;
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {

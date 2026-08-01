@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GitHubProvider from 'next-auth/providers/github';
+import GoogleProvider from 'next-auth/providers/google';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -85,8 +86,39 @@ export const authOptions: NextAuthOptions = {
           }),
         ]
       : []),
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? [
+          GoogleProvider({
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          }),
+        ]
+      : []),
   ],
   callbacks: {
+    // Provision app accounts for OAuth (Google/GitHub) sign-ins.
+    async signIn({ user, account }) {
+      if (account?.provider === 'credentials') return true;
+      if (!user.email) return false;
+      const existing = await db.user.findUnique({ where: { email: user.email } });
+      if (existing) return true;
+      let defaultOrg = await db.organization.findFirst({ where: { slug: 'default-org' } });
+      if (!defaultOrg) {
+        defaultOrg = await db.organization.create({
+          data: { name: 'Default Organization', slug: 'default-org', plan: 'starter' },
+        });
+      }
+      await db.user.create({
+        data: {
+          email: user.email,
+          name: user.name,
+          orgId: defaultOrg.id,
+          role: 'member',
+          emailVerifiedAt: new Date(),
+        },
+      });
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;

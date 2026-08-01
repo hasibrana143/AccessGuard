@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { requireAuth, requireVerifiedEmail, requireProjectAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 export async function GET(request: NextRequest) {
   try {
@@ -110,7 +111,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const auth = await requireVerifiedEmail(request);
+    const auth = await requireVerifiedEmail(request, { permission: PERMISSIONS.GENERATE_REPORTS });
     if (auth instanceof NextResponse) return auth;
 
     const existing = await db.complianceReport.findFirst({

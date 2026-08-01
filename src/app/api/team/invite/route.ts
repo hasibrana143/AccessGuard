@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { generateInviteToken, getInviteExpiry, type Role } from '@/lib/team';
 import { sendTeamInviteEmail, isEmailConfigured } from '@/lib/email';
-import { requireOrgAccess, requireRole } from '@/lib/rbac';
+import { requireOrgAccess, requirePermission } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // GET /api/team/invite?orgSlug=... - List pending invites (own org only)
 export async function GET(request: NextRequest) {
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
 // POST /api/team/invite - Send team invite (admin or owner only)
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRole(request, ['admin', 'owner']);
+    const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
 
     const { email, role, orgSlug } = await request.json() as { email: string; role: Role; orgSlug?: string };
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
 // DELETE /api/team/invite - Cancel invite (admin or owner only)
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await requireRole(request, ['admin', 'owner']);
+    const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
 
     const { searchParams } = new URL(request.url);

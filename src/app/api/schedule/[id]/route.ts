@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getCronDescription, getNextRunTime, validateCronExpression } from '@/lib/scheduler';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { requireVerifiedEmail } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 import { logger } from '@/lib/error-logger';
 
 interface RouteParams {
@@ -14,7 +15,7 @@ async function requireOwnedSchedule(
   request: NextRequest,
   scheduleId: string
 ): Promise<NextResponse | null> {
-  const auth = await requireVerifiedEmail(request);
+  const auth = await requireVerifiedEmail(request, { permission: PERMISSIONS.MANAGE_SCHEDULES });
   if (auth instanceof NextResponse) return auth;
 
   const scheduledScan = await db.scheduledScan.findUnique({

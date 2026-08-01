@@ -98,7 +98,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     const { requireVerifiedEmail } = await import('@/lib/rbac');
-    const auth = await requireVerifiedEmail(request);
+    const { PERMISSIONS } = await import('@/lib/permissions');
+    const auth = await requireVerifiedEmail(request, { permission: PERMISSIONS.GENERATE_REPORTS });
     if (auth instanceof NextResponse) return auth;
 
     const existing = await db.complianceReport.findFirst({

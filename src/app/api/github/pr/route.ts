@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { requireOrgAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 interface GitHubPRRequest {
   orgId: string;
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const access = await requireOrgAccess(request, orgId);
+    const access = await requireOrgAccess(request, orgId, { permission: PERMISSIONS.CREATE_PR });
     if (access instanceof NextResponse) return access;
 
     // Get GitHub connection

@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { ThemeToggle } from '@/components/dashboard/theme-toggle';
+import { RolesManager } from '@/components/dashboard/roles-manager';
 import { isPushEnabled, setPushEnabled, getPushPermission, showBrowserNotification } from '@/lib/push';
 
 export default function SettingsPage() {
@@ -48,6 +49,8 @@ export default function SettingsPage() {
   const [mfaLoading, setMfaLoading] = useState(false);
   const [pushEnabled, setPushEnabledState] = useState(false);
   const [pushPermission, setPushPermission] = useState<string>('unsupported');
+  const [branding, setBranding] = useState<{ displayName: string; primaryColor: string }>({ displayName: '', primaryColor: '#d94545' });
+  const [brandingSaving, setBrandingSaving] = useState(false);
 
   useEffect(() => {
     setPushEnabledState(isPushEnabled());
@@ -131,6 +134,12 @@ export default function SettingsPage() {
           }
           if (settings.slackWebhookUrl) {
             setWebhookUrl(settings.slackWebhookUrl);
+          }
+          if (settings.branding) {
+            setBranding({
+              displayName: settings.branding.displayName || '',
+              primaryColor: settings.branding.primaryColor || '#d94545',
+            });
           }
         }
       })
@@ -232,8 +241,9 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="profile">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="notifications">Alerts</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="privacy">Privacy</TabsTrigger>
@@ -372,6 +382,10 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="team" className="space-y-6 mt-6">
+          <RolesManager />
         </TabsContent>
 
         <TabsContent value="notifications" className="space-y-6 mt-6">
@@ -1005,6 +1019,87 @@ export default function SettingsPage() {
                   <p className="text-sm text-muted-foreground">Switch between dark and light mode</p>
                 </div>
                 <ThemeToggle />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Branding</CardTitle>
+              <CardDescription>White-label AccessGuard for your organization (logo is set in the Organization section)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="brand-name">Display name</Label>
+                <Input
+                  id="brand-name"
+                  value={branding.displayName}
+                  onChange={(e) => setBranding((prev) => ({ ...prev, displayName: e.target.value }))}
+                  placeholder="Shown next to the logo in the dashboard header"
+                  maxLength={60}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="brand-color">Primary color</Label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="brand-color"
+                    type="color"
+                    value={branding.primaryColor}
+                    onChange={(e) => setBranding((prev) => ({ ...prev, primaryColor: e.target.value }))}
+                    className="h-10 w-14 rounded-md border border-border bg-transparent cursor-pointer"
+                    aria-label="Primary brand color"
+                  />
+                  <Input
+                    value={branding.primaryColor}
+                    onChange={(e) => setBranding((prev) => ({ ...prev, primaryColor: e.target.value }))}
+                    className="w-32 font-mono text-sm"
+                    aria-label="Primary brand color hex value"
+                    maxLength={7}
+                  />
+                  <div
+                    className="h-10 w-10 rounded-md border border-border"
+                    style={{ backgroundColor: branding.primaryColor }}
+                    aria-hidden="true"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Applied to buttons and accents in the dashboard after saving.</p>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  A logo uploaded in the Organization section also appears in the header and on PDF reports.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={brandingSaving}
+                    onClick={async () => {
+                      setBrandingSaving(true);
+                      try {
+                        const res = await fetch('/api/settings', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ orgId: user?.orgId, settings: { branding } }),
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                          document.documentElement.style.setProperty('--primary', branding.primaryColor);
+                          document.documentElement.style.setProperty('--coral', branding.primaryColor);
+                          toast({ title: 'Branding Saved', description: 'Your organization branding is now applied.' });
+                        } else {
+                          toast({ title: 'Error', description: data.error || 'Failed to save branding', variant: 'destructive' });
+                        }
+                      } catch {
+                        toast({ title: 'Error', description: 'Failed to save branding', variant: 'destructive' });
+                      } finally {
+                        setBrandingSaving(false);
+                      }
+                    }}
+                  >
+                    {brandingSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    Save Branding
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

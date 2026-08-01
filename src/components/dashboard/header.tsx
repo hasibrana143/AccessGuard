@@ -42,6 +42,29 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
   const { user: authUser } = useAuth();
   const [notifications, setNotifications] = useState<AuditNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [branding, setBranding] = useState<{ logoUrl?: string; displayName?: string; primaryColor?: string } | null>(null);
+
+  useEffect(() => {
+    if (!authUser?.orgId) return;
+    let cancelled = false;
+    fetch(`/api/settings?orgId=${encodeURIComponent(authUser.orgId)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const branding = data.data?.settings?.branding;
+        if (branding) {
+          setBranding(branding);
+          if (branding.primaryColor) {
+            document.documentElement.style.setProperty('--primary', branding.primaryColor);
+            document.documentElement.style.setProperty('--coral', branding.primaryColor);
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.orgId]);
 
   useEffect(() => {
     if (!authUser?.orgId) return;
@@ -75,6 +98,16 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Open menu">
             <Menu className="h-5 w-5" />
           </Button>
+          {branding && (branding.logoUrl || branding.displayName) && (
+            <div className="hidden md:flex items-center gap-2 min-w-0" aria-label="Branding">
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt="Organization logo" className="h-7 w-7 object-contain rounded" />
+              ) : null}
+              {branding.displayName ? (
+                <span className="font-semibold truncate max-w-[160px]">{branding.displayName}</span>
+              ) : null}
+            </div>
+          )}
           <div className="relative hidden sm:block">
             <Label htmlFor="header-search" className="sr-only">Search violations and projects</Label>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />

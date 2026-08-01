@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { logger } from '@/lib/error-logger';
 import { requireAuth, requireProjectAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 import { isValidCron, getNextRun } from '@/lib/cron';
 
 // GET /api/schedule - Get scheduled scans
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const access = await requireProjectAccess(request, projectId);
+    const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.MANAGE_SCHEDULES });
     if (access instanceof NextResponse) return access;
 
     // Calculate next scan time
@@ -206,7 +207,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const access = await requireProjectAccess(request, projectId);
+    const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.MANAGE_SCHEDULES });
     if (access instanceof NextResponse) return access;
 
     const project = await db.project.update({

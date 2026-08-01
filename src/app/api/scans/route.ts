@@ -5,6 +5,7 @@ import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimit
 import { enqueueScan } from '@/lib/queue';
 import { logger } from '@/lib/error-logger';
 import { requireAuth, requireVerifiedEmail, requireProjectAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // GET /api/scans - List scans
 export async function GET(request: NextRequest) {
@@ -79,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Handle manual HTML upload (inline, no queue needed)
     if (html) {
-      const access = await requireProjectAccess(request, projectId);
+      const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.RUN_SCANS });
       if (access instanceof NextResponse) return access;
       return handleHtmlScan(projectId, html);
     }
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const access = await requireProjectAccess(request, projectId);
+    const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.RUN_SCANS });
     if (access instanceof NextResponse) return access;
 
     const project = await db.project.findUnique({ where: { id: projectId } });

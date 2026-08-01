@@ -23,6 +23,7 @@ model Organization {
   projects             Project[]
   users                User[]
   teamInvites          TeamInvite[]
+  customRoles          CustomRole[]
 }
 
 model User {
@@ -32,6 +33,7 @@ model User {
   name                 String?
   password             String?
   role                 String       @default("member")
+  customRoleId         String?
   avatar               String?
   githubToken          String?
   emailVerifiedAt      DateTime?
@@ -41,6 +43,25 @@ model User {
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
   organization         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  customRole           CustomRole?  @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+}
+
+// Org-defined roles: an owner/admin can create roles with a subset of
+// permissions and assign them to members. Custom roles layer on top of the
+// built-in owner/admin/member tiers (member tier is the base).
+model CustomRole {
+  id          String   @id @default(cuid())
+  orgId       String
+  name        String
+  description String?
+  permissions String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  users       User[]
+
+  @@unique([orgId, name])
+  @@index([orgId])
 }
 
 model Project {

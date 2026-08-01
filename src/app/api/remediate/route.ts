@@ -4,6 +4,7 @@ import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimit
 import { logger } from '@/lib/error-logger';
 import { generateRemediation, WCAG_RULES } from './remediation';
 import { requireVerifiedEmail } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // POST /api/remediate - Generate AI remediation for a violation
 export async function POST(request: NextRequest) {
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const auth = await requireVerifiedEmail(request);
+    const auth = await requireVerifiedEmail(request, { permission: PERMISSIONS.GENERATE_REMEDIATION });
     if (auth instanceof NextResponse) return auth;
 
     // Get the violation from the database (scoped to the user's org)

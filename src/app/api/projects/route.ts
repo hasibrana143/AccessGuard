@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // GET /api/projects - List all projects for the authenticated user's org
 export async function GET(request: NextRequest) {
@@ -103,7 +104,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const access = await requireOrgAccess(request, orgSlug);
+    const access = await requireOrgAccess(request, orgSlug, { permission: PERMISSIONS.CREATE_PROJECTS });
     if (access instanceof NextResponse) return access;
     const org = access.org;
 
@@ -178,7 +179,7 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    const access = await requireProjectAccess(request, id);
+    const access = await requireProjectAccess(request, id, { permission: PERMISSIONS.DELETE_PROJECTS });
     if (access instanceof NextResponse) return access;
 
     await db.project.update({
@@ -202,7 +203,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { id, scanConfig, crawlConfig, name, description, url } = body;
 
-    const access = await requireProjectAccess(request, id);
+    const access = await requireProjectAccess(request, id, { permission: PERMISSIONS.CREATE_PROJECTS });
     if (access instanceof NextResponse) return access;
 
     const updateData: Record<string, unknown> = {};

@@ -6,12 +6,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getPendingInvites, cancelTeamInvite } from '@/lib/team';
 import { logger } from '@/lib/error-logger';
-import { requireRole } from '@/lib/rbac';
+import { requirePermission } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // GET /api/team/pending-invites - List pending invites
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(request, ['admin', 'owner']);
+    const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
 
     // Get pending invites
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
 // DELETE /api/team/pending-invites - Cancel an invite (admin or owner only)
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await requireRole(request, ['admin', 'owner']);
+    const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
 
     // Parse request body

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { logger } from '@/lib/error-logger';
-import { requireOrgAccess, requireRole } from '@/lib/rbac';
+import { requireOrgAccess, requirePermission, requireVerifiedEmail } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // GET /api/settings - Get organization settings
 export async function GET(request: NextRequest) {
@@ -77,7 +78,15 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { orgId, settings } = body;
 
-    const access = await requireRole(request, ['admin', 'owner']);
+    // Profile + notification preferences are available to every member;
+    // org-level settings (branding, webhooks, plan data) need manage_settings.
+    const memberEditable = new Set(['name', 'email', 'alerts']);
+    const requestedKeys = Object.keys(settings || {});
+    const needsPermission = requestedKeys.some((k) => !memberEditable.has(k));
+
+    const access = needsPermission
+      ? await requirePermission(request, PERMISSIONS.MANAGE_SETTINGS)
+      : await requireVerifiedEmail(request);
     if (access instanceof NextResponse) return access;
     if (orgId && orgId !== access.user.orgId) {
       return NextResponse.json(

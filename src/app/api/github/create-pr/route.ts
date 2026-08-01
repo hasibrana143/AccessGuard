@@ -11,6 +11,7 @@ import {
 } from '@/lib/github';
 import { logger } from '@/lib/error-logger';
 import { requireVerifiedEmail } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 import {
   createFixBranchName,
   generatePrTitle,
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const auth = await requireVerifiedEmail(request);
+    const auth = await requireVerifiedEmail(request, { permission: PERMISSIONS.CREATE_PR });
     if (auth instanceof NextResponse) return auth;
 
     // Fetch violations (scoped to the user's org)

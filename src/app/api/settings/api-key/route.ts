@@ -3,7 +3,8 @@ import { randomBytes } from 'crypto';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { encryptSecret, decryptSecret, isEncrypted } from '@/lib/crypto';
-import { requireAuth, requireRole } from '@/lib/rbac';
+import { requireAuth, requirePermission } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // GET /api/settings/api-key - Get the org's API key (masked)
 export async function GET(request: NextRequest) {
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
 // POST /api/settings/api-key - Generate a new API key (admin or owner only)
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRole(request, ['admin', 'owner']);
+    const auth = await requirePermission(request, PERMISSIONS.MANAGE_SETTINGS);
     if (auth instanceof NextResponse) return auth;
 
     const body = await request.json();

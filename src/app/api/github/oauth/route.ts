@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { requireOrgAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
   const orgId = searchParams.get('orgId');
   const redirect = searchParams.get('redirect') || '/dashboard';
 
-  const access = await requireOrgAccess(request, orgId);
+  const access = await requireOrgAccess(request, orgId, { permission: PERMISSIONS.MANAGE_GITHUB });
   if (access instanceof NextResponse) return access;
 
   // Generate state for CSRF protection

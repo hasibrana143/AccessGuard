@@ -565,4 +565,4 @@ Do not omit any entity.
 - ERD documented at `docs/design/enterprise-db-architecture/ERD.md`.
 - Demo seed ships WCAG rules plus a demo project/scan/violations set.
 - JSON string columns remain in place where the legacy design used them.
-- Not yet implemented: partitioning, read replicas, GIN/JSONB indexes, and archiving jobs.
+- Not yet implemented: partitioning, read replicas, GIN/JSONB indexes, and archiving jobs. Design for partitioning/read replicas/archiving documented at `docs/design/enterprise-db-architecture/PARTITIONING.md`; schema is partitioning-ready (see that doc §4).

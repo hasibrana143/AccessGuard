@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireOrgAccess, requireRole } from '@/lib/rbac';
+import { requireOrgAccess, requirePermission } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // GET /api/team/members?orgSlug=... - List team members (own org only)
 export async function GET(request: NextRequest) {
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     where: { id: access.org.id },
     include: {
       users: {
-        select: { id: true, email: true, name: true, role: true, avatar: true, createdAt: true }
+        select: { id: true, email: true, name: true, role: true, avatar: true, customRoleId: true, createdAt: true }
       }
     }
   });
@@ -26,29 +27,53 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ success: true, data: org.users });
 }
 
-// PATCH /api/team/members - Update member role (admin or owner only)
+// PATCH /api/team/members - Update member role or custom role (manage_team)
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireRole(request, ['admin', 'owner']);
+    const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
 
-    const { userId, role } = await request.json();
+    const { userId, role, customRoleId } = await request.json();
 
-    if (!userId || !role) {
-      return NextResponse.json({ success: false, error: 'User ID and role are required' }, { status: 400 });
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
     }
 
     const target = await db.user.findFirst({
       where: { id: userId, orgId: auth.user.orgId },
-      select: { id: true },
+      select: { id: true, role: true },
     });
     if (!target) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
+    const data: Record<string, unknown> = {};
+    if (role !== undefined) {
+      if (!['admin', 'owner', 'member'].includes(role)) {
+        return NextResponse.json({ success: false, error: 'Invalid role' }, { status: 400 });
+      }
+      if (role === 'owner' && target.role !== 'owner' && auth.user.role !== 'owner') {
+        return NextResponse.json({ success: false, error: 'Only an owner can promote to owner' }, { status: 403 });
+      }
+      data.role = role;
+    }
+    if (customRoleId !== undefined) {
+      if (customRoleId === null) {
+        data.customRoleId = null;
+      } else {
+        const customRole = await db.customRole.findFirst({
+          where: { id: customRoleId, orgId: auth.user.orgId },
+        });
+        if (!customRole) {
+          return NextResponse.json({ success: false, error: 'Custom role not found' }, { status: 404 });
+        }
+        data.customRoleId = customRoleId;
+      }
+    }
+
     await db.user.update({
       where: { id: userId },
-      data: { role }
+      data,
     });
 
     return NextResponse.json({ success: true });
@@ -60,7 +85,7 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/team/members - Remove member (admin or owner only)
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await requireRole(request, ['admin', 'owner']);
+    const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
 
     const { searchParams } = new URL(request.url);

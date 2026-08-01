@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireVerifiedEmail } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 import { PRICING_PLANS, type PlanType, type SubscriptionStatus } from '@/lib/stripe';
 
 // GET /api/stripe/subscription - Get subscription status
@@ -62,7 +63,7 @@ export async function GET() {
 // POST /api/stripe/subscription - Create subscription (demo)
 export async function POST(request: NextRequest) {
   try {
-    const verified = await requireVerifiedEmail(request);
+    const verified = await requireVerifiedEmail(request, { permission: PERMISSIONS.MANAGE_BILLING });
     if (verified instanceof NextResponse) return verified;
 
     const { priceId } = await request.json();
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
 // DELETE /api/stripe/subscription - Cancel subscription (demo)
 export async function DELETE(request: NextRequest) {
   try {
-    const verified = await requireVerifiedEmail(request);
+    const verified = await requireVerifiedEmail(request, { permission: PERMISSIONS.MANAGE_BILLING });
     if (verified instanceof NextResponse) return verified;
 
     await db.organization.update({

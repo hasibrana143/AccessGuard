@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { requireAuth, requireVerifiedEmail, requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // GET /api/violations - List violations with filters (scoped to the user's org)
 export async function GET(request: NextRequest) {
@@ -88,7 +89,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const auth = await requireVerifiedEmail(request);
+    const auth = await requireVerifiedEmail(request, { permission: PERMISSIONS.MANAGE_VIOLATIONS });
     if (auth instanceof NextResponse) return auth;
 
     const existing = await db.violation.findFirst({

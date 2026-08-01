@@ -160,6 +160,19 @@ async function main() {
   })
   console.log('Created test user (email: test@accessguard.dev, password: testpass123)')
 
+  // Demo custom role showing how permission-scoped roles work
+  await prisma.customRole.upsert({
+    where: { orgId_name: { orgId: defaultOrg.id, name: 'Auditor' } },
+    update: {},
+    create: {
+      orgId: defaultOrg.id,
+      name: 'Auditor',
+      description: 'Read-only reviewer: view projects, run scans and generate reports',
+      permissions: JSON.stringify(['view_projects', 'run_scans', 'generate_reports', 'manage_violations']),
+    },
+  })
+  console.log('Created demo custom role (Auditor)')
+
   // Create demo project + scan history so the dashboard has data to show
   const existingProjects = await prisma.project.count({
     where: { orgId: defaultOrg.id }

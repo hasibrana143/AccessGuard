@@ -4,6 +4,7 @@ import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimit
 import { logger } from '@/lib/error-logger';
 import { randomBytes } from 'crypto';
 import { requireProjectAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // POST /api/reports/share - Create a shareable report
 export async function POST(request: NextRequest) {
@@ -141,7 +142,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const access = await requireProjectAccess(request, projectId);
+    const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.GENERATE_REPORTS });
     if (access instanceof NextResponse) return access;
 
     const reports = await db.complianceReport.findMany({
