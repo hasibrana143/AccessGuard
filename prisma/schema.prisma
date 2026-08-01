@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -26,17 +26,21 @@ model Organization {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  orgId        String
-  email        String       @unique
-  name         String?
-  password     String?
-  role         String       @default("member")
-  avatar       String?
-  githubToken  String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id                   String       @id @default(cuid())
+  orgId                String
+  email                String       @unique
+  name                 String?
+  password             String?
+  role                 String       @default("member")
+  avatar               String?
+  githubToken          String?
+  emailVerifiedAt      DateTime?
+  emailVerificationToken String?
+  mfaSecret            String?
+  mfaEnabledAt         DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  organization         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 }
 
 model Project {
@@ -53,6 +57,7 @@ model Project {
   riskScore         Int?
   nextScheduledScan DateTime?
   isActive          Boolean          @default(true)
+  deletedAt         DateTime?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   organization      Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -60,6 +65,11 @@ model Project {
   violations        Violation[]
   complianceReports ComplianceReport[]
   scheduledScans    ScheduledScan[]
+
+  @@index([orgId, isActive])
+  @@index([orgId, createdAt])
+  @@index([isActive, nextScheduledScan])
+  @@index([deletedAt])
 }
 
 model Scan {
@@ -73,8 +83,14 @@ model Scan {
   summary         String?
   errorMessage    String?
   createdAt       DateTime    @default(now())
+  deletedAt       DateTime?
   project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   violations      Violation[]
+
+  @@index([projectId, status])
+  @@index([projectId, startedAt])
+  @@index([status, startedAt])
+  @@index([deletedAt])
 }
 
 model Violation {
@@ -94,9 +110,16 @@ model Violation {
   status            String    @default("open")
   githubPrUrl       String?
   createdAt         DateTime  @default(now())
-  fixedAt           DateTime?
-  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  scan              Scan      @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  fixedAt         DateTime?
+  deletedAt       DateTime?
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scan            Scan      @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+  @@index([projectId, severity])
+  @@index([projectId, createdAt])
+  @@index([scanId, severity])
+  @@index([deletedAt])
 }
 
 model GithubConnection {
@@ -117,6 +140,9 @@ model AuditLog {
   metadata     String       @default("{}")
   createdAt    DateTime     @default(now())
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@index([orgId, action])
 }
 
 model PasswordReset {
@@ -139,6 +165,8 @@ model TeamInvite {
   expiresAt  DateTime
   createdAt  DateTime @default(now())
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, email])
 }
 
 model ComplianceReport {
@@ -154,14 +182,19 @@ model ComplianceReport {
   fileUrl         String?
   generatedAt     DateTime?
   expiresAt       DateTime?
+  deletedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+  @@index([projectId, createdAt])
+  @@index([deletedAt])
 }
 
 model ScheduledScan {
   id             String   @id @default(cuid())
-  projectId      String
+  projectId      String   @unique
   frequency      String   @default("weekly")
   cron           String   @default("0 2 * * 1")
   nextRunAt      DateTime
@@ -170,6 +203,8 @@ model ScheduledScan {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([isActive, nextRunAt])
 }
 
 model WcagRule {

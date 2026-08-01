@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getPullRequestStatus, getMultiplePRStatuses, isGitHubConfigured } from '@/lib/github';
 import { parsePrUrl } from '@/lib/github-pr';
+import { logger } from '@/lib/error-logger';
 
 // GET /api/github/pr-status - Get PR status for violations
 export async function GET(request: NextRequest) {
@@ -34,33 +35,27 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // Check if GitHub is configured
-      if (!isGitHubConfigured()) {
-        // Return mock data in demo mode
+      const parsedPrs = prUrlsFromDb
+        .map(url => parsePrUrl(url))
+        .filter(Boolean)
+        .map(p => ({ owner: p!.owner, repo: p!.repo, prNumber: p!.pullNumber }));
+
+      if (!isGitHubConfigured() || parsedPrs.length === 0) {
         const mockStatuses: Record<string, { state: string; merged: boolean }> = {};
-        for (const url of prUrlsFromDb) {
+        for (const pr of parsedPrs) {
+          const url = `https://github.com/${pr.owner}/${pr.repo}/pull/${pr.prNumber}`;
           mockStatuses[url] = { state: 'open', merged: false };
         }
-        return NextResponse.json({
-          success: true,
-          demoMode: true,
-          data: mockStatuses,
-        });
+        return NextResponse.json({ success: true, demoMode: true, data: mockStatuses });
       }
 
-      // Get GitHub token
       const githubToken = request.headers.get('x-github-token') || process.env.GITHUB_TOKEN;
-      
+
       if (!githubToken) {
-        return NextResponse.json({
-          success: true,
-          demoMode: true,
-          data: {},
-        });
+        return NextResponse.json({ success: true, demoMode: true, data: {} });
       }
 
-      // Fetch PR statuses
-      const statuses = await getMultiplePRStatuses(githubToken, prUrlsFromDb);
+      const statuses = await getMultiplePRStatuses(githubToken, parsedPrs);
 
       return NextResponse.json({
         success: true,
@@ -93,7 +88,11 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      const statuses = await getMultiplePRStatuses(githubToken, prUrls);
+      const parsedPrUrls = (prUrls || [])
+        .map(url => parsePrUrl(url))
+        .filter(Boolean)
+        .map(p => ({ owner: p!.owner, repo: p!.repo, prNumber: p!.pullNumber }));
+      const statuses = await getMultiplePRStatuses(githubToken, parsedPrUrls);
 
       return NextResponse.json({
         success: true,
@@ -170,8 +169,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fetch all PR statuses
-    const statuses = await getMultiplePRStatuses(githubToken, allPrUrls);
+    const parsedAllPrs = allPrUrls
+      .map(url => parsePrUrl(url))
+      .filter(Boolean)
+      .map(p => ({ owner: p!.owner, repo: p!.repo, prNumber: p!.pullNumber }));
+
+    const statuses = await getMultiplePRStatuses(githubToken, parsedAllPrs);
 
     const prs = allPrUrls.map(url => ({
       url,
@@ -199,7 +202,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching PR status:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch PR status' },
       { status: 500 }
@@ -256,7 +259,7 @@ export async function POST(request: NextRequest) {
       data: status,
     });
   } catch (error) {
-    console.error('Error fetching PR status:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch PR status' },
       { status: 500 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
 import { createCustomer } from '@/lib/stripe';
+import { logger } from '@/lib/error-logger';
 
 // POST /api/stripe/create-customer - Create a Stripe customer and link to organization
 export async function POST(request: NextRequest) {
@@ -42,8 +43,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user is admin
-    if (user.role !== 'admin') {
+    // Check if user is admin or owner
+    if (user.role !== 'admin' && user.role !== 'owner') {
       return NextResponse.json(
         { success: false, error: 'Only admins can create billing accounts' },
         { status: 403 }
@@ -74,12 +75,15 @@ export async function POST(request: NextRequest) {
     // Create Stripe customer
     const customer = await createCustomer(
       email ?? user.email,
-      name ?? user.organization.name,
-      {
-        orgId: user.orgId,
-        userId: user.id,
-      }
+      name ?? user.organization.name ?? undefined
     );
+
+    if (!customer) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create customer' },
+        { status: 500 }
+      );
+    }
 
     // Update organization with Stripe customer ID
     await db.organization.update({
@@ -98,7 +102,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Create customer error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to create customer' },
       { status: 500 }

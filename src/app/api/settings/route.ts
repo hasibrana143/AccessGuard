@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
+import { logger } from '@/lib/error-logger';
+import { requireOrgAccess, requireRole } from '@/lib/rbac';
 
 // GET /api/settings - Get organization settings
 export async function GET(request: NextRequest) {
   const clientId = getClientIdentifier(request);
-  const rateResult = checkRateLimit(`settings-get:${clientId}`, rateLimits.default);
+  const rateResult = await checkRateLimit(`settings-get:${clientId}`, rateLimits.default);
   
   if (!rateResult.success) {
     return createRateLimitResponse(rateResult);
@@ -13,17 +15,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('orgId');
+    const orgParam = searchParams.get('orgId');
 
-    if (!orgId) {
-      return NextResponse.json(
-        { success: false, error: 'Organization ID is required' },
-        { status: 400 }
-      );
-    }
+    const access = await requireOrgAccess(request, orgParam);
+    if (access instanceof NextResponse) return access;
 
     const org = await db.organization.findUnique({
-      where: { id: orgId },
+      where: { id: access.org.id },
       select: {
         id: true,
         name: true,
@@ -58,7 +56,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching settings:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch settings' },
       { status: 500 }
@@ -69,7 +67,7 @@ export async function GET(request: NextRequest) {
 // PATCH /api/settings - Update organization settings
 export async function PATCH(request: NextRequest) {
   const clientId = getClientIdentifier(request);
-  const rateResult = checkRateLimit(`settings-patch:${clientId}`, rateLimits.default);
+  const rateResult = await checkRateLimit(`settings-patch:${clientId}`, rateLimits.default);
   
   if (!rateResult.success) {
     return createRateLimitResponse(rateResult);
@@ -79,15 +77,16 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const { orgId, settings } = body;
 
-    if (!orgId) {
+    const access = await requireRole(request, ['admin', 'owner']);
+    if (access instanceof NextResponse) return access;
+    if (orgId && orgId !== access.user.orgId) {
       return NextResponse.json(
-        { success: false, error: 'Organization ID is required' },
-        { status: 400 }
+        { success: false, error: 'Insufficient permissions' },
+        { status: 403 }
       );
     }
-
     const org = await db.organization.findUnique({
-      where: { id: orgId },
+      where: { id: access.user.orgId },
     });
 
     if (!org) {
@@ -102,14 +101,14 @@ export async function PATCH(request: NextRequest) {
     const newSettings = { ...currentSettings, ...settings };
 
     await db.organization.update({
-      where: { id: orgId },
+      where: { id: access.user.orgId },
       data: { settings: JSON.stringify(newSettings) },
     });
 
     // Create audit log
     await db.auditLog.create({
       data: {
-        orgId,
+        orgId: access.user.orgId,
         action: 'settings_updated',
         metadata: JSON.stringify({
           updatedFields: Object.keys(settings),
@@ -122,7 +121,7 @@ export async function PATCH(request: NextRequest) {
       data: newSettings,
     });
   } catch (error) {
-    console.error('Error updating settings:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to update settings' },
       { status: 500 }

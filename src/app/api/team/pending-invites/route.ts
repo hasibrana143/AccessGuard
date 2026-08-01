@@ -4,36 +4,21 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
 import { getPendingInvites, cancelTeamInvite } from '@/lib/team';
+import { logger } from '@/lib/error-logger';
+import { requireRole } from '@/lib/rbac';
 
 // GET /api/team/pending-invites - List pending invites
 export async function GET(request: NextRequest) {
   try {
-    // Authenticate user
-    const authHeader = request.headers.get('Authorization');
-    const token = extractTokenFromHeader(authHeader);
-
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-
-    const payload = verifyToken(token);
-    if (!payload) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid or expired token' },
-        { status: 401 }
-      );
-    }
+    const auth = await requireRole(request, ['admin', 'owner']);
+    if (auth instanceof NextResponse) return auth;
 
     // Get pending invites
-    const invites = await getPendingInvites(payload.orgId);
+    const invites = await getPendingInvites(auth.user.orgId);
 
     // Get inviter names
-    const inviterIds = [...new Set(invites.map(i => i.invitedBy))];
+    const inviterIds = [...new Set(invites.map(i => i.invitedBy).filter(Boolean))] as string[];
     const inviters = await db.user.findMany({
       where: { id: { in: inviterIds } },
       select: { id: true, name: true, email: true },
@@ -47,7 +32,7 @@ export async function GET(request: NextRequest) {
       role: invite.role,
       expiresAt: invite.expiresAt,
       createdAt: invite.createdAt,
-      invitedBy: inviterMap.get(invite.invitedBy) || null,
+      invitedBy: invite.invitedBy ? inviterMap.get(invite.invitedBy) || null : null,
     }));
 
     return NextResponse.json({
@@ -56,7 +41,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Get pending invites error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to get pending invites' },
       { status: 500 }
@@ -64,48 +49,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// DELETE /api/team/pending-invites - Cancel an invite
+// DELETE /api/team/pending-invites - Cancel an invite (admin or owner only)
 export async function DELETE(request: NextRequest) {
   try {
-    // Authenticate user
-    const authHeader = request.headers.get('Authorization');
-    const token = extractTokenFromHeader(authHeader);
-
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-
-    const payload = verifyToken(token);
-    if (!payload) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid or expired token' },
-        { status: 401 }
-      );
-    }
-
-    // Get current user
-    const currentUser = await db.user.findUnique({
-      where: { id: payload.userId },
-      select: { id: true, role: true, orgId: true },
-    });
-
-    if (!currentUser) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    // Only admins can cancel invites
-    if (currentUser.role !== 'admin') {
-      return NextResponse.json(
-        { success: false, error: 'Only admins can cancel invites' },
-        { status: 403 }
-      );
-    }
+    const auth = await requireRole(request, ['admin', 'owner']);
+    if (auth instanceof NextResponse) return auth;
 
     // Parse request body
     const body = await request.json();
@@ -119,16 +67,16 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Cancel the invite
-    await cancelTeamInvite(inviteId, currentUser.orgId);
+    await cancelTeamInvite(inviteId, auth.user.orgId);
 
     // Log the action
     await db.auditLog.create({
       data: {
-        orgId: currentUser.orgId,
+        orgId: auth.user.orgId,
         action: 'team_invite_cancelled',
         metadata: JSON.stringify({
           inviteId,
-          cancelledBy: currentUser.id,
+          cancelledBy: auth.user.id,
         }),
       },
     });
@@ -139,7 +87,7 @@ export async function DELETE(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Cancel invite error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to cancel invite' },
       { status: 500 }

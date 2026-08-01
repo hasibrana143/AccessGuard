@@ -1,23 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
+import { randomBytes, createHash } from 'crypto';
 import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse } from '@/lib/rate-limit';
+import { logger } from '@/lib/error-logger';
+import { sendVerificationEmail, isEmailConfigured } from '@/lib/email';
 
-// Simple hash function for demo (in production, use bcrypt)
-async function hashPassword(password: string): Promise<string> {
-  // In production, use: const bcrypt = require('bcrypt'); return await bcrypt.hash(password, 10)
-  // For now, use a simple encoding (NOT SECURE - only for demo)
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + 'accessguard_salt_2024');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }
 
 // POST /api/auth/register
 export async function POST(request: NextRequest) {
   // Rate limiting
   const clientId = getClientIdentifier(request);
-  const rateResult = checkRateLimit(`auth-register:${clientId}`, { interval: 60000, limit: 3 });
+  const rateResult = await checkRateLimit(`auth-register:${clientId}`, { interval: 60000, limit: 3 });
   
   if (!rateResult.success) {
     return createRateLimitResponse(rateResult);
@@ -94,8 +91,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Hash password
-    const hashedPassword = await hashPassword(password);
+    // Hash password with bcrypt
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    // Generate email verification token
+    const verificationToken = randomBytes(32).toString('hex');
+    const hashedVerificationToken = hashToken(verificationToken);
 
     // Create user
     const user = await db.user.create({
@@ -104,7 +105,8 @@ export async function POST(request: NextRequest) {
         name,
         password: hashedPassword,
         role: 'admin',
-        orgId: organization.id
+        orgId: organization.id,
+        emailVerificationToken: hashedVerificationToken
       },
       include: {
         organization: {
@@ -118,6 +120,12 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    // Send verification email
+    const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}`;
+    if (isEmailConfigured()) {
+      await sendVerificationEmail(user.email, user.name || 'there', verifyUrl);
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -128,12 +136,13 @@ export async function POST(request: NextRequest) {
           role: user.role,
           organization: user.organization
         },
-        token: `token-${user.id}-${Date.now()}`
+        token: `token-${user.id}-${Date.now()}`,
+        ...(isEmailConfigured() ? {} : { demoVerificationToken: verificationToken })
       }
     });
 
   } catch (error) {
-    console.error('Registration error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Registration failed. Please try again.' },
       { status: 500 }

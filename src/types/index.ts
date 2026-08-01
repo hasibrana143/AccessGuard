@@ -1,10 +1,21 @@
 // AccessGuard Types
 
-export type View = 'landing' | 'login' | 'register' | 'dashboard' | 'projects' | 'violations' | 'scans' | 'reports' | 'settings';
+export type View = 'landing' | 'login' | 'register' | 'dashboard' | 'projects' | 'violations' | 'scans' | 'reports' | 'audit-logs' | 'team' | 'admin' | 'settings';
+
+export interface User {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  orgId: string;
+  orgSlug: string | null;
+  orgName: string | null;
+  avatar?: string | null;
+}
 
 export type Severity = 'critical' | 'serious' | 'moderate' | 'minor';
 export type ViolationStatus = 'open' | 'fixed' | 'ignored' | 'false_positive';
-export type ScanStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type ScanStatus = 'pending' | 'queued' | 'running' | 'completed' | 'failed';
 
 export interface Violation {
   id: string;
@@ -133,6 +144,11 @@ export interface ViolationStats {
     fixed: number;
     ignored: number;
     falsePositive: number;
+  };
+  fixRate: {
+    withFix: number;
+    total: number;
+    percentage: number;
   };
   topRules: Array<{ ruleId: string; count: number }>;
   recent: Violation[];

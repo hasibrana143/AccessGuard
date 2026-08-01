@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/error-logger';
+import { requireOrgAccess } from '@/lib/rbac';
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
@@ -10,15 +12,11 @@ export async function GET(request: NextRequest) {
   const orgId = searchParams.get('orgId');
   const redirect = searchParams.get('redirect') || '/dashboard';
 
-  if (!orgId) {
-    return NextResponse.json(
-      { success: false, error: 'Organization ID is required' },
-      { status: 400 }
-    );
-  }
+  const access = await requireOrgAccess(request, orgId);
+  if (access instanceof NextResponse) return access;
 
   // Generate state for CSRF protection
-  const state = Buffer.from(JSON.stringify({ orgId, redirect })).toString('base64');
+  const state = Buffer.from(JSON.stringify({ orgId: access.org.id, redirect })).toString('base64');
 
   const githubAuthUrl = new URL('https://github.com/login/oauth/authorize');
   githubAuthUrl.searchParams.set('client_id', GITHUB_CLIENT_ID);
@@ -151,7 +149,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('GitHub OAuth error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'GitHub OAuth failed' },
       { status: 500 }

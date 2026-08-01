@@ -2,6 +2,7 @@
 // Helper functions for creating PRs with accessibility fixes
 
 import type { Severity } from '@/types';
+import { validateFixForRule } from '@/lib/fix-validation';
 
 // Flexible violation type that works with both strict types and Prisma results
 export type ViolationForPR = {
@@ -16,6 +17,17 @@ export type ViolationForPR = {
   remediationCode?: string | null;
   aiExplanation?: string | null;
   project?: { name: string; url: string };
+};
+
+// Minimal shape required for file-level fix application
+export type FileFixViolation = {
+  ruleId: string;
+  severity?: string;
+  description?: string;
+  elementSelector?: string | null;
+  elementHtml?: string | null;
+  remediationCode?: string | null;
+  aiExplanation?: string | null;
 };
 
 // Generate a branch name for accessibility fixes
@@ -137,47 +149,122 @@ export function generatePrBody(violations: ViolationForPR[], project?: { name: s
   return lines.join('\n');
 }
 
+// Validate AI-generated remediation code before applying it to source files
+export function validateRemediation(
+  remediationCode: string | null | undefined,
+  originalElementHtml?: string | null
+): { valid: boolean; reason?: string } {
+  if (!remediationCode || !remediationCode.trim()) {
+    return { valid: false, reason: 'empty remediation code' };
+  }
+
+  const code = remediationCode.trim();
+
+  if (code.length > 20_000) {
+    return { valid: false, reason: 'remediation code exceeds 20k characters' };
+  }
+
+  // No script injection
+  if (/<script[\s>]/i.test(code)) {
+    return { valid: false, reason: 'remediation code introduces a <script> tag' };
+  }
+
+  // No javascript: URI injection
+  if (/["']\s*javascript:\s*/i.test(code) || /\bjavascript:\/\//i.test(code)) {
+    return { valid: false, reason: 'remediation code contains a javascript: URI' };
+  }
+
+  // No event-handler injection if the original element had none
+  const newHandlers = [...code.matchAll(/\son[a-z]+="?/gi)].map((m) => m[0].toLowerCase());
+  const originalHandlers = originalElementHtml
+    ? [...originalElementHtml.matchAll(/\son[a-z]+="?/gi)].map((m) => m[0].toLowerCase())
+    : [];
+
+  const injectedHandlers = newHandlers.filter((h) => !originalHandlers.includes(h));
+  if (injectedHandlers.length > 0) {
+    return { valid: false, reason: `injects new event handler: ${injectedHandlers[0]}` };
+  }
+
+  // No unclosed HTML tags (rough balance check for common void-safe tags)
+  const tagNames = [...new Set([...code.matchAll(/<\/?([a-z][a-z0-9-]*)\b/gi)].map((m) => m[1].toLowerCase()))];
+  const voidTags = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+  for (const tag of tagNames) {
+    if (voidTags.has(tag)) continue;
+    const open = (code.match(new RegExp(`<${tag}(\\s[^>]*)?(?<!/)>`, 'gi')) || []).length;
+    const close = (code.match(new RegExp(`</${tag}\\s*>`, 'gi')) || []).length;
+    if (open > close) {
+      return { valid: false, reason: `unclosed <${tag}> tag in remediation code` };
+    }
+  }
+
+  return { valid: true };
+}
+
 // Apply fixes to file content
 export function applyFixesToFile(
   originalContent: string,
-  violations: ViolationForPR[],
+  violations: FileFixViolation[],
   filePath: string
 ): { content: string; fixesApplied: number; errors: string[] } {
   const errors: string[] = [];
   let content = originalContent;
   let fixesApplied = 0;
-  
-  // Sort violations by position (if we had it) - for now, just apply in order
-  // Group violations by element selector
-  const violationsBySelector = violations.reduce((acc, v) => {
-    if (v.elementSelector && v.remediationCode) {
-      if (!acc[v.elementSelector]) acc[v.elementSelector] = [];
-      acc[v.elementSelector].push(v);
+  const unmatched: FileFixViolation[] = [];
+
+  for (const v of violations) {
+    if (!v.remediationCode) continue;
+
+    const validation = validateRemediation(v.remediationCode, v.elementHtml);
+    if (!validation.valid) {
+      errors.push(`[${v.ruleId}] skipped: ${validation.reason}`);
+      continue;
     }
-    return acc;
-  }, {} as Record<string, ViolationForPR[]>);
-  
-  for (const [selector, selectorViolations] of Object.entries(violationsBySelector)) {
-    // For now, we'll create a comment block with the fixes
-    // A real implementation would parse the file and apply changes
-    const fixComment = generateFixComment(selector, selectorViolations, filePath);
-    
-    // Simple approach: add fixes as comments at the top of the file
-    // This is safer and allows developers to review and apply manually
+
+    const ruleCheck = validateFixForRule(v.ruleId, v.remediationCode, v.elementHtml);
+    if (!ruleCheck.valid) {
+      errors.push(`[${v.ruleId}] skipped (does not fix rule): ${ruleCheck.reason}`);
+      continue;
+    }
+
+    if (!v.elementHtml) {
+      unmatched.push(v);
+      continue;
+    }
+
+    // 1. Exact match replacement
+    if (content.includes(v.elementHtml)) {
+      content = content.replace(v.elementHtml, v.remediationCode);
+      fixesApplied++;
+      continue;
+    }
+
+    // 2. Trimmed match (leading/trailing whitespace differences)
+    const trimmedElem = v.elementHtml.trim();
+    const trimmedFix = v.remediationCode.trim();
+    if (trimmedElem && content.includes(trimmedElem)) {
+      content = content.replace(trimmedElem, trimmedFix);
+      fixesApplied++;
+      continue;
+    }
+
+    unmatched.push(v);
+  }
+
+  // Fallback for violations we could not apply: attach review comments at the top
+  if (unmatched.length > 0) {
+    const fixComment = generateFixComment(filePath, unmatched);
     if (!content.includes('AccessGuard Accessibility Fixes')) {
       content = fixComment + '\n\n' + content;
-      fixesApplied += selectorViolations.length;
     }
   }
-  
+
   return { content, fixesApplied, errors };
 }
 
 // Generate a fix comment block
 function generateFixComment(
-  selector: string,
-  violations: ViolationForPR[],
-  filePath: string
+  filePath: string,
+  violations: FileFixViolation[]
 ): string {
   const lines: string[] = [];
   
@@ -194,13 +281,12 @@ function generateFixComment(
   lines.push(`${commentStart}`);
   lines.push(' * AccessGuard Accessibility Fixes');
   lines.push(' * ');
-  lines.push(` * Element: ${selector}`);
   lines.push(` * File: ${filePath}`);
   lines.push(' * ');
   lines.push(' * Issues Found:');
   
   for (const v of violations) {
-    lines.push(` * - [${v.severity.toUpperCase()}] ${v.ruleId}: ${v.description}`);
+    lines.push(` * - [${(v.severity || 'N/A').toUpperCase()}] ${v.ruleId}: ${v.description || 'Accessibility violation'}`);
   }
   
   lines.push(' * ');

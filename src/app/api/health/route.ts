@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/error-logger';
 
 export async function GET() {
   try {
@@ -12,7 +13,7 @@ export async function GET() {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Health check failed:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json({
       status: 'unhealthy',
       database: 'disconnected',

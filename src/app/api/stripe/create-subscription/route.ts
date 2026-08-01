@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
 import { createSubscription, createCustomer, getStripePriceId } from '@/lib/stripe';
-import { type PlanId } from '@/lib/stripe-config';
+import { logger } from '@/lib/error-logger';
+type PlanId = 'starter' | 'agency' | 'enterprise';
 
 // POST /api/stripe/create-subscription - Create a subscription for an organization
 export async function POST(request: NextRequest) {
@@ -59,8 +60,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user is admin
-    if (user.role !== 'admin') {
+    // Only admins/owners can manage subscriptions
+    if (user.role !== 'admin' && user.role !== 'owner') {
       return NextResponse.json(
         { success: false, error: 'Only admins can manage subscriptions' },
         { status: 403 }
@@ -72,10 +73,13 @@ export async function POST(request: NextRequest) {
 
     if (!customerId) {
       // Create customer first
-      const customer = await createCustomer(user.email, user.organization.name, {
-        orgId: user.orgId,
-        userId: user.id,
-      });
+      const customer = await createCustomer(user.email, user.organization.name ?? undefined);
+      if (!customer) {
+        return NextResponse.json(
+          { success: false, error: 'Failed to create customer' },
+          { status: 500 }
+        );
+      }
       customerId = customer.id;
 
       // Update organization with customer ID
@@ -97,7 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine the price ID
-    const finalPriceId = priceId ?? (planId ? getStripePriceId(planId, interval) : null);
+    const finalPriceId = priceId ?? (planId ? getStripePriceId(planId) : null);
 
     if (!finalPriceId) {
       return NextResponse.json(
@@ -107,10 +111,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Create subscription
-    const { subscription, clientSecret } = await createSubscription(customerId, finalPriceId, {
-      orgId: user.orgId,
-      planId: planId ?? 'starter',
-    });
+    const subscription = await createSubscription(customerId, finalPriceId);
+
+    if (!subscription) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create subscription' },
+        { status: 500 }
+      );
+    }
 
     // Update organization with subscription ID (will be updated again on webhook)
     await db.organization.update({
@@ -126,12 +134,11 @@ export async function POST(request: NextRequest) {
       data: {
         subscriptionId: subscription.id,
         status: subscription.status,
-        clientSecret,
         customerId,
       },
     });
   } catch (error) {
-    console.error('Create subscription error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to create subscription' },
       { status: 500 }

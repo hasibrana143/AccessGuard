@@ -13,12 +13,10 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log the error to an error reporting service
-    console.error('Global error:', error);
   }, [error]);
 
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body className="bg-background text-foreground">
         <div className="min-h-screen flex items-center justify-center p-4">
           <Card className="w-full max-w-lg border-destructive/50">

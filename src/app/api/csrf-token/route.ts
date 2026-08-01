@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
+import { logger } from '@/lib/error-logger';
 
 // GET /api/csrf-token - Get CSRF token for the current session
 // This endpoint returns the CSRF token embedded in the JWT
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('CSRF token error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to get CSRF token' },
       { status: 500 }

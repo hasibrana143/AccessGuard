@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getGitHubOAuthUrl, generateInviteToken } from '@/lib/github';
+import { getGitHubOAuthUrl } from '@/lib/github';
+import crypto from 'crypto';
 
-// GET /api/github/connect - Redirect to GitHub OAuth
 export async function GET() {
-  const state = generateInviteToken();
+  const state = crypto.randomBytes(32).toString('hex');
   const url = getGitHubOAuthUrl(state);
   return NextResponse.redirect(url);
 }

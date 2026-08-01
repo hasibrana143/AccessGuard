@@ -28,7 +28,6 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo);
     this.setState({ errorInfo });
   }
 
@@ -51,10 +50,6 @@ export class ErrorBoundary extends Component<Props, State> {
       userAgent: navigator.userAgent,
     };
 
-    // In production, send to error tracking service
-    console.log('Bug report:', bugReport);
-
-    // For now, copy to clipboard
     navigator.clipboard.writeText(JSON.stringify(bugReport, null, 2));
     alert('Error details copied to clipboard. Please report to support.');
   };

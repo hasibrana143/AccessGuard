@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
 import { cancelSubscription, reactivateSubscription, getSubscription } from '@/lib/stripe';
+import { logger } from '@/lib/error-logger';
 
 // POST /api/stripe/cancel-subscription - Cancel or reactivate a subscription
 export async function POST(request: NextRequest) {
@@ -49,8 +50,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user is admin
-    if (user.role !== 'admin') {
+    // Check if user is admin or owner
+    if (user.role !== 'admin' && user.role !== 'owner') {
       return NextResponse.json(
         { success: false, error: 'Only admins can manage subscriptions' },
         { status: 403 }
@@ -89,10 +90,15 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Reactivate the subscription
       const reactivated = await reactivateSubscription(subscriptionId);
-      
-      // Update organization status
+
+      if (!reactivated) {
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to reactivate subscription',
+        }, { status: 500 });
+      }
+
       await db.organization.update({
         where: { id: user.orgId },
         data: {
@@ -111,10 +117,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Cancel subscription
-    const canceled = await cancelSubscription(subscriptionId, immediately);
+    const canceled = await cancelSubscription(subscriptionId);
 
-    // Update organization
+    if (!canceled) {
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to cancel subscription',
+      }, { status: 500 });
+    }
+
     const updateData: {
       subscriptionStatus: string;
       plan?: string;
@@ -124,7 +135,6 @@ export async function POST(request: NextRequest) {
       subscriptionStatus: canceled.status,
     };
 
-    // If canceled immediately, reset to starter plan
     if (immediately || canceled.status === 'canceled') {
       updateData.plan = 'starter';
       updateData.stripeSubscriptionId = null;
@@ -146,14 +156,14 @@ export async function POST(request: NextRequest) {
         subscriptionId,
         status: canceled.status,
         cancelAtPeriodEnd: canceled.cancel_at_period_end,
-        currentPeriodEnd: canceled.current_period_end,
+        currentPeriodEnd: canceled['current_period_end'],
         message: immediately
           ? 'Subscription canceled immediately'
           : 'Subscription will be canceled at the end of the billing period',
       },
     });
   } catch (error) {
-    console.error('Cancel subscription error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to cancel subscription' },
       { status: 500 }
@@ -232,12 +242,12 @@ export async function GET(request: NextRequest) {
         subscriptionId,
         status: subscription.status,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
-        currentPeriodEnd: subscription.current_period_end,
+        currentPeriodEnd: subscription['current_period_end'],
         cancelAt: subscription.cancel_at,
       },
     });
   } catch (error) {
-    console.error('Get subscription status error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to get subscription status' },
       { status: 500 }

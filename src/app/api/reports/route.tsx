@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Font, Image } from '@react-pdf/renderer';
+import { logger } from '@/lib/error-logger';
+import { requireAuth, requireProjectAccess } from '@/lib/rbac';
 
 // Register fonts
 Font.register({
@@ -22,6 +24,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderBottom: '2px solid #10b981',
     paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  logo: {
+    width: 60,
+    height: 60,
+    objectFit: 'contain',
+    marginLeft: 10,
   },
   title: {
     fontSize: 24,
@@ -135,6 +148,7 @@ function ComplianceReport({ data }: { data: {
     total: number;
   };
   riskScore: number;
+  logoUrl?: string;
 }}) {
   const reportDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -158,8 +172,14 @@ function ComplianceReport({ data }: { data: {
       <Page size="A4" style={styles.page}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>WCAG 2.1 AA Compliance Report</Text>
-          <Text style={styles.subtitle}>Legal Shield™ Audit Documentation</Text>
+          <View style={styles.headerLeft}>
+            <Text style={styles.title}>WCAG 2.1 AA Compliance Report</Text>
+            <Text style={styles.subtitle}>Legal Shield™ Audit Documentation</Text>
+          </View>
+          {data.logoUrl && (
+            // eslint-disable-next-line jsx-a11y/alt-text -- PDF image (react-pdf) has no alt support
+            <Image style={styles.logo} src={data.logoUrl} />
+          )}
         </View>
 
         {/* Report Info */}
@@ -233,8 +253,8 @@ function ComplianceReport({ data }: { data: {
           </View>
 
           {/* Table Rows */}
-          {data.violations.slice(0, 20).map((violation, index) => (
-            <View key={index} style={{ flexDirection: 'row' }}>
+          {data.violations.slice(0, 20).map((violation: { ruleId: string; severity: string; description: string; wcagCriteria: string | null }) => (
+            <View key={`${violation.ruleId}-${violation.description.substring(0, 30)}`} style={{ flexDirection: 'row' }}>
               <Text style={[styles.tableCell, { width: '15%' }, getSeverityStyle(violation.severity)]}>
                 {violation.severity.toUpperCase()}
               </Text>
@@ -298,8 +318,11 @@ export async function GET(request: NextRequest) {
     let project;
 
     if (scanId) {
-      scan = await db.scan.findUnique({
-        where: { id: scanId },
+      const auth = await requireAuth(request);
+      if (auth instanceof NextResponse) return auth;
+
+      scan = await db.scan.findFirst({
+        where: { id: scanId, project: { orgId: auth.user.orgId } },
         include: {
           project: {
             include: {
@@ -319,6 +342,9 @@ export async function GET(request: NextRequest) {
 
       project = scan.project;
     } else {
+      const access = await requireProjectAccess(request, projectId);
+      if (access instanceof NextResponse) return access;
+
       project = await db.project.findUnique({
         where: { id: projectId! },
         include: {
@@ -357,10 +383,14 @@ export async function GET(request: NextRequest) {
       total: violations.length,
     };
 
+    // Get org settings for logo
+    const orgSettings = project.organization?.settings ? JSON.parse(project.organization.settings) : {};
+
     // Prepare report data
     const reportData = {
       organization: project.organization,
       project: { name: project.name, url: project.url },
+      logoUrl: orgSettings.logoUrl,
       scan: {
         id: scan.id,
         createdAt: scan.createdAt,
@@ -403,7 +433,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error generating report:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to generate report' },
       { status: 500 }

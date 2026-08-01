@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/error-logger';
+import { requireOrgAccess } from '@/lib/rbac';
 
 interface GitHubPRRequest {
   orgId: string;
@@ -39,9 +41,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const access = await requireOrgAccess(request, orgId);
+    if (access instanceof NextResponse) return access;
+
     // Get GitHub connection
     const connection = await db.githubConnection.findFirst({
-      where: { orgId, isActive: true },
+      where: { orgId: access.org.id, isActive: true },
     });
 
     if (!connection) {
@@ -185,7 +190,7 @@ ${files.map(f => `- 📝 \`${f.path}\`: ${f.message}`).join('\n')}
       },
     });
   } catch (error) {
-    console.error('GitHub PR creation error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Failed to create PR' },
       { status: 500 }
@@ -199,15 +204,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const orgId = searchParams.get('orgId');
 
-    if (!orgId) {
-      return NextResponse.json(
-        { success: false, error: 'Organization ID is required' },
-        { status: 400 }
-      );
-    }
+    const access = await requireOrgAccess(request, orgId);
+    if (access instanceof NextResponse) return access;
 
     const connection = await db.githubConnection.findFirst({
-      where: { orgId, isActive: true },
+      where: { orgId: access.org.id, isActive: true },
     });
 
     if (!connection) {
@@ -230,7 +231,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching GitHub repos:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch repositories' },
       { status: 500 }

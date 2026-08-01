@@ -1,141 +1,122 @@
-# 🚀 Welcome to Z.ai Code Scaffold
+# AccessGuard — WCAG Compliance Platform
 
-A modern, production-ready web application scaffold powered by cutting-edge technologies, designed to accelerate your development with [Z.ai](https://chat.z.ai)'s AI-powered coding assistance.
+Automated accessibility compliance scanning with AI-powered remediation. Prevents ADA lawsuits by catching WCAG 2.1/2.2 AA violations before they cost you.
 
-## ✨ Technology Stack
+## Tech Stack
 
-This scaffold provides a robust foundation built with:
+- **Framework:** Next.js 16 (App Router)
+- **Language:** TypeScript 5
+- **Database:** PostgreSQL (Neon) via Prisma ORM
+- **Auth:** NextAuth v4 (Credentials + GitHub OAuth)
+- **Queue:** BullMQ (Redis)
+- **Logging:** Pino (structured JSON)
+- **Error Tracking:** Sentry
+- **UI:** Tailwind CSS 4 + shadcn/ui
+- **Monitoring:** OpenAPI v3 docs at `/api/docs`
 
-### 🎯 Core Framework
-- **⚡ Next.js 16** - The React framework for production with App Router
-- **📘 TypeScript 5** - Type-safe JavaScript for better developer experience
-- **🎨 Tailwind CSS 4** - Utility-first CSS framework for rapid UI development
-
-### 🧩 UI Components & Styling
-- **🧩 shadcn/ui** - High-quality, accessible components built on Radix UI
-- **🎯 Lucide React** - Beautiful & consistent icon library
-- **🌈 Framer Motion** - Production-ready motion library for React
-- **🎨 Next Themes** - Perfect dark mode in 2 lines of code
-
-### 📋 Forms & Validation
-- **🎣 React Hook Form** - Performant forms with easy validation
-- **✅ Zod** - TypeScript-first schema validation
-
-### 🔄 State Management & Data Fetching
-- **🐻 Zustand** - Simple, scalable state management
-- **🔄 TanStack Query** - Powerful data synchronization for React
-- **🌐 Fetch** - Promise-based HTTP request
-
-### 🗄️ Database & Backend
-- **🗄️ Prisma** - Next-generation TypeScript ORM
-- **🔐 NextAuth.js** - Complete open-source authentication solution
-
-### 🎨 Advanced UI Features
-- **📊 TanStack Table** - Headless UI for building tables and datagrids
-- **🖱️ DND Kit** - Modern drag and drop toolkit for React
-- **📊 Recharts** - Redefined chart library built with React and D3
-- **🖼️ Sharp** - High performance image processing
-
-### 🌍 Internationalization & Utilities
-- **🌍 Next Intl** - Internationalization library for Next.js
-- **📅 Date-fns** - Modern JavaScript date utility library
-- **🪝 ReactUse** - Collection of essential React hooks for modern development
-
-## 🎯 Why This Scaffold?
-
-- **🏎️ Fast Development** - Pre-configured tooling and best practices
-- **🎨 Beautiful UI** - Complete shadcn/ui component library with advanced interactions
-- **🔒 Type Safety** - Full TypeScript configuration with Zod validation
-- **📱 Responsive** - Mobile-first design principles with smooth animations
-- **🗄️ Database Ready** - Prisma ORM configured for rapid backend development
-- **🔐 Auth Included** - NextAuth.js for secure authentication flows
-- **📊 Data Visualization** - Charts, tables, and drag-and-drop functionality
-- **🌍 i18n Ready** - Multi-language support with Next Intl
-- **🚀 Production Ready** - Optimized build and deployment settings
-- **🤖 AI-Friendly** - Structured codebase perfect for AI assistance
-
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# Install dependencies
+# Install
 bun install
 
-# Start development server
+# Copy env template
+cp .env.example .env
+# Edit .env with your credentials (see below)
+
+# Push DB schema
+npx prisma db push
+
+# Seed test data
+npx prisma db seed
+
+# Dev server
 bun run dev
-
-# Build for production
-bun run build
-
-# Start production server
-bun start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see your application running.
+### Required Environment Variables
 
-## 🤖 Powered by Z.ai
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string (Neon/RDS) |
+| `NEXTAUTH_SECRET` | Auth JWT secret (min 32 chars) |
+| `NEXTAUTH_URL` | App base URL (`http://localhost:3000`) |
+| `REDIS_URL` | Redis connection string (optional, graceful fallback) |
+| `SENTRY_DSN` | Sentry DSN (optional, no-op when unset) |
+| `RESEND_API_KEY` | Transactional email (optional) |
+| `GITHUB_CLIENT_ID/CLIENT_SECRET` | GitHub OAuth (optional) |
+| `STRIPE_SECRET_KEY` | Payment processing (optional) |
+| `ALLOWED_ORIGINS` | CORS allowlist, comma-separated (optional) |
 
-This scaffold is optimized for use with [Z.ai](https://chat.z.ai) - your AI assistant for:
+## Scripts
 
-- **💻 Code Generation** - Generate components, pages, and features instantly
-- **🎨 UI Development** - Create beautiful interfaces with AI assistance  
-- **🔧 Bug Fixing** - Identify and resolve issues with intelligent suggestions
-- **📝 Documentation** - Auto-generate comprehensive documentation
-- **🚀 Optimization** - Performance improvements and best practices
+| Script | Purpose |
+|---|---|
+| `bun run dev` | Start dev server |
+| `bun run build` | Production build |
+| `bun start` | Start production server |
+| `bun run test` | Run test suite |
+| `npx prisma db push` | Push schema changes |
+| `npx prisma migrate deploy` | Apply migrations |
+| `bun run lint` | ESLint + TypeScript check |
 
-Ready to build something amazing? Start chatting with Z.ai at [chat.z.ai](https://chat.z.ai) and experience the future of AI-powered development!
-
-## 📁 Project Structure
+## Architecture
 
 ```
 src/
-├── app/                 # Next.js App Router pages
-├── components/          # Reusable React components
-│   └── ui/             # shadcn/ui components
-├── hooks/              # Custom React hooks
-└── lib/                # Utility functions and configurations
+├── app/                    # Next.js App Router
+│   ├── (auth)/            # Auth pages (login, register)
+│   ├── (dashboard)/        # Authenticated pages
+│   └── api/                # API routes (versioned under /api/v1)
+├── components/             # Reusable React components
+│   └── ui/                # shadcn/ui primitives
+├── hooks/                  # Custom React hooks
+├── lib/                    # Core services
+│   ├── auth.ts             # NextAuth config
+│   ├── db.ts               # Prisma client singleton
+│   ├── redis.ts            # ioredis client (graceful fallback)
+│   ├── rate-limit.ts       # Sliding-window rate limiter (Redis/Map)
+│   ├── queue.ts            # BullMQ scan queue + worker
+│   ├── api-version.ts      # API versioning utilities
+│   ├── openapi.ts          # OpenAPI 3.1 spec
+│   ├── feature-flags.ts    # Feature flags (env/Redis)
+│   ├── error-logger.ts     # Pino structured logger
+│   └── error-tracking.ts   # Unified Sentry + Pino capture
+├── middleware.ts            # Route protection
+└── proxy.ts                # Security headers + CORS middleware
 ```
 
-## 🎨 Available Features & Components
+## Enterprise Features
 
-This scaffold includes a comprehensive set of modern web development tools:
+- **Structured Logging** — JSON output, correlation IDs, secret redaction
+- **Distributed Rate Limiting** — Redis sliding window with in-memory fallback
+- **Background Jobs** — BullMQ queue for async scan processing (3 concurrent)
+- **Feature Flags** — Runtime toggleable via API or env vars
+- **API Versioning** — All endpoints available at `/api/v1/*`
+- **Swagger Docs** — Interactive API docs at `/api/docs`
+- **Security Headers** — CSP, HSTS, COOP, CORP, Permissions-Policy
+- **CORS** — Strict origin validation with `ALLOWED_ORIGINS`
+- **Sentry** — Error tracking with zero overhead when DSN is unset
+- **GDPR Ready** — Data export, account deletion, privacy policy, cookie consent
+- **ADR Log** — Architecture decisions documented in `docs/adr/`
 
-### 🧩 UI Components (shadcn/ui)
-- **Layout**: Card, Separator, Aspect Ratio, Resizable Panels
-- **Forms**: Input, Textarea, Select, Checkbox, Radio Group, Switch
-- **Feedback**: Alert, Toast (Sonner), Progress, Skeleton
-- **Navigation**: Breadcrumb, Menubar, Navigation Menu, Pagination
-- **Overlay**: Dialog, Sheet, Popover, Tooltip, Hover Card
-- **Data Display**: Badge, Avatar, Calendar
+## API
 
-### 📊 Advanced Data Features
-- **Tables**: Powerful data tables with sorting, filtering, pagination (TanStack Table)
-- **Charts**: Beautiful visualizations with Recharts
-- **Forms**: Type-safe forms with React Hook Form + Zod validation
+All endpoints are available under `/api/v1/*` (rewritten to `/api/*`):
 
-### 🎨 Interactive Features
-- **Animations**: Smooth micro-interactions with Framer Motion
-- **Drag & Drop**: Modern drag-and-drop functionality with DND Kit
-- **Theme Switching**: Built-in dark/light mode support
+- `GET /api/health` — Health check
+- `POST /api/auth/login` — Email/password login
+- `GET/POST /api/projects` — Project CRUD
+- `GET/POST /api/scans` — Create and list scans (async via queue)
+- `GET /api/violations` — List violations
+- `GET /api/reports` — Compliance reports
+- `GET/PATCH /api/settings` — User settings
+- `GET /api/flags` — Feature flags (admin)
+- `GET /api/legal/privacy` — Privacy policy (markdown)
+- `GET /api/legal/tos` — Terms of service (markdown)
 
-### 🔐 Backend Integration
-- **Authentication**: Ready-to-use auth flows with NextAuth.js
-- **Database**: Type-safe database operations with Prisma
-- **API Client**: HTTP requests with Fetch + TanStack Query
-- **State Management**: Simple and scalable with Zustand
+Interactive docs: `/api/docs` (Swagger UI)
 
-### 🌍 Production Features
-- **Internationalization**: Multi-language support with Next Intl
-- **Image Optimization**: Automatic image processing with Sharp
-- **Type Safety**: End-to-end TypeScript with Zod validation
-- **Essential Hooks**: 100+ useful React hooks with ReactUse for common patterns
+## License
 
-## 🤝 Get Started with Z.ai
-
-1. **Clone this scaffold** to jumpstart your project
-2. **Visit [chat.z.ai](https://chat.z.ai)** to access your AI coding assistant
-3. **Start building** with intelligent code generation and assistance
-4. **Deploy with confidence** using the production-ready setup
-
----
-
-Built with ❤️ for the developer community. Supercharged by [Z.ai](https://chat.z.ai) 🚀
+Proprietary — see LICENSE file.

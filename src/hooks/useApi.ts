@@ -2,8 +2,10 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '@/services/api';
 import type { CreateProjectInput, Severity, ViolationStatus, Project, Violation, Scan, ViolationStats, RemediationResponse } from '@/types';
+import { logger } from '@/lib/error-logger';
 
 // Query Keys
 export const queryKeys = {
@@ -37,7 +39,7 @@ export function useProjects(orgSlug = 'default-org') {
       if (!result.success) {
         // If organization not found, return empty array - user needs to re-login
         if (result.status === 404) {
-          console.warn('Organization not found, user session may be stale');
+          logger.warn('Organization not found, user session may be stale');
           return [];
         }
         throw new Error(result.error);
@@ -116,6 +118,23 @@ export function useViolationStats(projectId?: string) {
   });
 }
 
+export function useBulkUpdateViolations() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ ids, status, projectId }: { ids: string[]; status: ViolationStatus; projectId?: string }) => {
+      const result = await api.bulkUpdateViolations(ids, status, projectId);
+      if (!result.success) throw new Error(result.error);
+      const responseData = result.data as { data?: { updated: number } };
+      return responseData?.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['violations'] });
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+    },
+  });
+}
+
 export function useUpdateViolationStatus() {
   const queryClient = useQueryClient();
 
@@ -135,18 +154,24 @@ export function useUpdateViolationStatus() {
 
 // Scans
 export function useScans(projectId?: string, limit = 20) {
-  return useQuery({
+  const { data } = useQuery({
     queryKey: queryKeys.scans(projectId),
     queryFn: async (): Promise<Scan[]> => {
       const result = await api.getScans(projectId, undefined, limit);
       if (!result.success) throw new Error(result.error);
-      // API returns { success, data: { success, data: [...] } }
       const responseData = result.data as { data?: Scan[] };
       return responseData?.data || [];
     },
     retry: false,
     placeholderData: [],
+    refetchInterval: (query) => {
+      const scans = query.state.data as Scan[] | undefined;
+      if (!scans) return false;
+      const hasActive = scans.some(s => s.status === 'running' || s.status === 'queued');
+      return hasActive ? 3000 : false;
+    },
   });
+  return { data, isLoading: data === undefined };
 }
 
 export function useCreateScan() {
@@ -201,6 +226,34 @@ export function useGenerateRemediation() {
   });
 }
 
+// Domain Verification
+export function useVerifyProject() {
+  const queryClient = useQueryClient();
+
+  const generateToken = useMutation({
+    mutationFn: async (projectId: string) => {
+      const result = await api.generateVerificationToken(projectId);
+      if (!result.success) throw new Error(result.error);
+      return (result.data as { data?: unknown }).data;
+    },
+  });
+
+  const checkStatus = useMutation({
+    mutationFn: async (projectId: string) => {
+      const result = await api.checkVerificationStatus(projectId);
+      if (!result.success) throw new Error(result.error);
+      return (result.data as { data?: { verified: boolean; message?: string } }).data;
+    },
+    onSuccess: (data) => {
+      if (data?.verified) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects });
+      }
+    },
+  });
+
+  return { generateToken, checkStatus };
+}
+
 // Trends
 export function useTrendData(projectId?: string, days = 30) {
   return useQuery({
@@ -219,4 +272,66 @@ export function useTrendData(projectId?: string, days = 30) {
     retry: false,
     placeholderData: [],
   });
+}
+
+// Scan Progress via SSE
+export interface ScanProgress {
+  status: string;
+  pagesScanned: number;
+  violationsFound: number;
+  errorMessage?: string;
+}
+
+export function useScanProgress(scanId: string | null) {
+  const [progress, setProgress] = useState<ScanProgress | null>(null);
+  const [isDone, setIsDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  const reset = useCallback(() => {
+    setProgress(null);
+    setIsDone(false);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!scanId) return;
+
+    const es = new EventSource(`/api/scans/progress?scanId=${scanId}`);
+    eventSourceRef.current = es;
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'progress') {
+          setProgress({
+            status: data.status,
+            pagesScanned: data.pagesScanned,
+            violationsFound: data.violationsFound,
+            errorMessage: data.errorMessage,
+          });
+        } else if (data.type === 'done') {
+          setIsDone(true);
+          es.close();
+        } else if (data.type === 'error') {
+          setError(data.message);
+          es.close();
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    es.onerror = () => {
+      setError('Connection lost');
+      es.close();
+    };
+
+    return () => {
+      es.close();
+      eventSourceRef.current = null;
+    };
+  }, [scanId]);
+
+  return { progress, isDone, error, reset };
 }

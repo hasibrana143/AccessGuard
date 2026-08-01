@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/error-logger';
 
 const stripe = process.env.STRIPE_SECRET_KEY 
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (error) {
-    console.error('Webhook signature verification failed:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { error: 'Webhook signature verification failed' },
       { status: 400 }
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          console.log(`Subscription activated for org ${orgId}: ${plan}`);
+          logger.info(`Subscription activated for org ${orgId}: ${plan}`);
         }
         break;
       }
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          console.log(`Subscription updated for org ${orgId}: ${status}`);
+          logger.info(`Subscription updated for org ${orgId}: ${status}`);
         }
         break;
       }
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
             },
           });
 
-          console.log(`Subscription cancelled for org ${orgId}`);
+          logger.info(`Subscription cancelled for org ${orgId}`);
         }
         break;
       }
@@ -160,24 +161,24 @@ export async function POST(request: NextRequest) {
                 action: 'payment_failed',
                 metadata: JSON.stringify({
                   invoiceId: invoice.id,
-                  attemptCount: (invoice as any).attempt_count,
+                  attemptCount: invoice.attempt_count,
                 }),
               },
             });
 
-            console.log(`Payment failed for org ${orgId}`);
+            logger.info(`Payment failed for org ${orgId}`);
           }
         }
         break;
       }
 
       default:
-        console.log(`Unhandled webhook event: ${event.type}`);
+        logger.info(`Unhandled webhook event: ${event.type}`);
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('Webhook handler error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { error: 'Webhook handler failed' },
       { status: 500 }

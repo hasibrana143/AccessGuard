@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRepositories, isGitHubConfigured } from '@/lib/github';
+import { logger } from '@/lib/error-logger';
 
 // GET /api/github/repos - List user's repositories
 export async function GET(request: NextRequest) {
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
       data: repositories,
     });
   } catch (error) {
-    console.error('Error fetching repositories:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch repositories' },
       { status: 500 }

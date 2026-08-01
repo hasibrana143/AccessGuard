@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/error-logger';
+import { requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
 
-// GET /api/projects - List all projects
+// GET /api/projects - List all projects for the authenticated user's org
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const orgSlug = searchParams.get('orgId') || 'default-org';
+    const orgParam = searchParams.get('orgId');
+
+    const access = await requireOrgAccess(request, orgParam);
+    if (access instanceof NextResponse) return access;
 
     const org = await db.organization.findFirst({
-      where: { slug: orgSlug }
+      where: { id: access.org.id }
     });
 
     if (!org) {
@@ -77,7 +82,7 @@ export async function GET(request: NextRequest) {
       data: projectsWithSummary
     });
   } catch (error) {
-    console.error('Error fetching projects:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch projects' },
       { status: 500 }
@@ -85,7 +90,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/projects - Create a new project
+// POST /api/projects - Create a new project in the authenticated user's org
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -98,22 +103,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!orgSlug) {
-      return NextResponse.json(
-        { success: false, error: 'Organization is required' },
-        { status: 400 }
-      );
-    }
+    const access = await requireOrgAccess(request, orgSlug);
+    if (access instanceof NextResponse) return access;
+    const org = access.org;
 
-    // Get organization
-    const org = await db.organization.findFirst({
-      where: { slug: orgSlug }
-    });
-
-    if (!org) {
+    // Enforce plan website limit
+    const { checkWebsiteLimit } = await import('@/lib/plan-limits');
+    const limitCheck = await checkWebsiteLimit(org.id, org.plan || 'free', org.settings);
+    if (!limitCheck.allowed) {
+      await db.auditLog.create({
+        data: {
+          orgId: org.id,
+          action: 'plan_limit_reached',
+          metadata: JSON.stringify({
+            resource: 'websites',
+            limit: limitCheck.limit,
+            current: limitCheck.current,
+            projectName: name,
+          }),
+        },
+      });
       return NextResponse.json(
-        { success: false, error: 'Organization not found' },
-        { status: 404 }
+        {
+          success: false,
+          error: `Plan limit reached: your ${org.plan} plan allows ${limitCheck.limit} website(s). Upgrade your plan to add more.`,
+          data: { limitCheck },
+        },
+        { status: 402 }
       );
     }
 
@@ -148,9 +164,33 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('Error creating project:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to create project' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/projects - Delete a project (soft delete)
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    const access = await requireProjectAccess(request, id);
+    if (access instanceof NextResponse) return access;
+
+    await db.project.update({
+      where: { id: access.project.id },
+      data: { isActive: false }
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error }, '');
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete project' },
       { status: 500 }
     );
   }
@@ -160,14 +200,10 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, scanConfig, crawlConfig, name, description } = body;
+    const { id, scanConfig, crawlConfig, name, description, url } = body;
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: 'Project ID is required' },
-        { status: 400 }
-      );
-    }
+    const access = await requireProjectAccess(request, id);
+    if (access instanceof NextResponse) return access;
 
     const updateData: Record<string, unknown> = {};
     
@@ -183,9 +219,12 @@ export async function PATCH(request: NextRequest) {
     if (description !== undefined) {
       updateData.description = description;
     }
+    if (url !== undefined) {
+      updateData.url = url;
+    }
 
     const project = await db.project.update({
-      where: { id },
+      where: { id: access.project.id },
       data: updateData
     });
 
@@ -194,7 +233,7 @@ export async function PATCH(request: NextRequest) {
       data: project
     });
   } catch (error) {
-    console.error('Error updating project:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to update project' },
       { status: 500 }

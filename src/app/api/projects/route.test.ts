@@ -3,9 +3,17 @@ import { GET, POST } from './route';
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 
+vi.mock('next-auth', () => ({
+  getServerSession: vi.fn(),
+}));
+
+import { vi } from 'vitest';
+import { getServerSession } from 'next-auth';
+const mockedGetServerSession = vi.mocked(getServerSession);
+
 // Mock NextRequest
 function createRequest(url: string, options: RequestInit = {}): NextRequest {
-  return new NextRequest(new URL(url, 'http://localhost:3000'), options);
+  return new NextRequest(new URL(url, 'http://localhost:3000'), options as RequestInit & { signal?: AbortSignal });
 }
 
 describe('Projects API', () => {
@@ -23,6 +31,9 @@ describe('Projects API', () => {
       update: {}
     });
     testOrgId = org.id;
+    mockedGetServerSession.mockResolvedValue({
+      user: { id: 'test-user', role: 'admin', orgId: testOrgId, orgSlug: 'test-org' },
+    } as never);
   });
 
   afterAll(async () => {
@@ -42,8 +53,8 @@ describe('Projects API', () => {
   });
 
   describe('GET /api/projects', () => {
-    it('should return projects for demo-org', async () => {
-      const request = createRequest('/api/projects?orgId=demo-org');
+    it('should return projects for test-org', async () => {
+      const request = createRequest('/api/projects?orgId=test-org');
       const response = await GET(request);
       const data = await response.json();
 
@@ -63,7 +74,7 @@ describe('Projects API', () => {
     });
 
     it('should include violation summary for each project', async () => {
-      const request = createRequest('/api/projects?orgId=demo-org');
+      const request = createRequest('/api/projects?orgId=test-org');
       const response = await GET(request);
       const data = await response.json();
 

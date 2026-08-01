@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
+import { logger } from '@/lib/error-logger';
 
 // Generate unique report ID
 function generateReportId(): string {
@@ -57,8 +58,9 @@ export async function POST(request: Request) {
     const report = await db.complianceReport.create({
       data: {
         projectId,
+        name: `Compliance Report ${new Date().toISOString().split('T')[0]}`,
         reportType: reportType || 'full',
-        dateRange: dateRange ? JSON.stringify(dateRange) : null,
+        dateRange: dateRange ? JSON.stringify(dateRange) : '{}',
         status: 'generated',
         metadata: JSON.stringify({
           reportId,
@@ -80,19 +82,31 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    console.error('Report generation error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json({ success: false, error: 'Failed to generate report' }, { status: 500 });
   }
 }
 
-// DELETE /api/reports/generate - Delete report
-export async function DELETE(request: Request) {
+// DELETE /api/reports/generate - Delete report (must belong to the user's org)
+export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'ID required' }, { status: 400 });
+    }
+
+    const { requireAuth } = await import('@/lib/rbac');
+    const auth = await requireAuth(request);
+    if (auth instanceof NextResponse) return auth;
+
+    const existing = await db.complianceReport.findFirst({
+      where: { id, project: { orgId: auth.user.orgId } },
+      select: { id: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Report not found' }, { status: 404 });
     }
 
     await db.complianceReport.delete({ where: { id } });

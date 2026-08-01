@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyToken, isTokenExpired } from '@/lib/password-reset';
+import { logger } from '@/lib/error-logger';
 
 // Type for password reset token
 type PasswordResetToken = {
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Verify reset token error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, valid: false, error: 'Failed to verify token' },
       { status: 500 }

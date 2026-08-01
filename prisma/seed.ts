@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
@@ -143,8 +144,7 @@ async function main() {
   console.log('Created default organization')
 
   // Create a test user for easy testing
-  // Password is 'testpass123' (hashed with SHA-256)
-  const hashedPassword = 'db7c2f16a80da551219fc9350c899062d122767020def3c71797453f365e7c4c'
+  const hashedPassword = await bcrypt.hash('testpass123', 12)
   
   await prisma.user.upsert({
     where: { email: 'test@accessguard.dev' },
@@ -159,8 +159,97 @@ async function main() {
   })
   console.log('Created test user (email: test@accessguard.dev, password: testpass123)')
 
+  // Create demo project + scan history so the dashboard has data to show
+  const existingProjects = await prisma.project.count({
+    where: { orgId: defaultOrg.id }
+  })
+
+  if (existingProjects === 0) {
+    const demoProject = await prisma.project.create({
+      data: {
+        orgId: defaultOrg.id,
+        name: 'Demo Website',
+        url: 'https://demo.accessguard.dev',
+        description: 'Sample project created by the seed script to showcase AccessGuard features.',
+        isVerified: true,
+        riskScore: 42,
+        crawlConfig: JSON.stringify({ maxPages: 100, excludePaths: [], includeSubdomains: false }),
+        scanConfig: JSON.stringify({ requestDelay: 500, userAgent: 'default', timeout: 30000, retryCount: 3 })
+      }
+    })
+
+    const severityCounts = { critical: 1, serious: 3, moderate: 4, minor: 2 }
+
+    const demoScan = await prisma.scan.create({
+      data: {
+        projectId: demoProject.id,
+        status: 'completed',
+        startedAt: new Date(Date.now() - 1000 * 60 * 60 * 26),
+        completedAt: new Date(Date.now() - 1000 * 60 * 60 * 26 + 1000 * 60 * 2),
+        pagesScanned: 12,
+        violationsFound: 10,
+        summary: JSON.stringify(severityCounts)
+      }
+    })
+
+    const demoViolations = [
+      { ruleId: 'image-alt', wcagCriteria: '1.1.1', severity: 'critical', elementSelector: 'img.hero-banner', elementHtml: '<img class="hero-banner" src="hero.jpg">', description: 'Image element is missing an alt attribute', remediationCode: '<img class="hero-banner" src="hero.jpg" alt="Product overview">' },
+      { ruleId: 'color-contrast', wcagCriteria: '1.4.3', severity: 'serious', elementSelector: '.btn-primary', elementHtml: '<button class="btn-primary">Get Started</button>', description: 'Text contrast ratio is below 4.5:1', remediationCode: '<button class="btn-primary" style="color:#ffffff">Get Started</button>' },
+      { ruleId: 'label', wcagCriteria: '1.3.1', severity: 'serious', elementSelector: '#newsletter-email', elementHtml: '<input id="newsletter-email" type="email">', description: 'Form element does not have an associated label', remediationCode: '<label for="newsletter-email">Email</label><input id="newsletter-email" type="email">' },
+      { ruleId: 'link-name', wcagCriteria: '2.4.4', severity: 'serious', elementSelector: 'a.icon-link', elementHtml: '<a class="icon-link" href="/settings"><svg></svg></a>', description: 'Link text is not discernible', remediationCode: '<a class="icon-link" href="/settings" aria-label="Settings"><svg></svg></a>' },
+      { ruleId: 'heading-order', wcagCriteria: '1.3.1', severity: 'moderate', elementSelector: 'h4.feature-title', elementHtml: '<h4 class="feature-title">Feature</h4>', description: 'Heading levels are skipped in the page outline', remediationCode: '<h2 class="feature-title">Feature</h2>' },
+      { ruleId: 'focus-visible', wcagCriteria: '2.4.7', severity: 'moderate', elementSelector: 'button.menu-toggle', elementHtml: '<button class="menu-toggle">Menu</button>', description: 'Focus indicator is not visible for this element', remediationCode: '<button class="menu-toggle">Menu</button>' },
+      { ruleId: 'document-lang', wcagCriteria: '3.1.1', severity: 'moderate', elementSelector: 'html', elementHtml: '<html>', description: 'Document does not declare a language', remediationCode: '<html lang="en">' },
+      { ruleId: 'page-title', wcagCriteria: '2.4.2', severity: 'moderate', elementSelector: 'title', elementHtml: '<title>Home</title>', description: 'Page title is not descriptive', remediationCode: '<title>Acme Corp - Home</title>' },
+      { ruleId: 'keyboard-navigation', wcagCriteria: '2.1.1', severity: 'minor', elementSelector: '.carousel', elementHtml: '<div class="carousel">…</div>', description: 'Carousel controls are not keyboard accessible', remediationCode: '<div class="carousel" tabindex="0">…</div>' },
+      { ruleId: 'form-error', wcagCriteria: '3.3.1', severity: 'minor', elementSelector: '#contact-form', elementHtml: '<form id="contact-form">…</form>', description: 'Form errors are not described to assistive technology', remediationCode: '<form id="contact-form" aria-describedby="contact-error">…</form>' }
+    ]
+
+    await prisma.violation.createMany({
+      data: demoViolations.map((v, i) => ({
+        scanId: demoScan.id,
+        projectId: demoProject.id,
+        ruleId: v.ruleId,
+        wcagCriteria: v.wcagCriteria,
+        severity: v.severity,
+        url: 'https://demo.accessguard.dev/',
+        elementSelector: v.elementSelector,
+        elementHtml: v.elementHtml,
+        description: v.description,
+        remediationCode: v.remediationCode,
+        aiExplanation: 'AI-generated fix applied per WCAG guidelines.',
+        aiConfidenceScore: 0.9 - i * 0.02,
+        status: i < 4 ? 'open' : i < 8 ? 'open' : 'ignored'
+      }))
+    })
+
+    await prisma.project.update({
+      where: { id: demoProject.id },
+      data: { lastScanAt: demoScan.completedAt }
+    })
+
+    await prisma.scheduledScan.create({
+      data: {
+        projectId: demoProject.id,
+        frequency: 'weekly',
+        cron: '0 2 * * 1',
+        nextRunAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 4)
+      }
+    })
+
+    await prisma.auditLog.createMany({
+      data: [
+        { orgId: defaultOrg.id, action: 'scan_completed', metadata: JSON.stringify({ projectName: 'Demo Website', violations: 10 }) },
+        { orgId: defaultOrg.id, action: 'project_created', metadata: JSON.stringify({ projectName: 'Demo Website' }) }
+      ]
+    })
+
+    console.log('Created demo project, scan, 10 violations, weekly schedule, and audit logs')
+  } else {
+    console.log('Projects already exist for the default org - skipping demo data')
+  }
+
   console.log('Database seeding completed!')
-  console.log('No demo projects created - users will create their own real projects.')
 }
 
 main()

@@ -1,5 +1,16 @@
 import { db } from '@/lib/db';
-import { AuditActions, type AuditAction } from './logger';
+import { logger } from '@/lib/error-logger';
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+const AUDIT_ACTIONS = [
+  'user.login', 'user.logout', 'user.invited', 'user.removed',
+  'project.created', 'project.updated', 'project.deleted',
+  'scan.started', 'scan.completed', 'scan.failed',
+  'violation.status_changed', 'violation.fixed',
+  'settings.updated', 'subscription.changed',
+  'github.connected', 'github.disconnected',
+  'report.generated',
+] as const;
 
 interface AuditLogInput {
   orgId: string;
@@ -29,7 +40,7 @@ export async function createAuditLog(input: AuditLogInput): Promise<void> {
       },
     });
   } catch (error) {
-    console.error('Failed to create audit log:', error);
+    logger.error({ err: error }, '');
     // Don't throw - audit log failures shouldn't break the main flow
   }
 }

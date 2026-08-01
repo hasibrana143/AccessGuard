@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getCronDescription, getNextRunTime, validateCronExpression } from '@/lib/scheduler';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
+import { logger } from '@/lib/error-logger';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -10,7 +11,7 @@ interface RouteParams {
 // GET /api/schedule/[id] - Get a specific scheduled scan
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const clientId = getClientIdentifier(request);
-  const rateResult = checkRateLimit(`schedule-id-get:${clientId}`, rateLimits.default);
+  const rateResult = await checkRateLimit(`schedule-id-get:${clientId}`, rateLimits.default);
   
   if (!rateResult.success) {
     return createRateLimitResponse(rateResult);
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     });
   } catch (error) {
-    console.error('Error fetching scheduled scan:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch scheduled scan' },
       { status: 500 }
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // DELETE /api/schedule/[id] - Delete a scheduled scan
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const clientId = getClientIdentifier(request);
-  const rateResult = checkRateLimit(`schedule-id-delete:${clientId}`, rateLimits.default);
+  const rateResult = await checkRateLimit(`schedule-id-delete:${clientId}`, rateLimits.default);
   
   if (!rateResult.success) {
     return createRateLimitResponse(rateResult);
@@ -113,7 +114,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       message: 'Scheduled scan deleted successfully',
     });
   } catch (error) {
-    console.error('Error deleting scheduled scan:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to delete scheduled scan' },
       { status: 500 }
@@ -124,7 +125,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 // PATCH /api/schedule/[id] - Update a scheduled scan
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const clientId = getClientIdentifier(request);
-  const rateResult = checkRateLimit(`schedule-id-patch:${clientId}`, rateLimits.default);
+  const rateResult = await checkRateLimit(`schedule-id-patch:${clientId}`, rateLimits.default);
   
   if (!rateResult.success) {
     return createRateLimitResponse(rateResult);
@@ -149,9 +150,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Validate cron expression if provided
     if (cron) {
       const cronValidation = validateCronExpression(cron);
-      if (!cronValidation.valid) {
+      if (!cronValidation) {
         return NextResponse.json(
-          { success: false, error: cronValidation.error || 'Invalid cron expression' },
+          { success: false, error: 'Invalid cron expression' },
           { status: 400 }
         );
       }
@@ -204,7 +205,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       message: 'Scheduled scan updated successfully',
     });
   } catch (error) {
-    console.error('Error updating scheduled scan:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to update scheduled scan' },
       { status: 500 }

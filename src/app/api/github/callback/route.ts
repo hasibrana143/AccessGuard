@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/error-logger';
+import { encryptSecret } from '@/lib/crypto';
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
@@ -113,8 +115,17 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Store token in user record (you would normally encrypt this)
-    // For demo, we're just marking the connection as active
+    // Store encrypted token in user record
+    const user = await db.user.findFirst({
+      where: { orgId: stateData.orgId },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (user) {
+      await db.user.update({
+        where: { id: user.id },
+        data: { githubToken: encryptSecret(accessToken) },
+      });
+    }
 
     // Create audit log
     await db.auditLog.create({
@@ -134,7 +145,7 @@ export async function GET(request: NextRequest) {
       `${appUrl}${stateData.redirect}?github=connected&repos=${repositories.length}`
     );
   } catch (err) {
-    console.error('GitHub OAuth callback error:', err);
+    logger.error({ err }, 'GitHub OAuth callback error');
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     return NextResponse.redirect(
       `${appUrl}/dashboard?error=${encodeURIComponent(err instanceof Error ? err.message : 'GitHub connection failed')}`

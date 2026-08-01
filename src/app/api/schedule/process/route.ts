@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { scanUrlServer, type ServerViolation } from '@/services/server-scanner';
+import { scanUrlServer, type ScannerViolation } from '@/services/scanner';
 import { getSchedulerApiKey } from '@/lib/scheduler';
+import { logger } from '@/lib/error-logger';
 
 /**
  * Internal endpoint for the scheduler service to trigger scans.
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[Scheduler] Starting scan for project: ${project.name} (${project.url})`);
+    logger.info(`[Scheduler] Starting scan for project: ${project.name} (${project.url})`);
 
     // Create a new scan
     const scan = await db.scan.create({
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Create violations from scan results
-      const violationsToCreate = scanResult.violations.map((v: ServerViolation) => ({
+      const violationsToCreate = scanResult.violations.map((v: ScannerViolation) => ({
         scanId: scan.id,
         projectId,
         ruleId: v.ruleId,
@@ -108,10 +109,10 @@ export async function POST(request: NextRequest) {
 
       // Calculate summary
       const severityCounts = {
-        critical: scanResult.violations.filter((v: ServerViolation) => v.severity === 'critical').length,
-        serious: scanResult.violations.filter((v: ServerViolation) => v.severity === 'serious').length,
-        moderate: scanResult.violations.filter((v: ServerViolation) => v.severity === 'moderate').length,
-        minor: scanResult.violations.filter((v: ServerViolation) => v.severity === 'minor').length,
+        critical: scanResult.violations.filter((v: ScannerViolation) => v.severity === 'critical').length,
+        serious: scanResult.violations.filter((v: ScannerViolation) => v.severity === 'serious').length,
+        moderate: scanResult.violations.filter((v: ScannerViolation) => v.severity === 'moderate').length,
+        minor: scanResult.violations.filter((v: ScannerViolation) => v.severity === 'minor').length,
       };
 
       // Calculate risk score
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      console.log(`[Scheduler] Scan ${scan.id} completed with ${scanResult.violations.length} violations`);
+      logger.info(`[Scheduler] Scan ${scan.id} completed with ${scanResult.violations.length} violations`);
 
       return NextResponse.json({
         success: true,
@@ -157,7 +158,7 @@ export async function POST(request: NextRequest) {
         },
       });
     } catch (scanError) {
-      console.error(`[Scheduler] Scan ${scan.id} failed:`, scanError);
+      logger.error({ err: scanError, scanId: scan.id }, '[Scheduler] Scan failed');
 
       // Sanitize error message
       let errorMessage = 'An unexpected error occurred';
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
   } catch (error) {
-    console.error('[Scheduler] Error processing scheduled scan:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to process scheduled scan' },
       { status: 500 }

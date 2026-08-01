@@ -1,5 +1,6 @@
 // Email service for AccessGuard using Resend
 import { Resend } from 'resend';
+import { logger } from '@/lib/error-logger';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@accessguard.io';
@@ -19,7 +20,7 @@ export function isEmailConfigured(): boolean {
 // Send email
 export async function sendEmail(options: EmailOptions): Promise<{ success: boolean; error?: string }> {
   if (!resend) {
-    console.log('[EMAIL DEMO MODE] Would send:', options.subject, 'to', options.to);
+    logger.info({ subject: options.subject, to: options.to }, '[EMAIL DEMO MODE] Would send');
     return { success: true };
   }
 
@@ -33,7 +34,7 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
     });
     return { success: true };
   } catch (error) {
-    console.error('Email error:', error);
+    logger.error({ err: error }, '');
     return { success: false, error: String(error) };
   }
 }
@@ -106,6 +107,23 @@ export async function sendTeamInviteEmail(email: string, orgName: string, invite
         <p><strong>${inviterName}</strong> has invited you to join <strong>${orgName}</strong> as a <strong>${role}</strong>.</p>
         <a href="${acceptUrl}" style="display: inline-block; background: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">Accept Invitation</a>
         <p style="color: #666;">This invitation expires in 7 days.</p>
+      </div>
+    `,
+  });
+}
+
+// Email verification
+export async function sendVerificationEmail(email: string, name: string, verifyUrl: string): Promise<void> {
+  await sendEmail({
+    to: email,
+    subject: 'Verify your AccessGuard email',
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #f97316;">Verify Your Email</h1>
+        <p>Hi ${name},</p>
+        <p>Thanks for signing up! Please confirm your email address to activate your account.</p>
+        <a href="${verifyUrl}" style="display: inline-block; background: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Verify Email</a>
+        <p style="color: #666; margin-top: 20px;">This link expires in 24 hours. If you didn't create an account, ignore this email.</p>
       </div>
     `,
   });

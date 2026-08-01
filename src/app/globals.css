@@ -52,6 +52,17 @@
   --color-moderate: var(--moderate);
   --color-minor: var(--minor);
   --color-pass: var(--pass);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  /* Elevation tokens */
+  --shadow-elevation-1: var(--elevation-1);
+  --shadow-elevation-2: var(--elevation-2);
+  --shadow-elevation-3: var(--elevation-3);
 }
 
 :root {
@@ -100,6 +111,19 @@
   --coral-foreground: oklch(0.99 0 0);
   --emerald: oklch(0.65 0.18 160);
   --emerald-foreground: oklch(0.15 0 0);
+
+  /* Semantic Status Colors */
+  --success: oklch(0.65 0.18 160);
+  --success-foreground: oklch(0.15 0 0);
+  --warning: oklch(0.75 0.15 85);
+  --warning-foreground: oklch(0.2 0 0);
+  --info: oklch(0.6 0.15 240);
+  --info-foreground: oklch(0.98 0 0);
+
+  /* Elevation (light) */
+  --elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.05), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+  --elevation-2: 0 2px 4px -1px rgb(0 0 0 / 0.07), 0 4px 8px -1px rgb(0 0 0 / 0.07);
+  --elevation-3: 0 4px 8px -2px rgb(0 0 0 / 0.1), 0 12px 24px -4px rgb(0 0 0 / 0.12);
 }
 
 .dark {
@@ -147,6 +171,31 @@
   --coral-foreground: oklch(0.12 0 0);
   --emerald: oklch(0.7 0.18 160);
   --emerald-foreground: oklch(0.12 0 0);
+
+  /* Semantic Status Colors - Dark Mode */
+  --success: oklch(0.7 0.18 160);
+  --success-foreground: oklch(0.12 0 0);
+  --warning: oklch(0.8 0.15 85);
+  --warning-foreground: oklch(0.15 0 0);
+  --info: oklch(0.65 0.15 240);
+  --info-foreground: oklch(0.98 0 0);
+
+  /* Elevation (dark) */
+  --elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.4), 0 1px 3px 0 rgb(0 0 0 / 0.45);
+  --elevation-2: 0 2px 4px -1px rgb(0 0 0 / 0.5), 0 4px 8px -1px rgb(0 0 0 / 0.5);
+  --elevation-3: 0 4px 8px -2px rgb(0 0 0 / 0.6), 0 12px 24px -4px rgb(0 0 0 / 0.65);
+}
+
+/* Reduced Motion: respect user preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer base {

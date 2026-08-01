@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
 import { revokeToken, isGitHubConfigured } from '@/lib/github';
+import { logger } from '@/lib/error-logger';
+import { decryptSecret, isEncrypted } from '@/lib/crypto';
 
 // POST /api/github/disconnect - Disconnect GitHub account
 export async function POST(request: NextRequest) {
@@ -39,7 +41,8 @@ export async function POST(request: NextRequest) {
 
     // Revoke GitHub token if configured
     if (user.githubToken && isGitHubConfigured()) {
-      await revokeToken(user.githubToken);
+      const plainToken = isEncrypted(user.githubToken) ? (decryptSecret(user.githubToken) ?? user.githubToken) : user.githubToken;
+      await revokeToken(plainToken);
     }
 
     // Clear GitHub token from database
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('GitHub disconnect error:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to disconnect GitHub account' },
       { status: 500 }

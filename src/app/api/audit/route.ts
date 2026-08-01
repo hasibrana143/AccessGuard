@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth-utils';
-import { getAuditLogs, exportAuditLogsAsCsv } from '@/lib/audit';
+import { getAuditLogs, exportAuditLogsAsCsv, type AuditAction } from '@/lib/audit';
 import { validateSearchParams } from '@/lib/validations';
 import { z } from 'zod';
+import { logger } from '@/lib/error-logger';
 
 const auditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
     const result = await getAuditLogs(user.orgId, {
       limit,
       offset,
-      action: action as any,
+      action: action as AuditAction | undefined,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
     });
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching audit logs:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch audit logs' },
       { status: 500 }

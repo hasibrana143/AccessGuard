@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { randomBytes } from 'crypto';
+import { logger } from '@/lib/error-logger';
+import { requireProjectAccess } from '@/lib/rbac';
 
 // POST /api/projects/verify - Generate verification token
 export async function POST(request: NextRequest) {
   const clientId = getClientIdentifier(request);
-  const rateResult = checkRateLimit(`verify-post:${clientId}`, rateLimits.default);
+  const rateResult = await checkRateLimit(`verify-post:${clientId}`, rateLimits.default);
   
   if (!rateResult.success) {
     return createRateLimitResponse(rateResult);
@@ -68,7 +70,7 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('Error generating verification token:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to generate verification token' },
       { status: 500 }
@@ -79,7 +81,7 @@ export async function POST(request: NextRequest) {
 // GET /api/projects/verify - Check verification status
 export async function GET(request: NextRequest) {
   const clientId = getClientIdentifier(request);
-  const rateResult = checkRateLimit(`verify-get:${clientId}`, rateLimits.default);
+  const rateResult = await checkRateLimit(`verify-get:${clientId}`, rateLimits.default);
   
   if (!rateResult.success) {
     return createRateLimitResponse(rateResult);
@@ -89,15 +91,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
 
-    if (!projectId) {
-      return NextResponse.json(
-        { success: false, error: 'Project ID is required' },
-        { status: 400 }
-      );
-    }
+    const access = await requireProjectAccess(request, projectId);
+    if (access instanceof NextResponse) return access;
 
     const project = await db.project.findUnique({
-      where: { id: projectId },
+      where: { id: access.project.id },
       select: {
         id: true,
         url: true,
@@ -145,7 +143,7 @@ export async function GET(request: NextRequest) {
         if (metaTagMatch && metaTagMatch[1] === project.verificationToken) {
           // Verification successful!
           await db.project.update({
-            where: { id: projectId },
+            where: { id: access.project.id },
             data: { isVerified: true }
           });
 
@@ -156,7 +154,7 @@ export async function GET(request: NextRequest) {
         }
       }
     } catch (fetchError) {
-      console.log('Verification check failed:', fetchError);
+      logger.info({ err: fetchError }, 'Verification check failed');
     }
 
     return NextResponse.json({
@@ -168,7 +166,7 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('Error checking verification:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to check verification status' },
       { status: 500 }

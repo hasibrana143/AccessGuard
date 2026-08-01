@@ -185,6 +185,69 @@ export async function getRepositoryDetails(token: string, owner: string, repo: s
   }
 }
 
+// Apply accessibility fixes to real source files in the repository
+export async function applyFixesToRepository(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string,
+  ref: string,
+  violations: Array<{
+    id: string;
+    ruleId: string;
+    elementHtml?: string | null;
+    remediationCode?: string | null;
+  }>
+): Promise<{ filesModified: Array<{ path: string; fixesApplied: number }>; fixesAppliedTotal: number }> {
+  const octokit = getOctokit(token);
+  const filesModified: Array<{ path: string; fixesApplied: number }> = [];
+  let fixesAppliedTotal = 0;
+
+  const { applyFixesToFile } = await import('@/lib/github-pr');
+
+  // List source files in the default branch tree
+  const { data: tree } = await octokit.git.getTree({ owner, repo, tree_sha: ref, recursive: '1' });
+  const sourceFiles = (tree.tree || [])
+    .filter(t => t.type === 'blob' && t.path && /\.(html|htm|tsx|jsx|ts|js|vue|svelte|astro)$/.test(t.path))
+    .slice(0, 50);
+
+  if (sourceFiles.length === 0) return { filesModified, fixesAppliedTotal };
+
+  for (const violation of violations.slice(0, 10)) {
+    if (!violation.remediationCode || !violation.elementHtml) continue;
+
+    for (const file of sourceFiles) {
+      if (!file.path) continue;
+      try {
+        const { data } = await octokit.repos.getContent({ owner, repo, path: file.path, ref });
+        if (!('content' in data)) continue;
+
+        const original = Buffer.from(data.content, 'base64').toString('utf8');
+        const result = applyFixesToFile(original, [violation], file.path);
+
+        if (result.fixesApplied > 0) {
+          await createFile(
+            token,
+            owner,
+            repo,
+            file.path,
+            result.content,
+            `fix(a11y): ${violation.ruleId}`,
+            branch
+          );
+          filesModified.push({ path: file.path, fixesApplied: result.fixesApplied });
+          fixesAppliedTotal += result.fixesApplied;
+          break;
+        }
+      } catch {
+        // Skip files that fail to fetch or write
+      }
+    }
+  }
+
+  return { filesModified, fixesAppliedTotal };
+}
+
 // Revoke GitHub OAuth token
 export async function revokeToken(token: string): Promise<boolean> {
   try {

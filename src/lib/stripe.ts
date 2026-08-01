@@ -1,7 +1,7 @@
 // Stripe configuration and service for AccessGuard
 import Stripe from 'stripe';
 
-export type PlanType = 'starter' | 'agency' | 'enterprise';
+export type PlanType = 'starter' | 'growth' | 'agency' | 'enterprise';
 
 export interface PricingPlan {
   id: PlanType;
@@ -27,22 +27,34 @@ export const PRICING_PLANS: PricingPlan[] = [
     priceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID || 'price_starter_demo',
     period: 'month',
     description: 'Perfect for small websites',
-    features: ['1 website', '100 pages/month', 'Basic scanning', 'Email reports', 'API access'],
+    features: ['1 website', '500 pages/month', 'Weekly scans', 'Email reports', 'Community support'],
     cta: 'Start Free Trial',
     popular: false,
-    limits: { websites: 1, pagesPerMonth: 100 },
+    limits: { websites: 1, pagesPerMonth: 500 },
+  },
+  {
+    id: 'growth',
+    name: 'Growth',
+    price: 149,
+    priceId: process.env.NEXT_PUBLIC_STRIPE_GROWTH_PRICE_ID || 'price_growth_demo',
+    period: 'month',
+    description: 'For growing teams and agencies',
+    features: ['5 websites', '5,000 pages/month', 'Daily scans', 'AI remediation', 'GitHub auto-PR', 'Priority support'],
+    cta: 'Start Free Trial',
+    popular: true,
+    limits: { websites: 5, pagesPerMonth: 5000 },
   },
   {
     id: 'agency',
     name: 'Agency',
-    price: 199,
+    price: 399,
     priceId: process.env.NEXT_PUBLIC_STRIPE_AGENCY_PRICE_ID || 'price_agency_demo',
     period: 'month',
-    description: 'For agencies managing multiple clients',
-    features: ['10 websites', '1,000 pages/month', 'AI remediation', 'GitHub integration', 'White-label reports', 'Priority support'],
+    description: 'For digital agencies managing clients',
+    features: ['15 websites', '25,000 pages/month', 'White-label reports', 'Team seats', 'GitHub auto-PR', 'Dedicated support'],
     cta: 'Start Free Trial',
-    popular: true,
-    limits: { websites: 10, pagesPerMonth: 1000 },
+    popular: false,
+    limits: { websites: 15, pagesPerMonth: 25000 },
   },
   {
     id: 'enterprise',
@@ -50,7 +62,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     price: null,
     period: 'custom',
     description: 'For large organizations',
-    features: ['Unlimited websites', 'Custom limits', 'CI/CD integration', 'Dedicated support', 'SLA', 'SSO/SAML'],
+    features: ['Unlimited websites', 'Custom page limits', 'SSO/SAML', 'Dedicated CSM', 'Custom integrations', 'SLA'],
     cta: 'Contact Sales',
     popular: false,
     limits: { websites: -1, pagesPerMonth: -1 },
@@ -84,7 +96,8 @@ export function isStripeConfigured(): boolean {
 // Get Stripe client (only if configured)
 export function getStripeClient(): Stripe | null {
   if (!isStripeConfigured()) return null;
-  return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-12-18.acacia' });
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+  return stripe;
 }
 
 // Create customer

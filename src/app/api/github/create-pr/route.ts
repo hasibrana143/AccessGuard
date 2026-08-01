@@ -9,6 +9,8 @@ import {
   isGitHubConfigured,
   getRepositoryDetails,
 } from '@/lib/github';
+import { logger } from '@/lib/error-logger';
+import { requireAuth } from '@/lib/rbac';
 import {
   createFixBranchName,
   generatePrTitle,
@@ -38,6 +40,9 @@ type ViolationWithProject = {
   fixedAt: Date | null;
   project: { name: string; url: string };
 };
+
+// Only apply fixes the AI is confident about (WCAG fixes are risky when uncertain)
+export const MIN_FIX_CONFIDENCE = 0.7;
 
 // Helper to convert Prisma result to ViolationForPR
 function toViolationForPR(v: ViolationWithProject): ViolationForPR {
@@ -69,10 +74,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch violations
+    const auth = await requireAuth(request);
+    if (auth instanceof NextResponse) return auth;
+
+    // Fetch violations (scoped to the user's org)
     const violations = await db.violation.findMany({
       where: {
         id: { in: violationIds },
+        project: { orgId: auth.user.orgId },
       },
       include: {
         project: {
@@ -91,12 +100,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Filter only violations with remediation code
-    const violationsWithFixes = violations.filter(v => v.remediationCode);
-    
-    if (violationsWithFixes.length === 0) {
+    if (violations.length !== violationIds.length) {
       return NextResponse.json(
-        { success: false, error: 'No violations have remediation code. Generate fixes first.' },
+        { success: false, error: 'One or more violations are not accessible' },
+        { status: 403 }
+      );
+    }
+
+    // Filter only violations with remediation code and sufficient AI confidence
+    const violationsWithFixes = violations.filter(v => v.remediationCode && (v.aiConfidenceScore === null || v.aiConfidenceScore >= MIN_FIX_CONFIDENCE));
+
+    const skippedLowConfidence = violations.filter(v => v.remediationCode && v.aiConfidenceScore !== null && v.aiConfidenceScore < MIN_FIX_CONFIDENCE).length;
+
+    if (violationsWithFixes.length === 0) {
+      const hasAnyFixes = violations.some(v => v.remediationCode);
+      return NextResponse.json(
+        {
+          success: false,
+          error: hasAnyFixes
+            ? 'Selected violations have low AI confidence for auto-fixing. Regenerate fixes or select different violations.'
+            : 'No violations have remediation code. Generate fixes first.',
+          skippedLowConfidence,
+        },
         { status: 400 }
       );
     }
@@ -114,6 +139,7 @@ export async function POST(request: NextRequest) {
             violationsCount: violationsWithFixes.length,
             project: violations[0].project,
           },
+          skippedLowConfidence,
           message: 'Preview generated. Connect GitHub to create actual PRs.',
         },
       });
@@ -170,8 +196,27 @@ export async function POST(request: NextRequest) {
     const prTitle = generatePrTitle(violationsWithFixes.map(toViolationForPR));
     const prBody = generatePrBody(violationsWithFixes.map(toViolationForPR), violations[0].project);
 
+    // Apply fixes to real source files where the offending HTML can be located
+    let filesModified: Array<{ path: string; fixesApplied: number }> = [];
+    let fixesAppliedTotal = 0;
+    try {
+      const { applyFixesToRepository } = await import('@/lib/github');
+      const fixResult = await applyFixesToRepository(
+        githubToken,
+        owner,
+        repo,
+        branchName,
+        defaultBranch,
+        violationsWithFixes.map(toViolationForPR)
+      );
+      filesModified = fixResult.filesModified;
+      fixesAppliedTotal = fixResult.fixesAppliedTotal;
+    } catch (err) {
+      logger.error({ err }, 'Failed to apply fixes to repository files');
+    }
+
     // Create a summary file with all fixes
-    const summaryContent = generateSummaryFile(violationsWithFixes);
+    const summaryContent = generateSummaryFile(violationsWithFixes, fixesAppliedTotal, filesModified.length);
     await createFile(
       githubToken,
       owner,
@@ -182,11 +227,11 @@ export async function POST(request: NextRequest) {
       branchName
     );
 
-    // Create individual fix files for each violation
+    // Create individual fix files for violations (docs fallback alongside source edits)
     for (const violation of violationsWithFixes) {
       const fixFileName = `accessguard-fixes/${violation.ruleId}-${violation.id.slice(0, 8)}.md`;
       const fixContent = generateFixFile(violation);
-      
+
       await createFile(
         githubToken,
         owner,
@@ -234,10 +279,13 @@ export async function POST(request: NextRequest) {
         branchName,
         filesCreated: violationsWithFixes.length + 1, // +1 for summary
         violationsUpdated: violationIds.length,
+        skippedLowConfidence,
+        filesModified,
+        fixesAppliedTotal,
       },
     });
   } catch (error) {
-    console.error('Error creating PR:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Failed to create PR' },
       { status: 500 }
@@ -246,16 +294,28 @@ export async function POST(request: NextRequest) {
 }
 
 // Generate summary file content
-function generateSummaryFile(violations: ViolationWithProject[]): string {
+function generateSummaryFile(violations: ViolationWithProject[], sourceFixesApplied: number, filesModified: number): string {
   const lines: string[] = [
     '# AccessGuard Accessibility Fixes Summary',
     '',
     `**Generated:** ${new Date().toISOString()}`,
     `**Total Issues:** ${violations.length}`,
     '',
-    '## Issues by Severity',
-    '',
   ];
+
+  if (filesModified > 0) {
+    lines.push('## Source Fixes Applied');
+    lines.push('');
+    lines.push(`- **Files Modified:** ${filesModified}`);
+    lines.push(`- **Fixes Applied Directly:** ${sourceFixesApplied}`);
+    lines.push('- These changes were applied to the actual source files in this PR.');
+    lines.push('');
+    lines.push('### Files Changed');
+    lines.push('');
+  }
+
+  lines.push('## Issues by Severity');
+  lines.push('');
 
   const critical = violations.filter(v => v.severity === 'critical');
   const serious = violations.filter(v => v.severity === 'serious');

@@ -1,26 +1,24 @@
-// Simple in-memory rate limiting
-// For production, use Redis or a similar distributed store
+import { getRedis, isRedisReady } from './redis';
 
 interface RateLimitEntry {
   count: number;
   resetTime: number;
 }
 
-const rateLimitStore = new Map<string, RateLimitEntry>();
+const inMemoryStore = new Map<string, RateLimitEntry>();
 
-// Clean up expired entries every minute
 setInterval(() => {
   const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
+  for (const [key, entry] of inMemoryStore.entries()) {
     if (now > entry.resetTime) {
-      rateLimitStore.delete(key);
+      inMemoryStore.delete(key);
     }
   }
 }, 60000);
 
 export interface RateLimitConfig {
-  interval: number; // Time window in milliseconds
-  limit: number;    // Max requests per interval
+  interval: number;
+  limit: number;
 }
 
 export interface RateLimitResult {
@@ -30,83 +28,83 @@ export interface RateLimitResult {
   reset: number;
 }
 
-// Default rate limits
 export const rateLimits = {
-  // General API: 100 requests per minute
   default: { interval: 60000, limit: 100 },
-  // Scan endpoint: 10 requests per minute (resource intensive)
   scan: { interval: 60000, limit: 10 },
-  // Remediation: 20 requests per minute (AI calls cost money)
   remediation: { interval: 60000, limit: 20 },
-  // Projects: 30 requests per minute
   projects: { interval: 60000, limit: 30 },
 };
 
-export function checkRateLimit(
-  identifier: string,
-  config: RateLimitConfig = rateLimits.default
-): RateLimitResult {
+function checkInMemory(identifier: string, config: RateLimitConfig): RateLimitResult {
   const now = Date.now();
-  const entry = rateLimitStore.get(identifier);
+  const entry = inMemoryStore.get(identifier);
 
   if (!entry || now > entry.resetTime) {
-    // Create new entry
-    rateLimitStore.set(identifier, {
-      count: 1,
-      resetTime: now + config.interval,
-    });
-    return {
-      success: true,
-      limit: config.limit,
-      remaining: config.limit - 1,
-      reset: now + config.interval,
-    };
+    inMemoryStore.set(identifier, { count: 1, resetTime: now + config.interval });
+    return { success: true, limit: config.limit, remaining: config.limit - 1, reset: now + config.interval };
   }
 
   if (entry.count >= config.limit) {
-    // Rate limit exceeded
-    return {
-      success: false,
-      limit: config.limit,
-      remaining: 0,
-      reset: entry.resetTime,
-    };
+    return { success: false, limit: config.limit, remaining: 0, reset: entry.resetTime };
   }
 
-  // Increment count
   entry.count++;
-  rateLimitStore.set(identifier, entry);
-
-  return {
-    success: true,
-    limit: config.limit,
-    remaining: config.limit - entry.count,
-    reset: entry.resetTime,
-  };
+  return { success: true, limit: config.limit, remaining: config.limit - entry.count, reset: entry.resetTime };
 }
 
-// Get client identifier from request
+async function checkRedis(identifier: string, config: RateLimitConfig): Promise<RateLimitResult> {
+  const redis = getRedis();
+  if (!redis) return checkInMemory(identifier, config);
+
+  const key = `ratelimit:${identifier}`;
+  const now = Date.now();
+  const windowMs = config.interval;
+
+  try {
+    const multi = redis.multi();
+    multi.zremrangebyscore(key, 0, now - windowMs);
+    multi.zadd(key, now, `${now}-${Math.random()}`);
+    multi.zcard(key);
+    multi.expire(key, Math.ceil(windowMs / 1000));
+    const results = await multi.exec();
+    const count = results?.[2]?.[1] as number ?? 0;
+
+    const remaining = Math.max(0, config.limit - count);
+    const reset = now + windowMs;
+
+    return {
+      success: count <= config.limit,
+      limit: config.limit,
+      remaining,
+      reset,
+    };
+  } catch (err) {
+    return checkInMemory(identifier, config);
+  }
+}
+
+export async function checkRateLimit(
+  identifier: string,
+  config: RateLimitConfig = rateLimits.default,
+): Promise<RateLimitResult> {
+  if (isRedisReady()) {
+    return checkRedis(identifier, config);
+  }
+  return checkInMemory(identifier, config);
+}
+
 export function getClientIdentifier(request: Request): string {
-  // Try to get IP from various headers
   const forwarded = request.headers.get('x-forwarded-for');
   const realIp = request.headers.get('x-real-ip');
   const cfIp = request.headers.get('cf-connecting-ip');
-  
-  if (forwarded) {
-    return forwarded.split(',')[0].trim();
-  }
-  if (realIp) {
-    return realIp;
-  }
-  if (cfIp) {
-    return cfIp;
-  }
-  
-  // Fallback to a default (in production, you might want to require authentication)
+
+  if (forwarded) return forwarded.split(',')[0].trim();
+  if (realIp) return realIp;
+  if (cfIp) return cfIp;
+
   return 'anonymous';
 }
 
-// Helper to create rate limit response
 export function createRateLimitResponse(result: RateLimitResult): Response {
   return new Response(
     JSON.stringify({

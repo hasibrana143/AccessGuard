@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/error-logger';
+import { requireAuth, requireProjectAccess } from '@/lib/rbac';
 
 // GET /api/stats/trends - Get historical violation trends
 export async function GET(request: NextRequest) {
@@ -21,9 +23,18 @@ export async function GET(request: NextRequest) {
         lte: endDate
       }
     };
-    
+
+    let orgScopeId: string | undefined;
     if (projectId) {
+      const access = await requireProjectAccess(request, projectId);
+      if (access instanceof NextResponse) return access;
       where.projectId = projectId;
+      orgScopeId = access.user.orgId;
+    } else {
+      const auth = await requireAuth(request);
+      if (auth instanceof NextResponse) return auth;
+      where.project = { orgId: auth.user.orgId };
+      orgScopeId = auth.user.orgId;
     }
 
     // Get violations grouped by day
@@ -43,7 +54,7 @@ export async function GET(request: NextRequest) {
           gte: startDate,
           lte: endDate
         },
-        ...(projectId && { projectId })
+        ...(projectId ? { projectId } : { project: { orgId: orgScopeId } }),
       },
       select: {
         createdAt: true,
@@ -123,7 +134,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error fetching trend data:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       { success: false, error: 'Failed to fetch trend data' },
       { status: 500 }

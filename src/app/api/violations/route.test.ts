@@ -3,11 +3,33 @@ import { GET, PUT, POST } from './route';
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 
+vi.mock('next-auth', () => ({
+  getServerSession: vi.fn(),
+}));
+
+import { vi } from 'vitest';
+import { getServerSession } from 'next-auth';
+const mockedGetServerSession = vi.mocked(getServerSession);
+
 function createRequest(url: string, options: RequestInit = {}): NextRequest {
-  return new NextRequest(new URL(url, 'http://localhost:3000'), options);
+  return new NextRequest(new URL(url, 'http://localhost:3000'), options as RequestInit & { signal?: AbortSignal });
 }
 
 describe('Violations API', () => {
+  let testOrgId: string;
+
+  beforeAll(async () => {
+    const org = await db.organization.findFirst({ where: { slug: 'default-org' } });
+    testOrgId = org?.id || '';
+    mockedGetServerSession.mockResolvedValue({
+      user: { id: 'test-user', role: 'admin', orgId: testOrgId, orgSlug: 'default-org' },
+    } as never);
+  });
+
+  afterAll(() => {
+    vi.restoreAllMocks();
+  });
+
   describe('GET /api/violations', () => {
     it('should return violations with pagination', async () => {
       const request = createRequest('/api/violations?limit=10');
@@ -71,8 +93,10 @@ describe('Violations API', () => {
     let testViolationId: string;
 
     beforeAll(async () => {
-      // Get a test violation
-      const violation = await db.violation.findFirst();
+      // Get a test violation from the test org
+      const violation = await db.violation.findFirst({
+        where: { project: { orgId: testOrgId } },
+      });
       testViolationId = violation?.id || '';
     });
 
@@ -139,7 +163,7 @@ describe('Violations API', () => {
     it('should return violation statistics', async () => {
       const request = createRequest('/api/violations', {
         method: 'POST',
-        body: JSON.stringify({ orgSlug: 'demo-org' })
+        body: JSON.stringify({ orgSlug: 'default-org' })
       });
 
       const response = await POST(request);
@@ -156,7 +180,7 @@ describe('Violations API', () => {
     it('should include severity breakdown', async () => {
       const request = createRequest('/api/violations', {
         method: 'POST',
-        body: JSON.stringify({ orgSlug: 'demo-org' })
+        body: JSON.stringify({ orgSlug: 'default-org' })
       });
 
       const response = await POST(request);

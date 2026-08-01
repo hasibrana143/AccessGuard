@@ -3,6 +3,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/error-logger';
+import { requireAuth, requireProjectAccess } from '@/lib/rbac';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,7 +14,16 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
     // Build where clause
-    const where = projectId ? { projectId } : {};
+    let where: Record<string, unknown>;
+    if (projectId) {
+      const access = await requireProjectAccess(request, projectId);
+      if (access instanceof NextResponse) return access;
+      where = { projectId };
+    } else {
+      const auth = await requireAuth(request);
+      if (auth instanceof NextResponse) return auth;
+      where = { project: { orgId: auth.user.orgId } };
+    }
 
     // Fetch reports with pagination
     const [reports, total] = await Promise.all([
@@ -75,7 +86,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching reports:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       {
         success: false,
@@ -86,7 +97,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// DELETE endpoint to remove a report
+// DELETE endpoint to remove a report (must belong to the user's org)
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -96,6 +107,20 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Report ID is required' },
         { status: 400 }
+      );
+    }
+
+    const auth = await requireAuth(request);
+    if (auth instanceof NextResponse) return auth;
+
+    const existing = await db.complianceReport.findFirst({
+      where: { id: reportId, project: { orgId: auth.user.orgId } },
+      select: { id: true },
+    });
+    if (!existing) {
+      return NextResponse.json(
+        { success: false, error: 'Report not found' },
+        { status: 404 }
       );
     }
 
@@ -109,7 +134,7 @@ export async function DELETE(request: NextRequest) {
       message: 'Report deleted successfully',
     });
   } catch (error) {
-    console.error('Error deleting report:', error);
+    logger.error({ err: error }, '');
     return NextResponse.json(
       {
         success: false,

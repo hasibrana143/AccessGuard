@@ -91,6 +91,13 @@ class ApiService {
     });
   }
 
+  async bulkUpdateViolations(ids: string[], status: ViolationStatus, projectId?: string): Promise<ApiResponse<{ updated: number }>> {
+    return this.fetch(`${API_BASE}/violations/batch`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ids, status, projectId }),
+    });
+  }
+
   async getViolationStats(projectId?: string): Promise<ApiResponse<ViolationStats>> {
     return this.fetch(`${API_BASE}/violations`, {
       method: 'POST',
@@ -121,6 +128,22 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ violationId, forceRegenerate }),
     });
+  }
+
+  // Domain Verification
+  async generateVerificationToken(projectId: string): Promise<ApiResponse<{
+    verificationToken: string;
+    instructions: { method: string; html: string; location: string; domain: string };
+    alternativeMethods: Array<{ method: string; instruction: string }>;
+  }>> {
+    return this.fetch(`${API_BASE}/projects/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ projectId }),
+    });
+  }
+
+  async checkVerificationStatus(projectId: string): Promise<ApiResponse<{ verified: boolean; message?: string; verificationToken?: string; needsToken?: boolean }>> {
+    return this.fetch(`${API_BASE}/projects/verify?projectId=${projectId}`);
   }
 
   // Health check
