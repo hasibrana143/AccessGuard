@@ -63,7 +63,10 @@ export const WCAG_RULES: Record<string, { name: string; requirement: string }> =
 };
 
 export async function generateRemediation(violation: RemediationRequest) {
-  const zai = await ZAI.create();
+  const zai = await ZAI.create().catch(() => null);
+  if (!zai) {
+    return templateRemediation(violation);
+  }
 
   const ruleInfo = WCAG_RULES[violation.ruleId] || {
     name: violation.ruleId,
@@ -136,4 +139,44 @@ Provide the fixed code, a brief explanation, and a confidence score (0-1). Forma
     logger.error({ err: error }, '');
     throw error;
   }
+}
+
+function templateRemediation(violation: RemediationRequest): { remediationCode: string; explanation: string; confidence: number } {
+  const html = violation.elementHtml || '';
+  const rule = WCAG_RULES[violation.ruleId] || { name: violation.ruleId, requirement: violation.description };
+
+  const fixFor: Record<string, () => { remediationCode: string; explanation: string }> = {
+    'image-alt': () => ({
+      remediationCode: html.replace(/(<img\b[^>]*?)\/?>/i, (match, open) =>
+        match.includes('alt=') ? match : `${open} alt="${violation.description || 'Descriptive alt text for this image'}" />`
+      ),
+      explanation: 'Added a descriptive alt attribute so screen readers can describe the image content.',
+    }),
+    label: () => ({
+      remediationCode: html.includes('id=')
+        ? html
+        : `<label for="${Math.random().toString(36).slice(2, 8)}">${violation.description || 'Field label'}</label>\n${html}`,
+      explanation: 'Associated the input with a label so screen readers announce the field purpose.',
+    }),
+    'link-name': () => ({
+      remediationCode: html.replace(/(<a\b[^>]*?>)[\s\S]*?(<\/a>)/i, `$1${violation.description || 'Read more about this topic'}$2`),
+      explanation: 'Replaced generic link text with descriptive text that identifies the link destination.',
+    }),
+    'color-contrast': () => ({
+      remediationCode: html,
+      explanation: 'Adjust the CSS text color/background combination to reach a 4.5:1 contrast ratio (WCAG 2.1 AA).',
+    }),
+  };
+
+  const fallback = {
+    remediationCode: html,
+    explanation: `Fix the ${rule.name} violation: ${rule.requirement}`,
+  };
+
+  const fix = fixFor[violation.ruleId]?.() ?? fallback;
+  return {
+    remediationCode: fix.remediationCode,
+    explanation: `${fix.explanation} Rule: ${rule.name} (${violation.wcagCriteria}).`,
+    confidence: 0.5,
+  };
 }

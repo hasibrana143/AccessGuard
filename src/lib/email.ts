@@ -25,13 +25,17 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
   }
 
   try {
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: FROM_EMAIL,
       to: options.to,
       subject: options.subject,
       html: options.html,
       text: options.text,
     });
+    if (result.error || !result.data) {
+      logger.error({ err: result.error, to: options.to }, 'Resend rejected email');
+      return { success: false, error: result.error?.message || 'Email rejected' };
+    }
     return { success: true };
   } catch (error) {
     logger.error({ err: error }, '');

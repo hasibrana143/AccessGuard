@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Shield, ArrowRight, Eye, EyeOff, Loader2, Github } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,15 @@ interface LoginFormProps {
   onSwitchToRegister: () => void;
 }
 
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M21.35 11.1H12v3.6h5.3c-.5 2.3-2.4 3.9-5.3 3.9-3.2 0-5.8-2.6-5.8-5.9S8.8 6.8 12 6.8c1.6 0 3 .6 4.1 1.6l2.7-2.7C17.2 4.2 14.7 3.2 12 3.2c-5 0-9 4-9 9s4 9 9 9c5.2 0 8.7-3.7 8.7-8.9 0-.6-.1-1.1-.35-1.2z" fill="#4285F4" />
+      <path d="M3.6 12c0 4.4 3.6 8 8 8z" fill="#34A853" opacity="0" />
+    </svg>
+  );
+}
+
 export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -24,6 +33,32 @@ export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
   const [mfaRequired, setMfaRequired] = useState(false);
+  const [oauthProvider, setOauthProvider] = useState<string | null>(null);
+
+  const [providers, setProviders] = useState<Record<string, { name: string }>>({});
+
+  useEffect(() => {
+    fetch('/api/auth/providers')
+      .then((res) => res.json())
+      .then((data) => setProviders(data || {}))
+      .catch(() => {});
+  }, []);
+
+  const handleOAuth = async (provider: string) => {
+    setOauthProvider(provider);
+    try {
+      const result = await signIn(provider, { callbackUrl: '/dashboard', redirect: false });
+      if (result?.url) {
+        window.location.href = result.url;
+      } else if (!result?.ok) {
+        toast({ title: `${provider} sign-in failed`, description: result?.error || 'Could not reach the provider', variant: 'destructive' });
+        setOauthProvider(null);
+      }
+    } catch {
+      toast({ title: 'Error', description: 'Failed to connect to server', variant: 'destructive' });
+      setOauthProvider(null);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +142,32 @@ export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
               </Button>
             </form>
           </CardContent>
+          {providers.github || providers.google ? (
+            <div className="px-6 pb-2">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">or continue with</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                {providers.github && (
+                  <Button variant="outline" className="w-full h-11" disabled={!!oauthProvider} onClick={() => handleOAuth('github')}>
+                    {oauthProvider === 'github' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Github className="h-4 w-4 mr-2" />}
+                    GitHub
+                  </Button>
+                )}
+                {providers.google && (
+                  <Button variant="outline" className="w-full h-11" disabled={!!oauthProvider} onClick={() => handleOAuth('google')}>
+                    {oauthProvider === 'google' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <GoogleIcon className="h-4 w-4 mr-2" />}
+                    Google
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : null}
           <CardFooter className="flex flex-col gap-4">
             <Button variant="link" className="text-sm text-muted-foreground" onClick={() => router.push('/auth/forgot-password')}>
               Forgot your password?
