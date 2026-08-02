@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { enqueueScan } from '@/lib/queue';
 
 // GET /api/projects - List all projects for the authenticated user's org
 export async function GET(request: NextRequest) {
@@ -156,6 +157,9 @@ export async function POST(request: NextRequest) {
         status: 'pending'
       }
     });
+
+    // Enqueue the scan job for the worker to process
+    await enqueueScan(project.id, project.url, access.user.id);
 
     return NextResponse.json({
       success: true,

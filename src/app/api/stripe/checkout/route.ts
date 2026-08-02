@@ -3,22 +3,11 @@ import Stripe from 'stripe';
 import { db } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
+import { getStripePriceId, type PlanType } from '@/lib/stripe';
 
 const stripe = process.env.STRIPE_SECRET_KEY 
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
-
-// Price IDs - create these in Stripe Dashboard
-const PRICE_IDS: Record<string, Record<string, string>> = {
-  starter: {
-    monthly: 'price_starter_monthly',
-    yearly: 'price_starter_yearly',
-  },
-  agency: {
-    monthly: 'price_agency_monthly',
-    yearly: 'price_agency_yearly',
-  },
-};
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,7 +19,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { orgId, plan = 'starter', interval = 'monthly', email } = body;
+    const { orgId, plan = 'starter', email } = body;
 
     if (!orgId) {
       return NextResponse.json(
@@ -75,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get price ID
-    const priceId = PRICE_IDS[plan]?.[interval];
+    const priceId = getStripePriceId(plan as PlanType);
     if (!priceId) {
       return NextResponse.json(
         { success: false, error: 'Invalid plan or interval' },
@@ -100,7 +89,6 @@ export async function POST(request: NextRequest) {
       metadata: {
         orgId,
         plan,
-        interval,
       },
       subscription_data: {
         metadata: {
