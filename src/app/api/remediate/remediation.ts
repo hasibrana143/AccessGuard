@@ -1,4 +1,3 @@
-import ZAI from 'z-ai-web-dev-sdk';
 import { logger } from '@/lib/error-logger';
 
 interface RemediationRequest {
@@ -63,10 +62,13 @@ export const WCAG_RULES: Record<string, { name: string; requirement: string }> =
 };
 
 export async function generateRemediation(violation: RemediationRequest) {
-  const zai = await ZAI.create().catch(() => null);
-  if (!zai) {
+  const apiKey = process.env.AI_API_KEY;
+  if (!apiKey) {
     return templateRemediation(violation);
   }
+
+  const baseUrl = process.env.AI_BASE_URL || 'https://integrate.api.nvidia.com/v1';
+  const model = process.env.AI_MODEL || 'meta/llama-3.3-70b-instruct';
 
   const ruleInfo = WCAG_RULES[violation.ruleId] || {
     name: violation.ruleId,
@@ -111,15 +113,31 @@ Provide the fixed code, a brief explanation, and a confidence score (0-1). Forma
 [0-1 number]`;
 
   try {
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: 'assistant', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      thinking: { type: 'disabled' }
+    const completion = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'assistant', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 1000,
+      }),
     });
 
-    const response = completion.choices[0]?.message?.content || '';
+    if (!completion.ok) {
+      const errorText = await completion.text();
+      logger.error({ status: completion.status, errorText }, 'AI provider rejected remediation request');
+      return templateRemediation(violation);
+    }
+
+    const data = await completion.json();
+    const response = data.choices?.[0]?.message?.content || '';
 
     // Parse the response
     const codeMatch = response.match(/---CODE---\n([\s\S]*?)\n---EXPLANATION---/);
