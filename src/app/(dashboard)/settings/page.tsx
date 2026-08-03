@@ -18,9 +18,17 @@ import { isPushEnabled, setPushEnabled, getPushPermission, showBrowserNotificati
 export default function SettingsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [profileName, setProfileName] = useState(user?.name || '');
-  const [profileEmail, setProfileEmail] = useState(user?.email || '');
+  const [profileName, setProfileName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
+
+  // Sync profile fields when user session hydrates
+  useEffect(() => {
+    if (user) {
+      setProfileName(user.name || '');
+      setProfileEmail(user.email || '');
+    }
+  }, [user]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);

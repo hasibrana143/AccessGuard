@@ -27,14 +27,15 @@ interface AuditNotification {
 }
 
 const NOTIFICATION_ACTIONS = new Set([
-  'scan_started',
-  'scan_completed',
-  'scan_failed',
-  'scan_blocked_plan_limit',
-  'pr_created',
+  'scan.started',
+  'scan.completed',
+  'scan.failed',
+  'scan.blocked_plan_limit',
+  'github.pr_created',
   'remediation_generated',
   'violation_status_changed',
-  'member_invited',
+  'team.invite_sent',
+  'member_invited', // legacy
 ]);
 
 export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeaderProps) {

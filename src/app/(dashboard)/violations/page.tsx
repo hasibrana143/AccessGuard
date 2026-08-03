@@ -134,7 +134,14 @@ export default function ViolationsPage() {
   const handleBulkStatusUpdate = async (status: ViolationStatus) => {
     try {
       const ids = Array.from(selectedIds);
-      await bulkUpdate.mutateAsync({ ids, status });
+      // Get projectId from the first selected violation (assumes all selected are from same project)
+      const firstViolation = filteredViolations.find(v => ids.includes(v.id));
+      const projectId = firstViolation?.projectId;
+      if (!projectId) {
+        toast({ title: 'Error', description: 'Could not determine project for selected violations', variant: 'destructive' });
+        return;
+      }
+      await bulkUpdate.mutateAsync({ ids, status, projectId });
       toast({ title: 'Updated', description: `${ids.length} violations marked as ${status}` });
       setSelectedIds(new Set());
     } catch {

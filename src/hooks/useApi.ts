@@ -13,8 +13,8 @@ export const queryKeys = {
   project: (id: string) => ['projects', id] as const,
   violations: (filters?: Record<string, unknown>) => ['violations', filters] as const,
   violation: (id: string) => ['violations', id] as const,
-  scans: (projectId?: string) => ['scans', projectId] as const,
-  stats: (projectId?: string) => ['stats', projectId] as const,
+  scans: (projectId?: string, limit?: number) => ['scans', projectId, limit] as const,
+  stats: (projectId?: string, orgSlug?: string) => ['stats', projectId, orgSlug] as const,
   trends: (projectId?: string, days?: number) => ['trends', projectId, days] as const,
 };
 
@@ -105,11 +105,11 @@ export function useViolations(params: {
   });
 }
 
-export function useViolationStats(projectId?: string) {
+export function useViolationStats(projectId?: string, orgSlug?: string) {
   return useQuery({
-    queryKey: queryKeys.stats(projectId),
+    queryKey: queryKeys.stats(projectId, orgSlug),
     queryFn: async (): Promise<ViolationStats | null> => {
-      const result = await api.getViolationStats(projectId);
+      const result = await api.getViolationStats(projectId, orgSlug);
       if (!result.success) throw new Error(result.error);
       const responseData = result.data as { data?: ViolationStats };
       return responseData?.data || null;

@@ -19,7 +19,7 @@ export default function DashboardPage() {
   const { toast } = useToast();
   const orgSlug = user?.orgSlug ?? undefined;
   const { data: projects, isLoading: projectsLoading } = useProjects(orgSlug);
-  const { data: statsData } = useViolationStats();
+  const { data: statsData } = useViolationStats(undefined, user?.orgSlug ?? undefined);
   const { data: violationsData } = useViolations({ limit: 5 });
   const { data: scansData } = useScans(undefined, 5);
   const { data: trendData } = useTrendData(undefined, 30);

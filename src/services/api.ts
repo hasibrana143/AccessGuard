@@ -98,10 +98,10 @@ class ApiService {
     });
   }
 
-  async getViolationStats(projectId?: string): Promise<ApiResponse<ViolationStats>> {
+  async getViolationStats(projectId?: string, orgSlug?: string): Promise<ApiResponse<ViolationStats>> {
     return this.fetch(`${API_BASE}/violations`, {
       method: 'POST',
-      body: JSON.stringify({ projectId }),
+      body: JSON.stringify({ projectId, orgSlug }),
     });
   }
 
