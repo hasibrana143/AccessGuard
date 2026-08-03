@@ -3,10 +3,11 @@ import { db } from '@/lib/db';
 import { scanFromHTML, type ScannerViolation } from '@/services/scanner';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { enqueueScan } from '@/lib/queue';
-import { validateTargetUrl } from '@/lib/url-validation';
 import { logger } from '@/lib/error-logger';
 import { requireAuth, requireVerifiedEmail, requireProjectAccess } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { checkPagesLimit } from '@/lib/plan-limits';
+import { validateTargetUrl } from '@/lib/url-validation';
 
 // GET /api/scans - List scans
 export async function GET(request: NextRequest) {
@@ -83,6 +84,22 @@ export async function POST(request: NextRequest) {
     if (html) {
       const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.RUN_SCANS });
       if (access instanceof NextResponse) return access;
+
+      // Enforce monthly page quota for HTML scans too
+      const org = await db.organization.findUnique({
+        where: { id: access.user.orgId },
+        select: { plan: true, settings: true },
+      });
+      if (org) {
+        const pageCheck = await checkPagesLimit(access.user.orgId, org.plan || 'free', org.settings);
+        if (!pageCheck.allowed) {
+          return NextResponse.json(
+            { success: false, error: `Monthly scan limit reached (${pageCheck.current}/${pageCheck.limit} pages)` },
+            { status: 402 }
+          );
+        }
+      }
+
       return handleHtmlScan(projectId, html);
     }
 

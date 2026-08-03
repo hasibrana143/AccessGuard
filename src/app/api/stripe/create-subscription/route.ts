@@ -3,9 +3,8 @@ import { db } from '@/lib/db';
 import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
 import { requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
-import { createSubscription, createCustomer, getStripePriceId } from '@/lib/stripe';
+import { createSubscription, createCustomer, getStripePriceId, PRICING_PLANS, type PlanType } from '@/lib/stripe';
 import { logger } from '@/lib/error-logger';
-type PlanId = 'starter' | 'agency' | 'enterprise';
 
 // POST /api/stripe/create-subscription - Create a subscription for an organization
 export async function POST(request: NextRequest) {
@@ -36,10 +35,9 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json();
-    const { planId, priceId, interval = 'month' } = body as {
-      planId?: PlanId;
+    const { planId, priceId } = body as {
+      planId?: PlanType;
       priceId?: string;
-      interval?: 'month' | 'year';
     };
 
     // Validate that either planId or priceId is provided
@@ -48,6 +46,27 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Either planId or priceId is required' },
         { status: 400 }
       );
+    }
+
+    // Whitelist priceId against the canonical plan price IDs — blocks arbitrary/zero prices
+    const canonicalPriceIds = new Set(PRICING_PLANS.map((p) => p.priceId).filter(Boolean) as string[]);
+    let finalPriceId: string | null = null;
+    if (priceId) {
+      if (!canonicalPriceIds.has(priceId)) {
+        return NextResponse.json(
+          { success: false, error: 'Unknown price ID' },
+          { status: 400 }
+        );
+      }
+      finalPriceId = priceId;
+    } else if (planId) {
+      finalPriceId = getStripePriceId(planId);
+      if (!finalPriceId || !canonicalPriceIds.has(finalPriceId)) {
+        return NextResponse.json(
+          { success: false, error: 'Could not resolve a valid price ID for the requested plan' },
+          { status: 400 }
+        );
+      }
     }
 
     // Get user and organization
@@ -105,17 +124,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Determine the price ID
-    const finalPriceId = priceId ?? (planId ? getStripePriceId(planId) : null);
-
+    // Create subscription
     if (!finalPriceId) {
       return NextResponse.json(
         { success: false, error: 'Could not determine price ID' },
         { status: 400 }
       );
     }
-
-    // Create subscription
     const subscription = await createSubscription(customerId, finalPriceId);
 
     if (!subscription) {
@@ -126,11 +141,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Update organization with subscription ID (will be updated again on webhook)
+    const planFromPriceId = PRICING_PLANS.find((p) => p.priceId === finalPriceId)?.id;
     await db.organization.update({
       where: { id: user.orgId },
       data: {
         stripeSubscriptionId: subscription.id,
-        plan: planId ?? 'starter',
+        plan: planId ?? planFromPriceId ?? 'starter',
       },
     });
 

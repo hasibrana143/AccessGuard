@@ -241,9 +241,12 @@ export const fetchAnalysisStrategy: ScannerStrategy = {
   },
   async scan(url: string, html: string | null, config?: ScanConfig): Promise<ScanResult> {
     try {
-      const urlCheck = await validateTargetUrl(url);
-      if (!urlCheck.ok) {
-        return { violations: [], pagesScanned: 0, error: `Blocked target: ${urlCheck.error}` };
+      // Only validate the URL if we need to fetch it (no html provided)
+      if (!html) {
+        const urlCheck = await validateTargetUrl(url);
+        if (!urlCheck.ok) {
+          return { violations: [], pagesScanned: 0, error: `Blocked target: ${urlCheck.error}` };
+        }
       }
 
       const documentHtml = html ?? await fetchHtml(url);

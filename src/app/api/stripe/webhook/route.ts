@@ -41,12 +41,16 @@ export async function POST(request: NextRequest) {
         const subscriptionId = session.subscription as string;
 
         if (orgId) {
+          // Merge with existing settings instead of overwriting
+          const existing = await db.organization.findUnique({ where: { id: orgId }, select: { settings: true } });
+          const existingSettings = existing?.settings ? JSON.parse(existing.settings) : {};
           await db.organization.update({
             where: { id: orgId },
             data: {
               plan,
               stripeSubscriptionId: subscriptionId,
               settings: JSON.stringify({
+                ...existingSettings,
                 planActivated: new Date().toISOString(),
                 customerId: session.customer,
               }),

@@ -6,6 +6,11 @@ export interface UrlValidationResult {
   error?: string;
 }
 
+export interface ValidateTargetUrlOptions {
+  /** Skip DNS resolution — for testing only */
+  skipDnsCheck?: boolean;
+}
+
 const ALLOWED_SCHEMES = new Set(['http:', 'https:']);
 
 // IPv4 ranges that must never be scanned server-side
@@ -135,7 +140,10 @@ export function isHostnameBlockedByName(hostname: string): boolean {
  * credentials, private/link-local/loopback/metadata IPs and rebinding-prone
  * hostnames. Performs a DNS lookup of all resolved addresses.
  */
-export async function validateTargetUrl(rawUrl: string): Promise<UrlValidationResult> {
+export async function validateTargetUrl(
+  rawUrl: string,
+  options: ValidateTargetUrlOptions = {}
+): Promise<UrlValidationResult> {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl.trim());
@@ -169,21 +177,23 @@ export async function validateTargetUrl(rawUrl: string): Promise<UrlValidationRe
   }
 
   // DNS resolution + private IP check (also blocks DNS rebinding tricks at lookup time)
-  let addresses: Array<{ address: string; family: number }>;
-  try {
-    addresses = await lookup(hostname, { all: true, verbatim: true });
-  } catch {
-    return { ok: false, error: 'Could not resolve hostname' };
-  }
+  if (!options.skipDnsCheck) {
+    let addresses: Array<{ address: string; family: number }>;
+    try {
+      addresses = await lookup(hostname, { all: true, verbatim: true });
+    } catch {
+      return { ok: false, error: 'Could not resolve hostname' };
+    }
 
-  if (addresses.length === 0) {
-    return { ok: false, error: 'Could not resolve hostname' };
-  }
+    if (addresses.length === 0) {
+      return { ok: false, error: 'Could not resolve hostname' };
+    }
 
-  for (const { address } of addresses) {
-    const blocked = isPrivateIp(address);
-    if (blocked !== null) {
-      return { ok: false, error: `Target resolves to a blocked address (${blocked})` };
+    for (const { address } of addresses) {
+      const blocked = isPrivateIp(address);
+      if (blocked !== null) {
+        return { ok: false, error: `Target resolves to a blocked address (${blocked})` };
+      }
     }
   }
 

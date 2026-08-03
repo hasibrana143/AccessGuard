@@ -115,7 +115,7 @@ export function RegisterForm({ onBack, onSwitchToLogin }: RegisterFormProps) {
             <form onSubmit={handleRegister} className="space-y-4" noValidate>
               <div className="space-y-2">
                 <Label htmlFor="register-name">Full Name</Label>
-                <Input id="register-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Doe" required autoComplete="name" />
+                <Input id="register-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Jhon Deo" required autoComplete="name" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="register-email">Email</Label>

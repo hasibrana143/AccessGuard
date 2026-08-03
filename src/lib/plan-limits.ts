@@ -12,15 +12,18 @@ export function getPlanLimits(plan: string, settings?: string | null): PlanLimit
     ? { websites: found.limits.websites, pagesPerMonth: found.limits.pagesPerMonth }
     : { websites: 1, pagesPerMonth: 500 };
 
-  // Allow explicit override stored in org settings (e.g. after plan downgrade)
+  // Allow explicit override stored in org settings (e.g. after plan downgrade).
+  // Overrides may only RESTRICT below the plan's default — they may never raise it.
   if (settings) {
     try {
       const parsed = JSON.parse(settings);
-      if (parsed.planLimits?.websites !== undefined) {
-        defaults.websites = parsed.planLimits.websites;
+      const overrideWebsites = parsed.planLimits?.websites;
+      const overridePages = parsed.planLimits?.pagesPerMonth;
+      if (typeof overrideWebsites === 'number' && Number.isFinite(overrideWebsites) && overrideWebsites >= 0 && overrideWebsites <= defaults.websites) {
+        defaults.websites = Math.floor(overrideWebsites);
       }
-      if (parsed.planLimits?.pagesPerMonth !== undefined) {
-        defaults.pagesPerMonth = parsed.planLimits.pagesPerMonth;
+      if (typeof overridePages === 'number' && Number.isFinite(overridePages) && overridePages >= 0 && overridePages <= defaults.pagesPerMonth) {
+        defaults.pagesPerMonth = Math.floor(overridePages);
       }
     } catch {
       // Ignore malformed settings

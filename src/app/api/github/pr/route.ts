@@ -17,18 +17,6 @@ interface GitHubPRRequest {
   body: string;
 }
 
-// Get GitHub token from connection
-async function getGitHubToken(orgId: string): Promise<string | null> {
-  const connection = await db.githubConnection.findFirst({
-    where: { orgId, isActive: true },
-  });
-  
-  if (!connection) return null;
-  // Note: In production, you'd store the actual OAuth token securely
-  // For now, we need to get it from the user's session or a secure store
-  return process.env.GITHUB_TOKEN || null;
-}
-
 // POST - Create a PR with accessibility fixes
 export async function POST(request: NextRequest) {
   try {
@@ -54,6 +42,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'GitHub not connected. Please connect your GitHub account first.' },
         { status: 400 }
+      );
+    }
+
+    // Whitelist repository against the org's connected repositories (prevents cross-tenant / arbitrary repo writes)
+    const allowedRepos: string[] = connection.repositories
+      ? (JSON.parse(connection.repositories) as Array<{ fullName?: string }> | null)
+          ?.map((r) => r.fullName)
+          .filter((n: unknown): n is string => typeof n === 'string') ?? []
+      : [];
+    if (allowedRepos.length === 0 || !allowedRepos.includes(repository)) {
+      return NextResponse.json(
+        { success: false, error: 'Repository is not part of your connected GitHub repositories' },
+        { status: 403 }
       );
     }
 

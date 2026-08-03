@@ -163,6 +163,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Whitelist repository against the org's connected GitHub repositories
+    const connection = await db.githubConnection.findFirst({
+      where: { orgId: auth.user.orgId, isActive: true },
+    });
+    if (!connection) {
+      return NextResponse.json(
+        { success: false, error: 'GitHub not connected. Please connect your GitHub account first.' },
+        { status: 400 }
+      );
+    }
+    const allowedRepos: string[] = connection.repositories
+      ? (JSON.parse(connection.repositories) as Array<{ fullName?: string }> | null)
+          ?.map((r) => r.fullName)
+          .filter((n: unknown): n is string => typeof n === 'string') ?? []
+      : [];
+    if (allowedRepos.length === 0 || !allowedRepos.includes(repository)) {
+      return NextResponse.json(
+        { success: false, error: 'Repository is not part of your connected GitHub repositories' },
+        { status: 403 }
+      );
+    }
+
     // Get GitHub token from user (in real app, this would come from session/OAuth)
     // For now, check if we have a token in headers or environment
     const githubToken = request.headers.get('x-github-token') || process.env.GITHUB_TOKEN;
