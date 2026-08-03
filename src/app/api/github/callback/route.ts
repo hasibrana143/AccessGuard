@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { encryptSecret } from '@/lib/crypto';
+import { requireVerifiedEmail } from '@/lib/rbac';
+import { verifyOAuthState } from '@/lib/oauth-state';
 
-const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
-const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
 
 // Handle GitHub OAuth callback
 export async function GET(request: NextRequest) {
@@ -30,16 +32,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Decode state
-    let stateData: { orgId: string; redirect: string };
-    try {
-      stateData = JSON.parse(Buffer.from(state || '', 'base64').toString());
-    } catch {
-      return NextResponse.json(
-        { success: false, error: 'Invalid state parameter' },
-        { status: 400 }
+    // The browser session cookie is sent on this redirect navigation
+    const auth = await requireVerifiedEmail(request);
+    if (auth instanceof NextResponse) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      return NextResponse.redirect(`${appUrl}/auth/login?error=Please sign in to connect GitHub`);
+    }
+
+    // Verify the signed state returned by GitHub
+    const stateData = verifyOAuthState(state || '');
+    if (!stateData?.orgId || typeof stateData.redirect !== 'string' || stateData.orgId !== auth.user.orgId) {
+      return NextResponse.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard?error=${encodeURIComponent('Invalid state parameter')}`
       );
     }
+    const orgId = stateData.orgId as string;
+    const redirect = stateData.redirect as string;
 
     // Exchange code for access token
     const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
@@ -92,7 +100,7 @@ export async function GET(request: NextRequest) {
 
     // Store GitHub connection - find existing or create new
     const existingConnection = await db.githubConnection.findFirst({
-      where: { orgId: stateData.orgId },
+      where: { orgId },
     });
 
     if (existingConnection) {
@@ -107,7 +115,7 @@ export async function GET(request: NextRequest) {
     } else {
       await db.githubConnection.create({
         data: {
-          orgId: stateData.orgId,
+          orgId,
           installationId: userData.id.toString(),
           repositories: JSON.stringify(repositories),
           isActive: true,
@@ -115,11 +123,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Store encrypted token in user record
-    const user = await db.user.findFirst({
-      where: { orgId: stateData.orgId },
-      orderBy: { createdAt: 'asc' },
-    });
+    // Store encrypted token on the connecting user's record
+    const user = await db.user.findUnique({ where: { id: auth.user.id } });
     if (user) {
       await db.user.update({
         where: { id: user.id },
@@ -130,7 +135,7 @@ export async function GET(request: NextRequest) {
     // Create audit log
     await db.auditLog.create({
       data: {
-        orgId: stateData.orgId,
+        orgId,
         action: 'github_connected',
         metadata: JSON.stringify({
           username: userData.login,
@@ -142,7 +147,7 @@ export async function GET(request: NextRequest) {
     // Redirect back to app
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     return NextResponse.redirect(
-      `${appUrl}${stateData.redirect}?github=connected&repos=${repositories.length}`
+      `${appUrl}${redirect}?github=connected&repos=${repositories.length}`
     );
   } catch (err) {
     logger.error({ err }, 'GitHub OAuth callback error');

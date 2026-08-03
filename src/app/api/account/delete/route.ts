@@ -35,25 +35,25 @@ export async function POST(request: NextRequest) {
 
     await db.$transaction(async (tx) => {
       const remainingUsers = await tx.user.count({ where: { orgId: user.orgId, id: { not: userId } } });
-
-      const projectIds = (await tx.project.findMany({ where: { orgId: user.orgId }, select: { id: true } })).map((p) => p.id);
-
-      if (projectIds.length > 0) {
-        await tx.complianceReport.deleteMany({ where: { projectId: { in: projectIds } } });
-        await tx.scheduledScan.deleteMany({ where: { projectId: { in: projectIds } } });
-        await tx.violation.deleteMany({ where: { projectId: { in: projectIds } } });
-        await tx.scan.deleteMany({ where: { projectId: { in: projectIds } } });
-      }
-
-      await tx.project.deleteMany({ where: { orgId: user.orgId } });
-      await tx.githubConnection.deleteMany({ where: { orgId: user.orgId } });
-      await tx.auditLog.deleteMany({ where: { orgId: user.orgId } });
-      await tx.teamInvite.deleteMany({ where: { orgId: user.orgId } });
       await tx.passwordReset.deleteMany({ where: { email: user.email } });
-
       await tx.user.delete({ where: { id: userId } });
 
+      // Only wipe org data when the LAST member leaves; otherwise the tenant
+      // and its data must survive for the remaining members.
       if (remainingUsers === 0) {
+        const projectIds = (await tx.project.findMany({ where: { orgId: user.orgId }, select: { id: true } })).map((p) => p.id);
+
+        if (projectIds.length > 0) {
+          await tx.complianceReport.deleteMany({ where: { projectId: { in: projectIds } } });
+          await tx.scheduledScan.deleteMany({ where: { projectId: { in: projectIds } } });
+          await tx.violation.deleteMany({ where: { projectId: { in: projectIds } } });
+          await tx.scan.deleteMany({ where: { projectId: { in: projectIds } } });
+        }
+
+        await tx.project.deleteMany({ where: { orgId: user.orgId } });
+        await tx.githubConnection.deleteMany({ where: { orgId: user.orgId } });
+        await tx.auditLog.deleteMany({ where: { orgId: user.orgId } });
+        await tx.teamInvite.deleteMany({ where: { orgId: user.orgId } });
         await tx.organization.delete({ where: { id: user.orgId } });
       }
     });

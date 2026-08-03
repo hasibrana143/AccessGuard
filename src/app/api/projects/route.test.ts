@@ -7,6 +7,10 @@ vi.mock('next-auth', () => ({
   getServerSession: vi.fn(),
 }));
 
+vi.mock('dns/promises', () => ({
+  lookup: vi.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+}));
+
 import { vi } from 'vitest';
 import { getServerSession } from 'next-auth';
 const mockedGetServerSession = vi.mocked(getServerSession);
@@ -128,7 +132,7 @@ describe('Projects API', () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
       expect(data.data.project.name).toBe('Test Project');
-      expect(data.data.project.url).toBe('https://test-example.com');
+      expect(data.data.project.url).toBe('https://test-example.com/');
       expect(data.data.scan).toBeDefined();
     });
 

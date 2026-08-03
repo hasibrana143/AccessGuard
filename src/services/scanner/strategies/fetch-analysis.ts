@@ -1,4 +1,8 @@
 import type { ScannerStrategy, ScanResult, ScannerViolation, ScanConfig } from '../types';
+import { validateTargetUrl } from '@/lib/url-validation';
+
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_REDIRECTS = 5;
 
 const VIOLATION_PATTERNS: Array<{
   ruleId: string; wcagCriteria: string; severity: ScannerViolation['severity']; label: string;
@@ -128,17 +132,56 @@ async function fetchHtml(url: string): Promise<string> {
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'AccessGuard-Scanner/1.0' },
-    });
+    let currentUrl = url;
+    let redirects = 0;
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    while (true) {
+      const checked = await validateTargetUrl(currentUrl);
+      if (!checked.ok) {
+        throw new Error(`Blocked target: ${checked.error}`);
+      }
+
+      const response = await fetch(currentUrl, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'AccessGuard-Scanner/1.0' },
+        redirect: 'manual',
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) throw new Error(`HTTP ${response.status}: missing redirect location`);
+        if (redirects++ >= MAX_REDIRECTS) throw new Error('Too many redirects');
+        currentUrl = new URL(location, currentUrl).href;
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const contentLength = Number(response.headers.get('content-length') || '0');
+      if (contentLength > MAX_RESPONSE_BYTES) {
+        throw new Error(`Response too large (${contentLength} bytes)`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Empty response body');
+
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.length;
+        if (received > MAX_RESPONSE_BYTES) {
+          await reader.cancel();
+          throw new Error('Response exceeds maximum size');
+        }
+        chunks.push(value);
+      }
+
+      return Buffer.concat(chunks).toString('utf8');
     }
-
-    const text = await response.text();
-    return text;
   } finally {
     clearTimeout(timeout);
   }
@@ -153,12 +196,20 @@ function extractBaseUrl(url: string): string {
   }
 }
 
-function extractUrls(html: string, baseUrl: string): string[] {
+async function extractUrls(html: string, baseUrl: string): Promise<string[]> {
   const urls: string[] = [];
   const linkPatterns = [
     /<a[^>]*href="([^"]+)"[^>]*>/gi,
     /<a[^>]*href='([^']+)'[^>]*>/gi,
   ];
+
+  let baseParsed: URL;
+  try {
+    baseParsed = new URL(baseUrl);
+  } catch {
+    return urls;
+  }
+  const baseHost = baseParsed.hostname.toLowerCase();
 
   for (const pattern of linkPatterns) {
     let match;
@@ -166,9 +217,13 @@ function extractUrls(html: string, baseUrl: string): string[] {
       try {
         const href = match[1].split('#')[0].split('?')[0];
         if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) continue;
-        const absolute = new URL(href, baseUrl).href;
-        if (absolute.startsWith(baseUrl) && !urls.includes(absolute)) {
-          urls.push(absolute);
+        const absolute = new URL(href, baseUrl);
+        if (absolute.username || absolute.password) continue;
+        if (absolute.hostname.toLowerCase() !== baseHost) continue;
+        const hrefWithoutHash = absolute.href.split('#')[0];
+        if (!urls.includes(hrefWithoutHash)) {
+          const checked = await validateTargetUrl(hrefWithoutHash);
+          if (checked.ok) urls.push(hrefWithoutHash);
         }
       } catch {
         continue;
@@ -186,9 +241,14 @@ export const fetchAnalysisStrategy: ScannerStrategy = {
   },
   async scan(url: string, html: string | null, config?: ScanConfig): Promise<ScanResult> {
     try {
+      const urlCheck = await validateTargetUrl(url);
+      if (!urlCheck.ok) {
+        return { violations: [], pagesScanned: 0, error: `Blocked target: ${urlCheck.error}` };
+      }
+
       const documentHtml = html ?? await fetchHtml(url);
       const baseUrl = extractBaseUrl(url);
-      const linkedUrls = extractUrls(documentHtml, baseUrl);
+      const linkedUrls = await extractUrls(documentHtml, baseUrl);
       const maxPages = config?.maxPages ?? 10;
       const urlsToScan = [url, ...linkedUrls].slice(0, maxPages);
 

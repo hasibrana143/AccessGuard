@@ -5,12 +5,12 @@ import { sendTeamInviteEmail, isEmailConfigured } from '@/lib/email';
 import { requireOrgAccess, requirePermission } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 
-// GET /api/team/invite?orgSlug=... - List pending invites (own org only)
+// GET /api/team/invite?orgSlug=... - List pending invites (MANAGE_TEAM only)
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const orgSlug = searchParams.get('orgSlug');
 
-  const access = await requireOrgAccess(request, orgSlug);
+  const access = await requireOrgAccess(request, orgSlug, { permission: PERMISSIONS.MANAGE_TEAM });
   if (access instanceof NextResponse) return access;
 
   const invites = await db.teamInvite.findMany({
@@ -26,11 +26,17 @@ export async function POST(request: NextRequest) {
     const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
 
-    const { email, role, orgSlug } = await request.json() as { email: string; role: Role; orgSlug?: string };
+    const { email, role, orgSlug } = await request.json() as { email: string; role: unknown; orgSlug?: string };
 
     if (!email) {
       return NextResponse.json({ success: false, error: 'Email is required' }, { status: 400 });
     }
+
+    // Validate role — only documented invite roles are allowed (owner is provisioned, not invited)
+    const allowedInviteRoles: Role[] = ['admin', 'member', 'viewer'];
+    const targetRole: Role = typeof role === 'string' && (allowedInviteRoles as string[]).includes(role)
+      ? (role as Role)
+      : 'member';
 
     const org = await db.organization.findFirst({
       where: orgSlug ? { slug: orgSlug, id: auth.user.orgId } : { id: auth.user.orgId }
@@ -54,7 +60,7 @@ export async function POST(request: NextRequest) {
       data: {
         orgId: org.id,
         email: email.toLowerCase(),
-        role: role || 'member',
+        role: targetRole,
         token,
         invitedBy: auth.user.id,
         expiresAt,
@@ -64,7 +70,7 @@ export async function POST(request: NextRequest) {
     const acceptUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}?invite-token=${token}`;
 
     if (isEmailConfigured()) {
-      await sendTeamInviteEmail(email, org.name, auth.user.email, acceptUrl, role || 'member');
+      await sendTeamInviteEmail(email, org.name, auth.user.email, acceptUrl, targetRole);
     }
 
     return NextResponse.json({ success: true, data: { token, expiresAt } });

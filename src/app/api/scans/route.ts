@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { scanFromHTML, type ScannerViolation } from '@/services/scanner';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { enqueueScan } from '@/lib/queue';
+import { validateTargetUrl } from '@/lib/url-validation';
 import { logger } from '@/lib/error-logger';
 import { requireAuth, requireVerifiedEmail, requireProjectAccess } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
@@ -107,6 +108,14 @@ export async function POST(request: NextRequest) {
     try { new URL(project.url); } catch {
       return NextResponse.json(
         { success: false, error: 'Invalid project URL' },
+        { status: 400 }
+      );
+    }
+
+    const urlCheck = await validateTargetUrl(project.url);
+    if (!urlCheck.ok) {
+      return NextResponse.json(
+        { success: false, error: `Project URL is not scannable: ${urlCheck.error}` },
         { status: 400 }
       );
     }

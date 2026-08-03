@@ -1,6 +1,7 @@
 import puppeteer, { type Browser, type Page } from 'puppeteer';
 import type { ScannerStrategy, ScanResult, ScannerViolation, ScanConfig } from '../types';
 import { logger } from '@/lib/error-logger';
+import { validateTargetUrl } from '@/lib/url-validation';
 
 function mapImpact(impact: string | null): ScannerViolation['severity'] {
   switch (impact) {
@@ -102,12 +103,16 @@ export const axeCoreStrategy: ScannerStrategy = {
     let browser: Browser | null = null;
 
     try {
+      const urlCheck = await validateTargetUrl(url);
+      if (!urlCheck.ok) {
+        return { violations: [], pagesScanned: 0, error: `Blocked target: ${urlCheck.error}` };
+      }
+
       browser = await puppeteer.launch({
         headless: true,
         args: [
           '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
-          '--disable-gpu', '--disable-web-security',
-          '--disable-features=IsolateOrigins,site-per-process',
+          '--disable-gpu',
         ],
       });
 
@@ -118,10 +123,16 @@ export const axeCoreStrategy: ScannerStrategy = {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
         await page.waitForSelector(config.waitForSelector, { timeout: 10000 });
       } else {
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       }
 
       const currentUrl = page.url();
+
+      // Re-validate the post-redirect URL against private/blocked targets
+      const finalCheck = await validateTargetUrl(currentUrl);
+      if (!finalCheck.ok) {
+        throw new Error(`Blocked target after redirect: ${finalCheck.error}`);
+      }
 
       if (config?.waitTime) {
         await new Promise(r => setTimeout(r, config.waitTime));

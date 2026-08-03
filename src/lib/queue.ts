@@ -1,6 +1,7 @@
 import { Queue, Worker, type Job } from 'bullmq';
 import { getRedis } from './redis';
 import { logger } from './error-logger';
+import { validateTargetUrl } from './url-validation';
 import type { ScannerViolation } from '@/services/scanner';
 
 let scanQueue: Queue | null = null;
@@ -32,9 +33,14 @@ export async function enqueueScan(projectId: string, url: string, userId: string
   priority?: number;
 }): Promise<string> {
   const queue = getScanQueue();
+  const urlCheck = await validateTargetUrl(url);
+  if (!urlCheck.ok) {
+    logger.warn({ projectId, url, error: urlCheck.error }, 'Scan not enqueued — blocked target');
+    throw new Error(`Blocked target: ${urlCheck.error}`);
+  }
   const job = await queue.add('execute-scan', {
     projectId,
-    url,
+    url: urlCheck.url || url,
     userId,
     useBrowser: options?.useBrowser ?? true,
     html: options?.html,

@@ -107,7 +107,7 @@ export function formatScheduleDate(date: Date | null): string {
   });
 }
 
-// Get scheduler API key
-export function getSchedulerApiKey(): string {
-  return process.env.SCHEDULER_API_KEY || 'scheduler-default-key';
+// Get scheduler API key (no public fallback — must be configured explicitly)
+export function getSchedulerApiKey(): string | null {
+  return process.env.SCHEDULER_API_KEY ?? null;
 }

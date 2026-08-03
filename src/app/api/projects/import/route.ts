@@ -4,6 +4,8 @@ import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimit
 import { requireOrgAccess } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 import { logger } from '@/lib/error-logger';
+import { enqueueScan } from '@/lib/queue';
+import { validateTargetUrl } from '@/lib/url-validation';
 
 // POST /api/projects/import - Bulk import projects from CSV
 // CSV format: name,url,description,scanFrequency (scanFrequency optional: none|daily|weekly|monthly)
@@ -86,14 +88,14 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      try {
-        new URL(url);
-      } catch {
-        failed.push({ name, url, error: `Invalid URL: ${url}` });
+      const urlCheck = await validateTargetUrl(url);
+      if (!urlCheck.ok) {
+        failed.push({ name, url, error: `Invalid URL: ${urlCheck.error}` });
         continue;
       }
+      const safeUrl = urlCheck.url || url;
 
-      const normalizedUrl = url.replace(/\/$/, '');
+      const normalizedUrl = safeUrl.replace(/\/$/, '');
       if (existingUrls.has(normalizedUrl)) {
         skipped.push({ url, error: 'Duplicate URL (already exists)' });
         continue;
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
         const project = await db.project.create({
           data: {
             name,
-            url,
+            url: safeUrl,
             description: description || null,
             crawlConfig: JSON.stringify({ maxPages: 100, excludePaths: [], includeSubdomains: false }),
             orgId: org.id,
@@ -114,6 +116,8 @@ export async function POST(request: NextRequest) {
         await db.scan.create({
           data: { projectId: project.id, status: 'pending' },
         });
+
+        await enqueueScan(project.id, safeUrl, 'system');
 
         if (['daily', 'weekly', 'monthly'].includes(scanFrequency)) {
           const now = new Date();

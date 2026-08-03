@@ -3,13 +3,13 @@ import { randomBytes } from 'crypto';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { encryptSecret, decryptSecret, isEncrypted } from '@/lib/crypto';
-import { requireAuth, requirePermission } from '@/lib/rbac';
+import { requirePermission } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 
-// GET /api/settings/api-key - Get the org's API key (masked)
+// GET /api/settings/api-key - Get the org's masked API key (MANAGE_SETTINGS only)
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAuth(request);
+    const auth = await requirePermission(request, PERMISSIONS.MANAGE_SETTINGS);
     if (auth instanceof NextResponse) return auth;
 
     const { searchParams } = new URL(request.url);
@@ -51,7 +51,8 @@ export async function GET(request: NextRequest) {
     const apiKey = isEncrypted(storedKey) ? (decryptSecret(storedKey) ?? storedKey) : storedKey;
     const maskedKey = `${apiKey.slice(0, 10)}${'•'.repeat(16)}${apiKey.slice(-4)}`;
 
-    return NextResponse.json({ success: true, data: { apiKey, maskedKey } });
+    // Never return the full plaintext key from a read endpoint — fetch reveals only the masked preview.
+    return NextResponse.json({ success: true, data: { maskedKey } });
   } catch (error) {
     logger.error({ err: error }, '');
     return NextResponse.json(

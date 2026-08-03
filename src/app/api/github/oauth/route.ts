@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
-import { requireOrgAccess } from '@/lib/rbac';
+import { requireOrgAccess, requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { signOAuthState, verifyOAuthState } from '@/lib/oauth-state';
 
-const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID!;
-const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET!;
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
 
 // GET - Start OAuth flow
 export async function GET(request: NextRequest) {
@@ -16,8 +17,8 @@ export async function GET(request: NextRequest) {
   const access = await requireOrgAccess(request, orgId, { permission: PERMISSIONS.MANAGE_GITHUB });
   if (access instanceof NextResponse) return access;
 
-  // Generate state for CSRF protection
-  const state = Buffer.from(JSON.stringify({ orgId: access.org.id, redirect })).toString('base64');
+  // Generate signed state for CSRF protection
+  const state = signOAuthState({ orgId: access.org.id, redirect });
 
   const githubAuthUrl = new URL('https://github.com/login/oauth/authorize');
   githubAuthUrl.searchParams.set('client_id', GITHUB_CLIENT_ID);
@@ -31,6 +32,9 @@ export async function GET(request: NextRequest) {
 // POST - Handle OAuth callback
 export async function POST(request: NextRequest) {
   try {
+    const auth = await requireVerifiedEmail(request);
+    if (auth instanceof NextResponse) return auth;
+
     const body = await request.json();
     const { code, state } = body;
 
@@ -41,14 +45,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Decode state
-    let stateData: { orgId: string; redirect: string };
-    try {
-      stateData = JSON.parse(Buffer.from(state, 'base64').toString());
-    } catch {
+    // Verify the signed state returned by GitHub
+    const stateData = verifyOAuthState(state);
+    if (!stateData?.orgId || typeof (stateData.redirect as unknown) !== 'string') {
       return NextResponse.json(
         { success: false, error: 'Invalid state parameter' },
         { status: 400 }
+      );
+    }
+    const orgId = stateData.orgId as string;
+    const redirect = stateData.redirect as string;
+
+    // The OAuth flow must be bound to the authenticated user's own org
+    if (orgId !== auth.user.orgId) {
+      return NextResponse.json(
+        { success: false, error: 'OAuth flow does not match your organization' },
+        { status: 403 }
       );
     }
 
@@ -106,7 +118,7 @@ export async function POST(request: NextRequest) {
 
     // Store GitHub connection - find existing or create new
     const existingConnection = await db.githubConnection.findFirst({
-      where: { orgId: stateData.orgId },
+      where: { orgId: orgId },
     });
 
     if (existingConnection) {
@@ -121,7 +133,7 @@ export async function POST(request: NextRequest) {
     } else {
       await db.githubConnection.create({
         data: {
-          orgId: stateData.orgId,
+          orgId: orgId,
           installationId: userData.id.toString(),
           repositories: JSON.stringify(repositories),
           isActive: true,
@@ -132,7 +144,7 @@ export async function POST(request: NextRequest) {
     // Create audit log
     await db.auditLog.create({
       data: {
-        orgId: stateData.orgId,
+        orgId: orgId,
         action: 'github_connected',
         metadata: JSON.stringify({
           username: userData.login,
@@ -146,7 +158,7 @@ export async function POST(request: NextRequest) {
       data: {
         username: userData.login,
         repositories,
-        redirect: stateData.redirect,
+        redirect: redirect,
       },
     });
   } catch (error) {

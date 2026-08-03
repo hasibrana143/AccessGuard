@@ -17,6 +17,12 @@ export async function POST(request: NextRequest) {
     const apiKey = request.headers.get('X-Scheduler-Api-Key');
     const validApiKey = getSchedulerApiKey();
 
+    if (!validApiKey) {
+      return NextResponse.json(
+        { success: false, error: 'Scheduler not configured' },
+        { status: 503 }
+      );
+    }
     if (!apiKey || apiKey !== validApiKey) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
@@ -200,6 +206,12 @@ export async function GET(request: NextRequest) {
   const apiKey = request.headers.get('X-Scheduler-Api-Key');
   const validApiKey = getSchedulerApiKey();
 
+  if (!validApiKey) {
+    return NextResponse.json(
+      { success: false, error: 'Scheduler not configured' },
+      { status: 503 }
+    );
+  }
   if (!apiKey || apiKey !== validApiKey) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },

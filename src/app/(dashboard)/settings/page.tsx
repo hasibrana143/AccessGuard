@@ -151,8 +151,7 @@ export default function SettingsPage() {
     fetch(`/api/settings/api-key?orgId=${encodeURIComponent(user.orgId)}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && data.data?.apiKey) {
-          setApiKey(data.data.apiKey);
+        if (data.success && data.data?.maskedKey) {
           setMaskedKey(data.data.maskedKey);
         }
       })

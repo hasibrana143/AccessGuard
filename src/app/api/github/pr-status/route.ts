@@ -3,9 +3,14 @@ import { db } from '@/lib/db';
 import { getPullRequestStatus, getMultiplePRStatuses, isGitHubConfigured } from '@/lib/github';
 import { parsePrUrl } from '@/lib/github-pr';
 import { logger } from '@/lib/error-logger';
+import { requireVerifiedEmail } from '@/lib/rbac';
 
 // GET /api/github/pr-status - Get PR status for violations
 export async function GET(request: NextRequest) {
+  const auth = await requireVerifiedEmail(request);
+  if (auth instanceof NextResponse) return auth;
+  const { user } = auth;
+
   try {
     const { searchParams } = new URL(request.url);
     const violationIds = searchParams.get('violationIds')?.split(',').filter(Boolean);
@@ -17,6 +22,7 @@ export async function GET(request: NextRequest) {
         where: {
           id: { in: violationIds },
           githubPrUrl: { not: null },
+          project: { orgId: user.orgId },
         },
         select: {
           id: true,
@@ -100,10 +106,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get all violations with PRs
+    // Get all violations with PRs in the user's org
     const violationsWithPRs = await db.violation.findMany({
       where: {
         githubPrUrl: { not: null },
+        project: { orgId: user.orgId },
       },
       select: {
         id: true,
@@ -212,6 +219,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/github/pr-status - Check specific PR
 export async function POST(request: NextRequest) {
+  const auth = await requireVerifiedEmail(request);
+  if (auth instanceof NextResponse) return auth;
+
   try {
     const body = await request.json();
     const { owner, repo, pullNumber } = body;

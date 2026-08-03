@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
 import { logger } from '@/lib/error-logger';
+import { requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 // Generate unique report ID
 function generateReportId(): string {
@@ -17,9 +19,13 @@ function generateDocumentHash(data: string): string {
   return crypto.createHash('sha256').update(data).digest('hex').substring(0, 16);
 }
 
-// GET /api/reports/generate - List reports
-export async function GET() {
+// GET /api/reports/generate - List reports for the authenticated user's org
+export async function GET(request: NextRequest) {
+  const access = await requireOrgAccess(request, null);
+  if (access instanceof NextResponse) return access;
+
   const reports = await db.complianceReport.findMany({
+    where: { project: { orgId: access.org.id } },
     include: { project: { select: { name: true } } },
     orderBy: { createdAt: 'desc' },
     take: 20
@@ -32,6 +38,13 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const { projectId, reportType, dateRange } = await request.json();
+
+    if (!projectId) {
+      return NextResponse.json({ success: false, error: 'Project ID is required' }, { status: 400 });
+    }
+
+    const access = await requireProjectAccess(request as NextRequest, projectId, { permission: PERMISSIONS.GENERATE_REPORTS });
+    if (access instanceof NextResponse) return access;
 
     const project = await db.project.findUnique({
       where: { id: projectId },

@@ -4,6 +4,7 @@ import { logger } from '@/lib/error-logger';
 import { requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 import { enqueueScan } from '@/lib/queue';
+import { validateTargetUrl } from '@/lib/url-validation';
 
 // GET /api/projects - List all projects for the authenticated user's org
 export async function GET(request: NextRequest) {
@@ -105,6 +106,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const urlCheck = await validateTargetUrl(url);
+    if (!urlCheck.ok) {
+      return NextResponse.json(
+        { success: false, error: `Invalid URL: ${urlCheck.error}` },
+        { status: 400 }
+      );
+    }
+
     const access = await requireOrgAccess(request, orgSlug, { permission: PERMISSIONS.CREATE_PROJECTS });
     if (access instanceof NextResponse) return access;
     const org = access.org;
@@ -139,7 +148,7 @@ export async function POST(request: NextRequest) {
     const project = await db.project.create({
       data: {
         name,
-        url,
+        url: urlCheck.url || url,
         description: description || null,
         crawlConfig: JSON.stringify(crawlConfig || {
           maxPages: 100,
@@ -225,7 +234,20 @@ export async function PATCH(request: NextRequest) {
       updateData.description = description;
     }
     if (url !== undefined) {
-      updateData.url = url;
+      if (typeof url !== 'string') {
+        return NextResponse.json(
+          { success: false, error: 'URL must be a string' },
+          { status: 400 }
+        );
+      }
+      const urlCheck = await validateTargetUrl(url);
+      if (!urlCheck.ok) {
+        return NextResponse.json(
+          { success: false, error: `Invalid URL: ${urlCheck.error}` },
+          { status: 400 }
+        );
+      }
+      updateData.url = urlCheck.url || url;
     }
 
     const project = await db.project.update({
