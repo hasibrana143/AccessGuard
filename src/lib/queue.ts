@@ -120,7 +120,8 @@ export function startScanWorker() {
         result = await scanFromHTML(html, url);
       } else if (useBrowser) {
         result = await scanUrl(url, { waitTime: 3000 });
-        if (result.error && !result.error.includes('403') && !result.error.includes('429')) {
+        if (result.error && (result.error.includes('403') || result.error.includes('429'))) {
+          logger.info({ projectId, error: result.error }, 'Browser scan blocked — falling back to server scan');
           result = await scanUrlServer(url, undefined, { requestDelay: 500, userAgent: 'default', timeout: 30000, retryCount: 3 });
         }
       } else {

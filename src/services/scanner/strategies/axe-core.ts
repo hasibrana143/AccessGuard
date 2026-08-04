@@ -47,26 +47,62 @@ function generateRemediation(ruleId: string, helpUrl: string): { code: string; e
   };
 }
 
+const WCAG_TAG_MAP: Record<string, string> = {
+  wcag22aaa: '2.2 AAA',
+  wcag22aa: '2.2 AA',
+  wcag22a: '2.2 A',
+  wcag21aaa: '2.1 AAA',
+  wcag21aa: '2.1 AA',
+  wcag21a: '2.1 A',
+  wcag2aaa: '2.1 AAA',
+  wcag2aa: '2.1 AA',
+  wcag2a: '2.1 A',
+};
+
+function mapWcagCriteria(tags: string[] | undefined): string {
+  if (!tags || tags.length === 0) return 'unknown';
+  for (const tag of tags) {
+    const mapped = WCAG_TAG_MAP[tag];
+    if (mapped) return mapped;
+  }
+  return 'unknown';
+}
+
+const AXE_CDN_LOAD_TIMEOUT_MS = 10_000;
+const AXE_RUN_TIMEOUT_MS = 45_000;
+
+function timeoutAfter(ms: number, message: string): Promise<never> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(message)), ms);
+  });
+}
+
 async function runAxeOnPage(page: Page, url: string): Promise<ScannerViolation[]> {
   const violations: ScannerViolation[] = [];
 
   try {
-    await page.evaluate(() => {
-      return new Promise<void>((resolve, reject) => {
-        if (typeof (window as any).axe !== 'undefined') { resolve(); return; }
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.8.4/axe.min.js';
-        script.onload = () => resolve();
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    });
+    await Promise.race([
+      page.evaluate(() => {
+        return new Promise<void>((resolve, reject) => {
+          if (typeof (window as any).axe !== 'undefined') { resolve(); return; }
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.8.4/axe.min.js';
+          script.onload = () => resolve();
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }),
+      timeoutAfter(AXE_CDN_LOAD_TIMEOUT_MS, 'axe-core CDN load timed out'),
+    ]);
 
-    const results = await page.evaluate(async () => {
-      return await (window as any).axe.run(document, {
-        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }
-      });
-    });
+    const results = await Promise.race([
+      page.evaluate(async () => {
+        return await (window as any).axe.run(document, {
+          runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }
+        });
+      }),
+      timeoutAfter(AXE_RUN_TIMEOUT_MS, 'axe-core analysis timed out'),
+    ]);
 
     for (const violation of results.violations || []) {
       const { code, explanation } = generateRemediation(violation.id, violation.helpUrl);
@@ -74,7 +110,7 @@ async function runAxeOnPage(page: Page, url: string): Promise<ScannerViolation[]
       for (const node of violation.nodes || []) {
         violations.push({
           ruleId: violation.id,
-          wcagCriteria: violation.tags?.find((t: string) => t.startsWith('wcag21') || t.startsWith('wcag2'))?.replace(/^wcag2\d?/, '').split('').join('.') ?? 'unknown',
+          wcagCriteria: mapWcagCriteria(violation.tags),
           severity: mapImpact(violation.impact),
           url,
           elementSelector: node.target?.join(' > ') ?? null,

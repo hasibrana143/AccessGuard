@@ -49,8 +49,14 @@ export async function PATCH(request: NextRequest) {
 
     const data: Record<string, unknown> = {};
     if (role !== undefined) {
-      if (!['admin', 'owner', 'member'].includes(role)) {
+      if (!['admin', 'owner', 'member', 'viewer'].includes(role)) {
         return NextResponse.json({ success: false, error: 'Invalid role' }, { status: 400 });
+      }
+      if (target.role === 'owner' && auth.user.id !== target.id) {
+        return NextResponse.json(
+          { success: false, error: 'The org owner cannot be demoted by another user' },
+          { status: 403 }
+        );
       }
       if (role === 'owner' && target.role !== 'owner' && auth.user.role !== 'owner') {
         return NextResponse.json({ success: false, error: 'Only an owner can promote to owner' }, { status: 403 });
@@ -97,10 +103,31 @@ export async function DELETE(request: NextRequest) {
 
     const target = await db.user.findFirst({
       where: { id: userId, orgId: auth.user.orgId },
-      select: { id: true },
+      select: { id: true, role: true },
     });
     if (!target) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
+
+    if (target.id === auth.user.id) {
+      return NextResponse.json({ success: false, error: 'You cannot remove yourself' }, { status: 403 });
+    }
+    if (target.role === 'owner') {
+      return NextResponse.json(
+        { success: false, error: 'The org owner cannot be removed' },
+        { status: 403 }
+      );
+    }
+
+    // Ensure at least one admin/owner remains after removal
+    const remainingAdmins = await db.user.count({
+      where: { orgId: auth.user.orgId, role: { in: ['admin', 'owner'] }, id: { not: userId } },
+    });
+    if (remainingAdmins === 0) {
+      return NextResponse.json(
+        { success: false, error: 'At least one admin or owner must remain' },
+        { status: 403 }
+      );
     }
 
     await db.user.delete({ where: { id: userId } });

@@ -16,6 +16,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No organization found' }, { status: 403 });
     }
 
+    const role = (session.user as { role?: string }).role;
+    if (role !== 'admin' && role !== 'owner') {
+      return NextResponse.json(
+        { success: false, error: 'Access denied. Admin role required.' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10) || 50, 200);

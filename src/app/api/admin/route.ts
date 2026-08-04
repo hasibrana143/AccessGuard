@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: 'desc' },
       }),
       db.organization.findMany({
+        where: { id: orgId },
         select: {
           id: true,
           name: true,
@@ -77,6 +78,12 @@ export async function GET(request: NextRequest) {
       worker: process.env.REDIS_URL ? 'ok' : 'standby',
     };
 
+    const { getAllFlagDefinitions, isEnabled } = await import('@/lib/feature-flags');
+    const flags: Record<string, boolean> = {};
+    for (const flag of getAllFlagDefinitions()) {
+      flags[flag.key] = await isEnabled(flag.key, orgId);
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -91,6 +98,7 @@ export async function GET(request: NextRequest) {
         },
         health,
         recentScans,
+        flags,
       },
     });
   } catch (error) {
@@ -135,19 +143,11 @@ export async function PATCH(request: NextRequest) {
       if (!orgId || !flag) {
         return NextResponse.json({ success: false, error: 'Missing parameters' }, { status: 400 });
       }
-      const org = await db.organization.findUnique({ where: { id: orgId } });
-      if (!org) {
-        return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 404 });
+      const { getFlagDefinition, setFlag } = await import('@/lib/feature-flags');
+      if (!getFlagDefinition(flag)) {
+        return NextResponse.json({ success: false, error: `Unknown flag: ${flag}` }, { status: 400 });
       }
-      let settings: Record<string, unknown> = {};
-      try {
-        settings = JSON.parse(org.settings || '{}');
-      } catch { /* ignore */ }
-      settings[`flag:${flag}`] = !!enabled;
-      await db.organization.update({
-        where: { id: orgId },
-        data: { settings: JSON.stringify(settings) },
-      });
+      await setFlag(flag, !!enabled, orgId);
       return NextResponse.json({ success: true, data: { flag, enabled: !!enabled } });
     }
 

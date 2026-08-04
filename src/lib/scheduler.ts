@@ -1,5 +1,5 @@
 // Scheduler utilities for AccessGuard
-import { ScheduledScan } from '@prisma/client';
+import { isValidCron, getNextRun } from './cron';
 
 export interface SchedulePreset {
   label: string;
@@ -14,10 +14,9 @@ export const SCHEDULE_PRESETS: SchedulePreset[] = [
   { label: 'Monthly', cron: '0 2 1 * *', description: '1st of month at 2 AM' },
 ];
 
-// Validate cron expression (basic check)
+// Validate cron expression (delegates to the full 5-field parser)
 export function validateCronExpression(cron: string): boolean {
-  const parts = cron.trim().split(/\s+/);
-  return parts.length === 5;
+  return isValidCron(cron);
 }
 
 // Get human-readable description of cron
@@ -39,44 +38,9 @@ export function getCronDescription(cron: string): string {
   return 'Custom schedule';
 }
 
-// Calculate next run time from cron (simplified)
+// Calculate next run time from cron (delegates to the full implementation in cron.ts)
 export function getNextRunTime(cron: string): Date {
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length !== 5) return new Date();
-
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
-  const now = new Date();
-  const next = new Date(now);
-
-  // Simple logic for common patterns
-  if (hour === '*') {
-    // Hourly - next hour
-    next.setHours(next.getHours() + 1, parseInt(minute) || 0, 0, 0);
-  } else if (dayOfWeek !== '*') {
-    // Weekly - next occurrence of day
-    const targetDay = parseInt(dayOfWeek);
-    const currentDay = next.getDay();
-    const daysUntil = (targetDay - currentDay + 7) % 7 || 7;
-    next.setDate(next.getDate() + daysUntil);
-    next.setHours(parseInt(hour) || 2, parseInt(minute) || 0, 0, 0);
-  } else if (dayOfMonth !== '*') {
-    // Monthly - next occurrence of day
-    const targetDate = parseInt(dayOfMonth);
-    if (next.getDate() >= targetDate) {
-      next.setMonth(next.getMonth() + 1);
-    }
-    next.setDate(targetDate);
-    next.setHours(parseInt(hour) || 2, parseInt(minute) || 0, 0, 0);
-  } else {
-    // Daily
-    const targetHour = parseInt(hour) || 2;
-    if (next.getHours() >= targetHour) {
-      next.setDate(next.getDate() + 1);
-    }
-    next.setHours(targetHour, parseInt(minute) || 0, 0, 0);
-  }
-
-  return next;
+  return getNextRun(cron, new Date()) ?? new Date(Date.now() + 60 * 60 * 1000);
 }
 
 // Format time until next run

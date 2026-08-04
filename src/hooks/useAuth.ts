@@ -70,7 +70,7 @@ export function useAuth(): UseAuthReturn {
     user,
     isLoading: status === 'loading',
     isAuthenticated: status === 'authenticated',
-    isAdmin: user?.role === 'ADMIN',
+    isAdmin: user?.role === 'admin' || user?.role === 'owner',
     sessionValidated: status !== 'loading',
     login,
     logout,

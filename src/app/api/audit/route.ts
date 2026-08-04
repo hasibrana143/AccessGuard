@@ -26,8 +26,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Only admins can view audit logs
-    if (user.role !== 'admin') {
+    // Only admins and owners can view audit logs
+    if (user.role !== 'admin' && user.role !== 'owner') {
       return NextResponse.json(
         { success: false, error: 'Access denied. Admin role required.' },
         { status: 403 }

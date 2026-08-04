@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
     const status = searchParams.get('status');
-    const limit = parseInt(searchParams.get('limit') || '20');
+    const rawLimit = parseInt(searchParams.get('limit') || '20');
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 20;
 
     const where: Record<string, unknown> = {};
     if (projectId) {
@@ -82,6 +83,12 @@ export async function POST(request: NextRequest) {
 
     // Handle manual HTML upload (inline, no queue needed)
     if (html) {
+      if (typeof html !== 'string' || html.length > 2_000_000) {
+        return NextResponse.json(
+          { success: false, error: 'HTML payload too large (max 2 MB)' },
+          { status: 400 }
+        );
+      }
       const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.RUN_SCANS });
       if (access instanceof NextResponse) return access;
 
@@ -234,6 +241,14 @@ export async function PATCH(request: NextRequest) {
     if (!id || !status) {
       return NextResponse.json(
         { success: false, error: 'ID and status are required' },
+        { status: 400 }
+      );
+    }
+
+    const ALLOWED_STATUSES = ['pending', 'queued', 'running', 'completed', 'failed'];
+    if (!ALLOWED_STATUSES.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid status. Allowed: ${ALLOWED_STATUSES.join(', ')}` },
         { status: 400 }
       );
     }

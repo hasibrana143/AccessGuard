@@ -107,7 +107,48 @@ export async function PATCH(request: NextRequest) {
 
     // Merge with existing settings
     const currentSettings = org.settings ? JSON.parse(org.settings) : {};
-    const newSettings = { ...currentSettings, ...settings };
+    const incoming = (settings || {}) as Record<string, unknown>;
+
+    // name/email are user-level profile fields, not org settings
+    let userUpdate: { name?: string; email?: string } = {};
+    if (incoming.name !== undefined) {
+      userUpdate.name = String(incoming.name).slice(0, 100);
+    }
+    if (incoming.email !== undefined) {
+      userUpdate.email = String(incoming.email).toLowerCase().slice(0, 255);
+    }
+    if (userUpdate.name !== undefined || userUpdate.email !== undefined) {
+      await db.user.update({
+        where: { id: access.user.id },
+        data: userUpdate,
+      });
+    }
+
+    // SSRF guard: logoUrl is fetched server-side during PDF rendering
+    if (incoming.logoUrl !== undefined && incoming.logoUrl !== null && incoming.logoUrl !== '') {
+      const logoUrl = String(incoming.logoUrl);
+      const { validateTargetUrl } = await import('@/lib/url-validation');
+      const check = await validateTargetUrl(logoUrl);
+      if (!check.ok) {
+        return NextResponse.json(
+          { success: false, error: `Invalid logo URL: ${check.error}` },
+          { status: 400 }
+        );
+      }
+    }
+    // Webhook URL must be https
+    if (incoming.slackWebhookUrl !== undefined && incoming.slackWebhookUrl !== null && incoming.slackWebhookUrl !== '') {
+      const webhookUrl = String(incoming.slackWebhookUrl);
+      if (!webhookUrl.startsWith('https://')) {
+        return NextResponse.json(
+          { success: false, error: 'Webhook URL must start with https://' },
+          { status: 400 }
+        );
+      }
+    }
+
+    const { name, email, ...orgSettings } = incoming;
+    const newSettings = { ...currentSettings, ...orgSettings };
 
     await db.organization.update({
       where: { id: access.user.orgId },
@@ -120,14 +161,18 @@ export async function PATCH(request: NextRequest) {
         orgId: access.user.orgId,
         action: 'settings_updated',
         metadata: JSON.stringify({
-          updatedFields: Object.keys(settings),
+          updatedFields: Object.keys(orgSettings),
         }),
       },
     });
 
     return NextResponse.json({
       success: true,
-      data: newSettings,
+      data: {
+        ...newSettings,
+        ...(userUpdate.name !== undefined ? { name: userUpdate.name } : {}),
+        ...(userUpdate.email !== undefined ? { email: userUpdate.email } : {}),
+      },
     });
   } catch (error) {
     logger.error({ err: error }, '');

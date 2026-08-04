@@ -102,12 +102,11 @@ export const authOptions: NextAuthOptions = {
       if (!user.email) return false;
       const existing = await db.user.findUnique({ where: { email: user.email } });
       if (existing) return true;
-      let defaultOrg = await db.organization.findFirst({ where: { slug: 'default-org' } });
-      if (!defaultOrg) {
-        defaultOrg = await db.organization.create({
-          data: { name: 'Default Organization', slug: 'default-org', plan: 'starter' },
-        });
-      }
+      const defaultOrg = await db.organization.upsert({
+        where: { slug: 'default-org' },
+        update: {},
+        create: { name: 'Default Organization', slug: 'default-org', plan: 'starter' },
+      });
       await db.user.create({
         data: {
           email: user.email,
@@ -121,12 +120,31 @@ export const authOptions: NextAuthOptions = {
     },
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
-        token.role = (user as SessionUser).role;
-        token.orgId = (user as SessionUser).orgId;
-        token.orgSlug = (user as SessionUser).orgSlug;
-        token.orgName = (user as SessionUser).orgName;
-        token.emailVerified = (user as SessionUser).emailVerified;
+        // Credentials sign-in carries the full SessionUser payload.
+        const sessionUser = user as SessionUser;
+        if (sessionUser.orgId) {
+          token.id = sessionUser.id;
+          token.role = sessionUser.role;
+          token.orgId = sessionUser.orgId;
+          token.orgSlug = sessionUser.orgSlug;
+          token.orgName = sessionUser.orgName;
+          token.emailVerified = sessionUser.emailVerified;
+        } else if (user.email) {
+          // OAuth sign-in: user object is the provider profile (no org/role).
+          // Load the provisioned app user so token claims match the DB identity.
+          const dbUser = await db.user.findUnique({
+            where: { email: user.email },
+            include: { organization: true },
+          });
+          if (dbUser) {
+            token.id = dbUser.id;
+            token.role = dbUser.role;
+            token.orgId = dbUser.orgId;
+            token.orgSlug = dbUser.organization?.slug ?? null;
+            token.orgName = dbUser.organization?.name ?? null;
+            token.emailVerified = !!dbUser.emailVerifiedAt;
+          }
+        }
       }
       return token;
     },

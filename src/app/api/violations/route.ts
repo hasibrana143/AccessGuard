@@ -12,8 +12,10 @@ export async function GET(request: NextRequest) {
     const severity = searchParams.get('severity');
     const status = searchParams.get('status');
     const ruleId = searchParams.get('ruleId');
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const rawLimit = parseInt(searchParams.get('limit') || '50');
+    const rawOffset = parseInt(searchParams.get('offset') || '0');
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 100) : 50;
+    const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : 0;
 
     const where: Record<string, unknown> = {};
 

@@ -1,6 +1,5 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
 export interface AuthUser {
@@ -62,45 +61,6 @@ export async function requireRole(
   if (!allowedRoles.includes(user.role)) {
     return NextResponse.json(
       { success: false, error: 'Insufficient permissions' },
-      { status: 403 }
-    );
-  }
-
-  return { user };
-}
-
-// Check if user belongs to the organization
-export async function requireOrgAccess(
-  request: NextRequest,
-  orgSlug: string
-): Promise<{ user: AuthUser } | NextResponse> {
-  const authResult = await requireAuth(request);
-
-  if (authResult instanceof NextResponse) {
-    return authResult;
-  }
-
-  const user = authResult.user;
-
-  // Admin can access any org
-  if (user.role === 'admin' && user.orgSlug !== orgSlug) {
-    // Check if it's a super admin scenario
-    const org = await db.organization.findFirst({
-      where: { slug: orgSlug },
-    });
-
-    if (!org) {
-      return NextResponse.json(
-        { success: false, error: 'Organization not found' },
-        { status: 404 }
-      );
-    }
-  }
-
-  // Regular user can only access their own org
-  if (user.orgSlug !== orgSlug && user.role !== 'admin') {
-    return NextResponse.json(
-      { success: false, error: 'Access denied' },
       { status: 403 }
     );
   }

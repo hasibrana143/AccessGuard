@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
 
     const invitesWithInviters = invites.map(invite => ({
       id: invite.id,
+      token: invite.token,
       email: invite.email,
       role: invite.role,
       expiresAt: invite.expiresAt,
@@ -68,7 +69,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Cancel the invite
-    await cancelTeamInvite(inviteId, auth.user.orgId);
+    const cancelled = await cancelTeamInvite(inviteId, auth.user.orgId);
+    if (!cancelled) {
+      return NextResponse.json(
+        { success: false, error: 'Invite not found' },
+        { status: 404 }
+      );
+    }
 
     // Log the action
     await db.auditLog.create({

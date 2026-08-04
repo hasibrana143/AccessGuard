@@ -76,6 +76,11 @@ export async function POST(request: NextRequest) {
     if (forbidden instanceof NextResponse) return forbidden;
     const userId = forbidden.userId;
 
+    const { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } = await import('@/lib/rate-limit');
+    const clientId = getClientIdentifier(request);
+    const rateResult = await checkRateLimit(`mfa-verify:${clientId}:${userId}`, { interval: 60 * 1000, limit: 5 });
+    if (!rateResult.success) return createRateLimitResponse(rateResult);
+
     if (!code) {
       return NextResponse.json({ success: false, error: 'User ID and code are required' }, { status: 400 });
     }
@@ -117,11 +122,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE /api/auth/mfa/setup - Disable MFA
+// DELETE /api/auth/mfa/setup - Disable MFA (requires current TOTP code)
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userIdParam = searchParams.get('userId');
+    const code = searchParams.get('code');
 
     const forbidden = await requireOwnMfaTarget(request, userIdParam);
     if (forbidden instanceof NextResponse) return forbidden;
@@ -134,6 +140,14 @@ export async function DELETE(request: NextRequest) {
 
     if (!user.mfaEnabledAt) {
       return NextResponse.json({ success: false, error: 'MFA is not enabled' }, { status: 400 });
+    }
+
+    // Re-authentication: a valid TOTP code must accompany the disable request
+    if (!code || !verifyMfaCode(readMfaSecret(user.mfaSecret) || '', code)) {
+      return NextResponse.json(
+        { success: false, error: 'Enter a valid code from your authenticator app to disable MFA', needCode: true },
+        { status: 400 }
+      );
     }
 
     await db.user.update({

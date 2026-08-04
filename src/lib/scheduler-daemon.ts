@@ -59,9 +59,6 @@ export async function processDueScheduledScans(): Promise<number> {
         continue;
       }
 
-      const userId = await getOrgUserId(schedule.project.orgId);
-      await enqueueScan(schedule.project.id, schedule.project.url, userId);
-
       const nextRunAt = getNextRunForSchedule(schedule, now);
       if (!nextRunAt) {
         logger.warn({ scheduleId: schedule.id }, 'Could not compute next run — disabling schedule');
@@ -71,10 +68,17 @@ export async function processDueScheduledScans(): Promise<number> {
         });
         continue;
       }
-      await db.scheduledScan.update({
-        where: { id: schedule.id },
+
+      // Atomic claim: only one daemon instance may process this due schedule.
+      const claim = await db.scheduledScan.updateMany({
+        where: { id: schedule.id, isActive: true, nextRunAt: { lte: now } },
         data: { lastRunAt: now, nextRunAt },
       });
+      if (claim.count !== 1) continue; // already claimed by another tick/instance
+
+      const userId = await getOrgUserId(schedule.project.orgId);
+      await enqueueScan(schedule.project.id, schedule.project.url, userId);
+
       await db.project.update({
         where: { id: schedule.project.id },
         data: { nextScheduledScan: nextRunAt },
@@ -106,13 +110,15 @@ export async function processDueScheduledScans(): Promise<number> {
 
   for (const project of dueProjects) {
     try {
-      const userId = await getOrgUserId(project.orgId);
-      await enqueueScan(project.id, project.url, userId);
-
-      await db.project.update({
-        where: { id: project.id },
+      // Atomic claim: clear the one-off slot before enqueueing.
+      const claim = await db.project.updateMany({
+        where: { id: project.id, nextScheduledScan: { lte: now } },
         data: { nextScheduledScan: null },
       });
+      if (claim.count !== 1) continue;
+
+      const userId = await getOrgUserId(project.orgId);
+      await enqueueScan(project.id, project.url, userId);
 
       processed++;
     } catch (err) {

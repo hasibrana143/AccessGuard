@@ -73,6 +73,7 @@ export function getInviteExpiry(): Date {
 // Get pending invites for an organization
 export async function getPendingInvites(orgId: string): Promise<Array<{
   id: string;
+  token: string;
   email: string;
   role: string;
   invitedBy: string | null;
@@ -84,6 +85,7 @@ export async function getPendingInvites(orgId: string): Promise<Array<{
     where: { orgId, acceptedAt: null },
     select: {
       id: true,
+      token: true,
       email: true,
       role: true,
       invitedBy: true,

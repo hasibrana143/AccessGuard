@@ -52,9 +52,14 @@ describe('rate-limit (in-memory fallback)', () => {
 });
 
 describe('getClientIdentifier', () => {
-  it('prefers the first x-forwarded-for address', () => {
+  it('prefers proxy-set IPs over x-forwarded-for', () => {
+    const req = new Request('https://x.dev', { headers: { 'cf-connecting-ip': '8.8.8.8', 'x-forwarded-for': '1.2.3.4, 5.6.7.8' } });
+    expect(getClientIdentifier(req)).toBe('8.8.8.8');
+  });
+
+  it('takes the last x-forwarded-for hop (appended by the trusted proxy)', () => {
     const req = new Request('https://x.dev', { headers: { 'x-forwarded-for': '1.2.3.4, 5.6.7.8' } });
-    expect(getClientIdentifier(req)).toBe('1.2.3.4');
+    expect(getClientIdentifier(req)).toBe('5.6.7.8');
   });
 
   it('falls back to x-real-ip', () => {

@@ -77,7 +77,7 @@ export default function PricingPage() {
                 <span className="text-muted-foreground">{plan.period}</span>
               </div>
               <Link
-                href={plan.name === 'Enterprise' ? 'mailto:sales@accessguard.dev' : '/register'}
+                href={plan.name === 'Enterprise' ? 'mailto:sales@accessguard.dev' : '/auth/register'}
                 className={`block text-center py-3 rounded-lg font-semibold mb-8 ${
                   plan.popular
                     ? 'bg-coral text-white hover:bg-coral/90'

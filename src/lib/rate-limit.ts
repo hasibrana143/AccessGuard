@@ -94,13 +94,21 @@ export async function checkRateLimit(
 }
 
 export function getClientIdentifier(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  const realIp = request.headers.get('x-real-ip');
+  // Prefer proxy-set IPs; never trust a client-supplied x-forwarded-for on its own.
   const cfIp = request.headers.get('cf-connecting-ip');
+  const realIp = request.headers.get('x-real-ip');
 
-  if (forwarded) return forwarded.split(',')[0].trim();
-  if (realIp) return realIp;
   if (cfIp) return cfIp;
+  if (realIp) return realIp;
+
+  // x-forwarded-for: take the rightmost entry — the one appended by the last
+  // trusted proxy — so clients cannot rotate the header to bypass limits.
+  const forwarded = request.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const hops = forwarded.split(',').map((h) => h.trim()).filter(Boolean);
+    const last = hops[hops.length - 1];
+    if (last) return last;
+  }
 
   return 'anonymous';
 }

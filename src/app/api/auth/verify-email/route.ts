@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      ...(isEmailConfigured() ? {} : { demoToken: token })
+      ...(isEmailConfigured() || process.env.NODE_ENV === 'production' ? {} : { demoToken: token })
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'Failed to process request' }, { status: 500 });

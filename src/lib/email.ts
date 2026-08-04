@@ -5,6 +5,16 @@ import { logger } from '@/lib/error-logger';
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM_EMAIL = process.env.EMAIL_FROM || 'noreply@accessguard.io';
 
+// Escape user-controlled values before interpolating into email HTML.
+export function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export interface EmailOptions {
   to: string;
   subject: string;
@@ -51,7 +61,7 @@ export async function sendWelcomeEmail(email: string, name: string): Promise<voi
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #f97316;">Welcome to AccessGuard!</h1>
-        <p>Hi ${name},</p>
+        <p>Hi ${escapeHtml(name)},</p>
         <p>Thanks for joining AccessGuard! You're now ready to make your websites accessible.</p>
         <p>Get started by adding your first project:</p>
         <ol>
@@ -92,7 +102,7 @@ export async function sendScanCompleteEmail(email: string, projectName: string, 
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #f97316;">Scan Complete</h1>
-        <p>Your scan of <strong>${projectName}</strong> has completed.</p>
+        <p>Your scan of <strong>${escapeHtml(projectName)}</strong> has completed.</p>
         <p>Found: <strong style="color: ${violationsCount > 0 ? '#ef4444' : '#22c55e'}">${violationsCount} violations</strong></p>
         <a href="${dashboardUrl}" style="display: inline-block; background: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">View Results</a>
       </div>
@@ -108,7 +118,7 @@ export async function sendTeamInviteEmail(email: string, orgName: string, invite
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #f97316;">Team Invitation</h1>
-        <p><strong>${inviterName}</strong> has invited you to join <strong>${orgName}</strong> as a <strong>${role}</strong>.</p>
+        <p><strong>${escapeHtml(inviterName)}</strong> has invited you to join <strong>${escapeHtml(orgName)}</strong> as a <strong>${escapeHtml(role)}</strong>.</p>
         <a href="${acceptUrl}" style="display: inline-block; background: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">Accept Invitation</a>
         <p style="color: #666;">This invitation expires in 7 days.</p>
       </div>
@@ -124,7 +134,7 @@ export async function sendVerificationEmail(email: string, name: string, verifyU
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #f97316;">Verify Your Email</h1>
-        <p>Hi ${name},</p>
+        <p>Hi ${escapeHtml(name)},</p>
         <p>Thanks for signing up! Please confirm your email address to activate your account.</p>
         <a href="${verifyUrl}" style="display: inline-block; background: #f97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Verify Email</a>
         <p style="color: #666; margin-top: 20px;">This link expires in 24 hours. If you didn't create an account, ignore this email.</p>

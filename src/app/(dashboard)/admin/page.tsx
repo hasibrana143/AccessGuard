@@ -49,13 +49,14 @@ interface AdminData {
   usage: { projects: number; scans: number; violations: number; auditLogs: number; scansThisWeek: number };
   health: { database: string; redis: string; api: string; worker: string };
   recentScans: RecentScan[];
+  flags: Record<string, boolean>;
 }
 
 const FLAGS = [
-  { key: 'ai-remediation', label: 'AI Remediation', description: 'AI-generated fix code for violations' },
-  { key: 'scheduled-scans', label: 'Scheduled Scans', description: 'Automatic recurring scans' },
-  { key: 'github-integration', label: 'GitHub Integration', description: 'Automated fix PR creation' },
-  { key: 'slack-teams', label: 'Slack & Teams', description: 'Webhook notifications' },
+  { key: 'scanner.ai_remediation', label: 'AI Remediation', description: 'AI-generated fix code for violations' },
+  { key: 'scheduler.automation', label: 'Scheduled Scans', description: 'Automatic recurring scans' },
+  { key: 'auth.github', label: 'GitHub Integration', description: 'GitHub OAuth login and PR creation' },
+  { key: 'notifications.email', label: 'Email Notifications', description: 'Scan and alert emails' },
 ];
 
 function HealthBadge({ status }: { status: string }) {
@@ -73,12 +74,7 @@ export default function AdminPage() {
   const { toast } = useToast();
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [flags, setFlags] = useState<Record<string, boolean>>({
-    'ai-remediation': true,
-    'scheduled-scans': true,
-    'github-integration': true,
-    'slack-teams': true,
-  });
+  const [flags, setFlags] = useState<Record<string, boolean>>({});
   const [flagUpdating, setFlagUpdating] = useState<string | null>(null);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'owner';
@@ -90,6 +86,7 @@ export default function AdminPage() {
       const json = await res.json();
       if (json.success) {
         setData(json.data);
+        if (json.data.flags) setFlags(json.data.flags);
       } else {
         toast({ title: 'Error', description: json.error || 'Failed to load admin data', variant: 'destructive' });
       }

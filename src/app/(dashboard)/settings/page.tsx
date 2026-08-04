@@ -111,9 +111,11 @@ export default function SettingsPage() {
 
   const handleDisableMfa = async () => {
     if (!user?.id) return;
+    const code = window.prompt('Enter a code from your authenticator app to disable MFA:');
+    if (!code) return;
     setMfaLoading(true);
     try {
-      const res = await fetch(`/api/auth/mfa/setup?userId=${encodeURIComponent(user.id)}`, {
+      const res = await fetch(`/api/auth/mfa/setup?userId=${encodeURIComponent(user.id)}&code=${encodeURIComponent(code)}`, {
         method: 'DELETE',
       });
       const data = await res.json();

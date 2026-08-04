@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserRepositories, isGitHubConfigured } from '@/lib/github';
+import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 
 // GET /api/github/repos - List user's repositories
@@ -36,15 +37,25 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get GitHub token from headers
-    const githubToken = request.headers.get('x-github-token') || process.env.GITHUB_TOKEN;
-    
-    if (!githubToken) {
+    // Resolve the token from the authenticated user's stored GitHub connection —
+    // never trust a client-supplied token or fall back to the server-wide token.
+    const { requireVerifiedEmail } = await import('@/lib/rbac');
+    const auth = await requireVerifiedEmail(request);
+    if (auth instanceof NextResponse) return auth;
+
+    const user = await db.user.findUnique({
+      where: { id: auth.user.id },
+      select: { githubToken: true },
+    });
+    const storedToken = user?.githubToken ?? null;
+    if (!storedToken) {
       return NextResponse.json(
         { success: false, error: 'GitHub not connected' },
         { status: 401 }
       );
     }
+    const { decryptSecret, isEncrypted } = await import('@/lib/crypto');
+    const githubToken = isEncrypted(storedToken) ? (decryptSecret(storedToken) ?? storedToken) : storedToken;
 
     const repositories = await getUserRepositories(githubToken);
 

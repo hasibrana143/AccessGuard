@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
           organization: user.organization
         },
         token: `token-${user.id}-${Date.now()}`,
-        ...(isEmailConfigured() ? {} : { demoVerificationToken: verificationToken })
+        ...(isEmailConfigured() || process.env.NODE_ENV === 'production' ? {} : { demoVerificationToken: verificationToken })
       }
     });
 

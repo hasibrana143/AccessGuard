@@ -203,7 +203,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       updateData.nextRunAt = getNextRunTime(cron);
     }
     if (enabled !== undefined) {
-      updateData.enabled = enabled;
+      updateData.isActive = enabled;
+      if (enabled === false) {
+        updateData.nextRunAt = null;
+      } else if (!cron) {
+        updateData.nextRunAt = getNextRunTime(scheduledScan.cron);
+      }
     }
 
     // Update the scheduled scan

@@ -27,20 +27,28 @@ export async function GET(request: NextRequest) {
       where,
       include: { project: { select: { name: true, url: true } } },
       orderBy: { createdAt: 'desc' },
+      take: 10_000,
     });
+
+    // Neutralize spreadsheet formula injection (=, +, -, @, tab, CR)
+    const safeCell = (value: unknown): string => {
+      const str = String(value ?? '');
+      if (/^[=+\-@\t\r]/.test(str)) return `'${str}`;
+      return str;
+    };
 
     const headers = ['Rule ID', 'WCAG Criteria', 'Severity', 'Status', 'URL', 'Element Selector', 'Description', 'Project', 'Created At', 'AI Confidence'];
     const rows = violations.map(v => [
-      v.ruleId,
-      v.wcagCriteria || '',
-      v.severity,
-      v.status,
-      v.url,
-      v.elementSelector || '',
-      v.description,
-      v.project?.name || '',
-      v.createdAt.toISOString(),
-      v.aiConfidenceScore?.toString() || '',
+      safeCell(v.ruleId),
+      safeCell(v.wcagCriteria || ''),
+      safeCell(v.severity),
+      safeCell(v.status),
+      safeCell(v.url),
+      safeCell(v.elementSelector || ''),
+      safeCell(v.description),
+      safeCell(v.project?.name || ''),
+      safeCell(v.createdAt.toISOString()),
+      safeCell(v.aiConfidenceScore?.toString() || ''),
     ]);
 
     const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))].join('\n');

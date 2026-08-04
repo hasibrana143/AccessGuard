@@ -39,6 +39,7 @@ export async function sendWebhookNotification(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(teamsPayload),
+        signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
         return { success: false, error: `Webhook returned ${res.status}` };
@@ -61,6 +62,7 @@ export async function sendWebhookNotification(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(slackPayload),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       return { success: false, error: `Webhook returned ${res.status}` };

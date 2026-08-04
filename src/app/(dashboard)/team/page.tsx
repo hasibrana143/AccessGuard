@@ -24,6 +24,7 @@ interface Member {
 
 interface PendingInvite {
   id: string;
+  token?: string;
   email: string;
   role: string;
   expiresAt: string;
@@ -159,7 +160,8 @@ export default function TeamPage() {
   const copyInviteLink = async (inviteId: string) => {
     const invite = invites.find((i) => i.id === inviteId);
     if (!invite) return;
-    const link = `${window.location.origin}?invite-token=${inviteId}`;
+    const token = invite.token || inviteId;
+    const link = `${window.location.origin}/invite?invite-token=${encodeURIComponent(token)}`;
     try {
       await navigator.clipboard.writeText(link);
       toast({ title: 'Link Copied', description: 'Invite link copied to clipboard' });

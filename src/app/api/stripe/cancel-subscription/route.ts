@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
 import { requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 import { cancelSubscription, reactivateSubscription, getSubscription } from '@/lib/stripe';
@@ -9,27 +8,6 @@ import { logger } from '@/lib/error-logger';
 // POST /api/stripe/cancel-subscription - Cancel or reactivate a subscription
 export async function POST(request: NextRequest) {
   try {
-    // Get token from Authorization header
-    const authHeader = request.headers.get('Authorization');
-    const token = extractTokenFromHeader(authHeader);
-
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-
-    // Verify token
-    const payload = verifyToken(token);
-
-    if (!payload) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid or expired token' },
-        { status: 401 }
-      );
-    }
-
     const verified = await requireVerifiedEmail(request, { permission: PERMISSIONS.MANAGE_BILLING });
     if (verified instanceof NextResponse) return verified;
 
@@ -42,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     // Get user and organization
     const user = await db.user.findUnique({
-      where: { id: payload.userId },
+      where: { id: verified.user.id },
       include: {
         organization: true,
       },
@@ -179,30 +157,12 @@ export async function POST(request: NextRequest) {
 // GET /api/stripe/cancel-subscription - Get subscription cancellation status
 export async function GET(request: NextRequest) {
   try {
-    // Get token from Authorization header
-    const authHeader = request.headers.get('Authorization');
-    const token = extractTokenFromHeader(authHeader);
-
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-
-    // Verify token
-    const payload = verifyToken(token);
-
-    if (!payload) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid or expired token' },
-        { status: 401 }
-      );
-    }
+    const verified = await requireVerifiedEmail(request);
+    if (verified instanceof NextResponse) return verified;
 
     // Get user and organization
     const user = await db.user.findUnique({
-      where: { id: payload.userId },
+      where: { id: verified.user.id },
       include: {
         organization: true,
       },

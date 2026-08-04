@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyToken, extractTokenFromHeader } from '@/lib/auth';
 import { requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 import { revokeToken, isGitHubConfigured } from '@/lib/github';
@@ -10,31 +9,12 @@ import { decryptSecret, isEncrypted } from '@/lib/crypto';
 // POST /api/github/disconnect - Disconnect GitHub account
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
-    const authHeader = request.headers.get('Authorization');
-    const token = extractTokenFromHeader(authHeader);
-
-    if (!token) {
-      return NextResponse.json(
-        { success: false, error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-
-    const payload = verifyToken(token);
-    if (!payload) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid or expired token' },
-        { status: 401 }
-      );
-    }
-
     const verified = await requireVerifiedEmail(request, { permission: PERMISSIONS.MANAGE_GITHUB });
     if (verified instanceof NextResponse) return verified;
 
     // Get current user
     const user = await db.user.findUnique({
-      where: { id: payload.userId }
+      where: { id: verified.user.id }
     });
 
     if (!user) {
@@ -52,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     // Clear GitHub token from database
     await db.user.update({
-      where: { id: payload.userId },
+      where: { id: verified.user.id },
       data: {
         githubToken: null,
         updatedAt: new Date()
@@ -62,10 +42,10 @@ export async function POST(request: NextRequest) {
     // Log the disconnection
     await db.auditLog.create({
       data: {
-        orgId: payload.orgId,
+        orgId: verified.user.orgId,
         action: 'github_disconnected',
         metadata: JSON.stringify({
-          userId: payload.userId,
+          userId: verified.user.id,
           isDemo: !isGitHubConfigured()
         })
       }
