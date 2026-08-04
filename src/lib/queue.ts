@@ -3,6 +3,7 @@ import { getRedis } from './redis';
 import { logger } from './error-logger';
 import { validateTargetUrl } from './url-validation';
 import type { ScannerViolation } from '@/services/scanner';
+import { getAlertSettings } from './notification-settings';
 
 let scanQueue: Queue | null = null;
 let scanWorker: Worker | null = null;
@@ -184,9 +185,9 @@ export function startScanWorker() {
           });
           const orgSettings = org?.settings ? JSON.parse(org.settings) : {};
           const webhookUrl: string | undefined = orgSettings.slackWebhookUrl;
-          const alerts = orgSettings.alerts || {};
+          const alerts = getAlertSettings(org?.settings ?? null);
 
-          if (webhookUrl && alerts.criticalViolations !== false) {
+          if (webhookUrl && alerts.criticalViolations) {
             const { sendWebhookNotification } = await import('@/lib/notifications');
             const hasCritical = severityCounts.critical > 0;
             await sendWebhookNotification(webhookUrl, {
@@ -202,7 +203,7 @@ export function startScanWorker() {
             });
           }
 
-          if (alerts.scanComplete !== false) {
+          if (alerts.scanCompleted) {
             const { sendScanCompleteEmail } = await import('@/lib/email');
             const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
             const users = await db.user.findMany({

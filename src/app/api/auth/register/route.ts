@@ -106,9 +106,10 @@ export async function POST(request: NextRequest) {
     // Hash password with bcrypt
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    // Generate email verification token
+    // Generate email verification token (24h expiry)
     const verificationToken = randomBytes(32).toString('hex');
     const hashedVerificationToken = hashToken(verificationToken);
+    const verificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     // Create user
     const user = await db.user.create({
@@ -118,7 +119,8 @@ export async function POST(request: NextRequest) {
         password: hashedPassword,
         role: 'admin',
         orgId: organization.id,
-        emailVerificationToken: hashedVerificationToken
+        emailVerificationToken: hashedVerificationToken,
+        emailVerificationTokenExpiresAt: verificationExpiry
       },
       include: {
         organization: {

@@ -4,6 +4,7 @@ import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimit
 import { logger } from '@/lib/error-logger';
 import { requireOrgAccess, requirePermission, requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { validateAlertPatch, ALERT_KEYS } from '@/lib/notification-settings';
 
 // GET /api/settings - Get organization settings
 export async function GET(request: NextRequest) {
@@ -142,6 +143,16 @@ export async function PATCH(request: NextRequest) {
       if (!webhookUrl.startsWith('https://')) {
         return NextResponse.json(
           { success: false, error: 'Webhook URL must start with https://' },
+          { status: 400 }
+        );
+      }
+    }
+    // Alert toggles are validated against the canonical per-key schema
+    if (incoming.alerts !== undefined && incoming.alerts !== null) {
+      const alerts = validateAlertPatch(incoming.alerts);
+      if (!alerts) {
+        return NextResponse.json(
+          { success: false, error: `Invalid alerts payload. Allowed keys: ${ALERT_KEYS.join(', ')} (boolean values only)` },
           { status: 400 }
         );
       }

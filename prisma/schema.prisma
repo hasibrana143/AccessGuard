@@ -38,12 +38,15 @@ model User {
   githubToken          String?
   emailVerifiedAt      DateTime?
   emailVerificationToken String?
+  emailVerificationTokenExpiresAt DateTime?
   mfaSecret            String?
   mfaEnabledAt         DateTime?
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
   organization         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   customRole           CustomRole?  @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+
+  @@index([orgId])
 }
 
 // Org-defined roles: an owner/admin can create roles with a subset of
@@ -111,6 +114,7 @@ model Scan {
   @@index([projectId, status])
   @@index([projectId, startedAt])
   @@index([status, startedAt])
+  @@index([createdAt])
   @@index([deletedAt])
 }
 
@@ -173,6 +177,8 @@ model PasswordReset {
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  @@index([email])
 }
 
 model TeamInvite {

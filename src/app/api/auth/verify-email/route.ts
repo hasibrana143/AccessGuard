@@ -32,10 +32,11 @@ export async function POST(request: NextRequest) {
 
     const token = randomBytes(32).toString('hex');
     const hashedToken = hashToken(token);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     await db.user.update({
       where: { id: user.id },
-      data: { emailVerificationToken: hashedToken }
+      data: { emailVerificationToken: hashedToken, emailVerificationTokenExpiresAt: expiresAt }
     });
 
     const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/verify-email?token=${token}`;
@@ -77,11 +78,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: { alreadyVerified: true } });
     }
 
+    // Enforce token expiry — reject and clear stale tokens so they cannot linger forever
+    if (!user.emailVerificationTokenExpiresAt || user.emailVerificationTokenExpiresAt < new Date()) {
+      await db.user.update({
+        where: { id: user.id },
+        data: { emailVerificationToken: null, emailVerificationTokenExpiresAt: null }
+      });
+      return NextResponse.json(
+        { success: false, error: 'Verification link has expired. Request a new one to continue.' },
+        { status: 400 }
+      );
+    }
+
     await db.user.update({
       where: { id: user.id },
       data: {
         emailVerifiedAt: new Date(),
-        emailVerificationToken: null
+        emailVerificationToken: null,
+        emailVerificationTokenExpiresAt: null
       }
     });
 
