@@ -7,7 +7,7 @@ const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
 
 export async function GET(request: NextRequest) {
   const token = await getToken({ req: request, secret });
-  if (!token || token.role !== 'admin') {
+  if (!token || (token.role !== 'admin' && token.role !== 'owner')) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
   }
 
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const token = await getToken({ req: request, secret });
-  if (!token || token.role !== 'admin') {
+  if (!token || (token.role !== 'admin' && token.role !== 'owner')) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
   }
 

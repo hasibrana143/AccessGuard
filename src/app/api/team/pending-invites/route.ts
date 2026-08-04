@@ -29,7 +29,6 @@ export async function GET(request: NextRequest) {
 
     const invitesWithInviters = invites.map(invite => ({
       id: invite.id,
-      token: invite.token,
       email: invite.email,
       role: invite.role,
       expiresAt: invite.expiresAt,

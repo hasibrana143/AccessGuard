@@ -247,9 +247,34 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const githubToken = request.headers.get('x-github-token') || process.env.GITHUB_TOKEN;
-    
-    if (!githubToken) {
+    // Whitelist the repository against the org's connected repositories
+    const connection = await db.githubConnection.findFirst({
+      where: { orgId: auth.user.orgId, isActive: true },
+    });
+    if (!connection) {
+      return NextResponse.json(
+        { success: false, error: 'GitHub not connected. Please connect your GitHub account first.' },
+        { status: 400 }
+      );
+    }
+    const allowedRepos: string[] = connection.repositories
+      ? (JSON.parse(connection.repositories) as Array<{ fullName?: string }> | null)
+          ?.map((r) => r.fullName)
+          .filter((n: unknown): n is string => typeof n === 'string') ?? []
+      : [];
+    if (allowedRepos.length === 0 || !allowedRepos.includes(`${owner}/${repo}`)) {
+      return NextResponse.json(
+        { success: false, error: 'Repository is not part of your connected GitHub repositories' },
+        { status: 403 }
+      );
+    }
+
+    // Resolve the token from the authenticated user's stored GitHub connection
+    const user = await db.user.findUnique({
+      where: { id: auth.user.id },
+      select: { githubToken: true },
+    });
+    if (!user?.githubToken) {
       return NextResponse.json({
         success: true,
         demoMode: true,
@@ -261,6 +286,8 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+    const { decryptSecret, isEncrypted } = await import('@/lib/crypto');
+    const githubToken = isEncrypted(user.githubToken) ? (decryptSecret(user.githubToken) ?? user.githubToken) : user.githubToken;
 
     const status = await getPullRequestStatus(githubToken, owner, repo, pullNumber);
 

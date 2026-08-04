@@ -4,6 +4,8 @@ import { generateInviteToken, getInviteExpiry, type Role } from '@/lib/team';
 import { sendTeamInviteEmail, isEmailConfigured } from '@/lib/email';
 import { requireOrgAccess, requirePermission } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse } from '@/lib/rate-limit';
+import { hashToken } from '@/lib/password-reset';
 
 // GET /api/team/invite?orgSlug=... - List pending invites (MANAGE_TEAM only)
 export async function GET(request: NextRequest) {
@@ -26,10 +28,19 @@ export async function POST(request: NextRequest) {
     const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
 
+    // Rate limit: 10 invites per 15 minutes per client + user
+    const clientId = getClientIdentifier(request);
+    const rateKey = `invite:${clientId}:${auth.user.id}`;
+    const rate = await checkRateLimit(rateKey, { interval: 15 * 60 * 1000, limit: 10 });
+    if (!rate.success) return createRateLimitResponse(rate);
+
     const { email, role, orgSlug } = await request.json() as { email: string; role: unknown; orgSlug?: string };
 
-    if (!email) {
-      return NextResponse.json({ success: false, error: 'Email is required' }, { status: 400 });
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ success: false, error: 'A valid email is required' }, { status: 400 });
+    }
+    if (email.length > 254) {
+      return NextResponse.json({ success: false, error: 'Email is too long' }, { status: 400 });
     }
 
     // Validate role — only documented invite roles are allowed (owner is provisioned, not invited)
@@ -61,7 +72,7 @@ export async function POST(request: NextRequest) {
         orgId: org.id,
         email: email.toLowerCase(),
         role: targetRole,
-        token,
+        token: hashToken(token),
         invitedBy: auth.user.id,
         expiresAt,
       }

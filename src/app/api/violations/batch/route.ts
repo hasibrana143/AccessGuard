@@ -24,6 +24,9 @@ export async function PATCH(request: NextRequest) {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ success: false, error: 'Violation IDs array is required' }, { status: 400 });
     }
+    if (ids.length > 500) {
+      return NextResponse.json({ success: false, error: 'Too many violation IDs (max 500)' }, { status: 400 });
+    }
 
     const validStatuses = ['open', 'fixed', 'ignored', 'false_positive'];
     if (!status || !validStatuses.includes(status)) {

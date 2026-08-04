@@ -112,11 +112,17 @@ export async function POST(request: NextRequest) {
           nextScan = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
           break;
         default:
-          // Try to parse as ISO date
+          // Try to parse as ISO date (one-off scan)
           nextScan = new Date(schedule);
           if (isNaN(nextScan.getTime())) {
             return NextResponse.json(
               { success: false, error: 'Invalid schedule' },
+              { status: 400 }
+            );
+          }
+          if (nextScan.getTime() <= now.getTime()) {
+            return NextResponse.json(
+              { success: false, error: 'One-off scan time must be in the future' },
               { status: 400 }
             );
           }

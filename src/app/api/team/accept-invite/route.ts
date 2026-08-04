@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getServerSession } from 'next-auth';
+import { hashToken } from '@/lib/password-reset';
 
 function isValidPassword(pw: string): boolean {
   return typeof pw === 'string' && pw.length >= 8 && /[A-Za-z]/.test(pw) && /\d/.test(pw);
@@ -15,8 +16,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: false, error: 'Token required' }, { status: 400 });
   }
 
-  const invite = await db.teamInvite.findUnique({
-    where: { token },
+  const invite = await db.teamInvite.findFirst({
+    where: { token: hashToken(token) },
     include: { organization: { select: { name: true } } }
   });
 
@@ -39,8 +40,8 @@ export async function POST(request: NextRequest) {
   try {
     const { token, name, password } = await request.json();
 
-    const invite = await db.teamInvite.findUnique({
-      where: { token },
+    const invite = await db.teamInvite.findFirst({
+      where: { token: hashToken(token) },
       include: { organization: true }
     });
 

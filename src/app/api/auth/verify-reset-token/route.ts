@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyToken, isTokenExpired } from '@/lib/password-reset';
+import { hashToken, isTokenExpired } from '@/lib/password-reset';
 import { logger } from '@/lib/error-logger';
-
-// Type for password reset token
-type PasswordResetToken = {
-  id: string;
-  email: string;
-  token: string;
-  expiresAt: Date;
-  used: boolean;
-  createdAt: Date;
-};
 
 // GET /api/auth/verify-reset-token?token=xxx
 // Verify if a reset token is valid and not expired
@@ -27,22 +17,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Find all non-expired, unused reset tokens
-    const resetTokens = await db.passwordReset.findMany({
+    // Direct hash lookup — same pattern as reset-password; no full-table scan
+    const matchedToken = await db.passwordReset.findFirst({
       where: {
+        token: hashToken(token),
         used: false,
         expiresAt: { gte: new Date() },
       },
     });
-
-    // Find the matching token by verifying the hash
-    let matchedToken: PasswordResetToken | null = null;
-    for (const resetToken of resetTokens) {
-      if (verifyToken(resetToken.token, token)) {
-        matchedToken = resetToken as PasswordResetToken;
-        break;
-      }
-    }
 
     if (!matchedToken) {
       return NextResponse.json({

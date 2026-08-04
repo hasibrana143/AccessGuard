@@ -38,6 +38,18 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (password.length > 128) {
+      return NextResponse.json(
+        { success: false, error: 'Password must be at most 128 characters' },
+        { status: 400 }
+      );
+    }
+    if (typeof name !== 'string' || name.trim().length < 1 || name.trim().length > 80) {
+      return NextResponse.json(
+        { success: false, error: 'Name must be between 1 and 80 characters' },
+        { status: 400 }
+      );
+    }
 
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

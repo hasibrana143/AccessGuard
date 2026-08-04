@@ -12,8 +12,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Token and password are required' }, { status: 400 });
     }
 
-    if (password.length < 6) {
-      return NextResponse.json({ success: false, error: 'Password must be at least 6 characters' }, { status: 400 });
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+      return NextResponse.json(
+        { success: false, error: 'Password must be at least 8 characters and include letters and numbers' },
+        { status: 400 }
+      );
+    }
+    if (password.length > 128) {
+      return NextResponse.json({ success: false, error: 'Password must be at most 128 characters' }, { status: 400 });
     }
 
     const hashedToken = hashToken(token);

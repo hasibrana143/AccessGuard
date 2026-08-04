@@ -13,11 +13,10 @@ export async function GET() {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    logger.error({ err: error }, '');
+    logger.error({ err: error }, 'Health check failed');
     return NextResponse.json({
       status: 'unhealthy',
       database: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString()
     }, { status: 503 });
   }

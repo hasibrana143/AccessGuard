@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Mail, Loader2, ShieldCheck, Crown, Copy, CheckCircle2, Trash2 } from 'lucide-react';
+import { Users, UserPlus, Mail, Loader2, ShieldCheck, Crown, CheckCircle2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -24,7 +24,6 @@ interface Member {
 
 interface PendingInvite {
   id: string;
-  token?: string;
   email: string;
   role: string;
   expiresAt: string;
@@ -157,16 +156,21 @@ export default function TeamPage() {
     }
   };
 
-  const copyInviteLink = async (inviteId: string) => {
-    const invite = invites.find((i) => i.id === inviteId);
-    if (!invite) return;
-    const token = invite.token || inviteId;
-    const link = `${window.location.origin}/invite?invite-token=${encodeURIComponent(token)}`;
+  const resendInvite = async (invite: { id: string; email: string; role: string }) => {
     try {
-      await navigator.clipboard.writeText(link);
-      toast({ title: 'Link Copied', description: 'Invite link copied to clipboard' });
+      const res = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: invite.email, role: invite.role }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast({ title: 'Invite Resent', description: `Invite link sent to ${invite.email}` });
+      } else {
+        toast({ title: 'Error', description: data.error || 'Failed to resend invite', variant: 'destructive' });
+      }
     } catch {
-      toast({ title: 'Error', description: 'Failed to copy link', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Failed to resend invite', variant: 'destructive' });
     }
   };
 
@@ -329,9 +333,9 @@ export default function TeamPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => copyInviteLink(invite.id)}>
-                    <Copy className="h-4 w-4 mr-1" />
-                    Copy Link
+                  <Button variant="ghost" size="sm" onClick={() => resendInvite(invite)}>
+                    <Mail className="h-4 w-4 mr-1" />
+                    Resend
                   </Button>
                   <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleCancelInvite(invite.id)}>
                     Cancel
