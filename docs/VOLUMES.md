@@ -18,7 +18,7 @@
 | Vol | Area | Deliverables | Status |
 |---|---|---|---|
 | 1 | Product — Research, Market, TAM/SAM/SOM, Business Model, Pricing, Personas, Journey, PRD | `docs/product/*` (8 docs) | ✅ Done (commit 39a8a67) |
-| 2 | Design / UX — flows, wireframes, design system, IA | `docs/design/ui-ux-design-system/` (partial), `docs/design/app-flow/` (partial) | ⏸ Pending volume input |
+| 2 | Design / UX — App Flow, IA, Wireframes, Design System, Component Library, Figma Spec, Design Tokens, Dark Mode, Responsive | `docs/design/ux/*` (9 docs, code-ground-truth) | ✅ Done (commit —) |
 | 3 | Engineering Architecture — system design, ERD, partition, scale | `docs/design/enterprise-db-architecture/` | ⏸ Pending volume input |
 | 4 | Backend — API spec, auth/RBAC, queue/worker, integrations | `src/app/api`, `src/lib` | ⏸ Verify-only (built) |
 | 5 | Frontend — app pages, dashboards, component system | `src/app`, `src/components` | ⏸ Verify-only (built) |
@@ -33,5 +33,14 @@
 - [ ] Org-scoped authorization verified (no cross-tenant leaks)
 - [ ] Security: input validation, rate limits, secret handling reviewed
 - [ ] Docs updated in docs/ (product/design/ops)
-- [ ] Single clean commit (message: `vol(N): <area> — <what>`)
+- [ ] Single clean commit (message: `vol: <area> — <what>`)
 - [ ] Pushed to origin/main
+
+## Volume 2 — Design / UX `done`
+
+Grounded in actual code, not prompts:
+- Tokens from `src/app/globals.css` (`:root` / `.dark` OKLCH maps, elevation, radius, Geist fonts).
+- Components from `src/components/ui/*` (47 primitives) + app components.
+- IA/Flows/Responsive from real route tree + `(dashboard)/layout.tsx` (sidebar→Sheet `<lg`, `p-4 sm:p-6 lg:p-8`).
+- Dark mode verified wired: `next-themes` ThemeProvider (`attribute="class"`, default dark), ThemeToggle, `.dark` token block; no next-themes gap.
+- Replaced stale AI-prompt stubs: deleted `docs/design/app-flow/APP_FLOW.md` (510-line "ROLE: Principal UX Architect" prompt) and `docs/design/ui-ux-design-system/UI_UX_DESIGN_SYSTEM` prompt.
