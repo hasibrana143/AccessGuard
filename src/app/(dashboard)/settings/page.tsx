@@ -13,7 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { ThemeToggle } from '@/components/dashboard/theme-toggle';
 import { RolesManager } from '@/components/dashboard/roles-manager';
-import { isPushEnabled, setPushEnabled, getPushPermission, showBrowserNotification } from '@/lib/push';
+import { setPushEnabled, getPushPermission, getPushState, subscribePushPermissionChanges, showBrowserNotification } from '@/lib/push';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -61,8 +61,12 @@ export default function SettingsPage() {
   const [brandingSaving, setBrandingSaving] = useState(false);
 
   useEffect(() => {
-    setPushEnabledState(isPushEnabled());
+    setPushEnabledState(getPushState().effective);
     setPushPermission(getPushPermission());
+    return subscribePushPermissionChanges(() => {
+      setPushPermission(getPushPermission());
+      setPushEnabledState(getPushState().effective);
+    });
   }, []);
 
   const handleSetupMfa = async () => {
@@ -547,17 +551,27 @@ export default function SettingsPage() {
                 </div>
                 <Switch
                   checked={pushEnabled}
-                  onCheckedChange={(checked) => {
-                    const ok = setPushEnabled(checked);
-                    setPushEnabledState(checked && getPushPermission() !== 'unsupported');
+                  onCheckedChange={async (checked) => {
+                    const ok = await setPushEnabled(checked);
                     setPushPermission(getPushPermission());
+                    setPushEnabledState(ok && getPushPermission() === 'granted');
                     if (!ok) {
-                      toast({ title: 'Error', description: 'Could not save preference', variant: 'destructive' });
+                      toast({
+                        title: 'Notifications Blocked',
+                        description: 'Enable notifications for AccessGuard in your browser settings first.',
+                        variant: 'destructive',
+                      });
                     }
                   }}
                   aria-label="Enable browser push notifications"
                 />
               </div>
+              {pushPermission === 'denied' && (
+                <p className="text-sm text-destructive">
+                  Notifications are blocked in your browser. Use the site settings (lock icon) to allow them for
+                  AccessGuard, then try again.
+                </p>
+              )}
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">
                   Test that browser notifications work on this device.

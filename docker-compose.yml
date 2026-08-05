@@ -6,7 +6,7 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_USER: accessguard
-      POSTGRES_PASSWORD: accessguard_secret
+      POSTGRES_PASSWORD: accessguard
       POSTGRES_DB: accessguard
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -19,6 +19,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    ports:
+      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -33,7 +35,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: "postgresql://accessguard:accessguard_secret@postgres:5432/accessguard"
+      DATABASE_URL: "postgresql://accessguard:accessguard@postgres:5432/accessguard"
       NEXTAUTH_SECRET: "${NEXTAUTH_SECRET:-change-me-in-production}"
       NEXTAUTH_URL: "http://localhost:3000"
       REDIS_URL: "redis://redis:6379"
