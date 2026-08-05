@@ -18,7 +18,7 @@
 | Vol | Area | Deliverables | Status |
 |---|---|---|---|
 | 1 | Product — Research, Market, TAM/SAM/SOM, Business Model, Pricing, Personas, Journey, PRD | `docs/product/*` (8 docs) | ✅ Done (commit 39a8a67) |
-| 2 | Design / UX — App Flow, IA, Wireframes, Design System, Component Library, Figma Spec, Design Tokens, Dark Mode, Responsive | `docs/design/ux/*` (9 docs, code-ground-truth) | ✅ Done (commit —) |
+| 2 | Design / UX — App Flow, IA, Wireframes, Design System, Component Library, Figma Spec, Design Tokens, Dark Mode, Responsive | `docs/design/ux/*` (9 docs, code-ground-truth) | ✅ Done (commit 81de42c) |
 | 3 | Engineering Architecture — system design, ERD, partition, scale | `docs/design/enterprise-db-architecture/` | ⏸ Pending volume input |
 | 4 | Backend — API spec, auth/RBAC, queue/worker, integrations | `src/app/api`, `src/lib` | ⏸ Verify-only (built) |
 | 5 | Frontend — app pages, dashboards, component system | `src/app`, `src/components` | ⏸ Verify-only (built) |
