@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireRole, requireOrgAccess, requireVerifiedEmail, requireProjectAccess } from '@/lib/rbac';
+import { PERMISSIONS } from '@/lib/permissions';
 
 vi.mock('next-auth', () => ({
   getServerSession: vi.fn(),
@@ -239,9 +240,7 @@ describe('requireProjectAccess (project IDOR guard)', () => {
   });
 
   it('rejects access when the required permission is missing', async () => {
-    const { PERMISSIONS } = await import('@/lib/permissions');
-    const { requireProjectAccess: guarded } = await import('@/lib/rbac');
-    const result = await guarded(createRequest('POST'), 'proj-1', {
+    const result = await requireProjectAccess(createRequest('POST'), 'proj-1', {
       permission: PERMISSIONS.CREATE_PROJECTS,
     });
     expect(result instanceof NextResponse).toBe(true);

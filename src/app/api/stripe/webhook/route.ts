@@ -52,8 +52,26 @@ async function claimEvent(
 ): Promise<boolean> {
   const existing = await tx.webhookEvent.findUnique({ where: { id: event.id } });
   if (existing) return false;
-  await tx.webhookEvent.create({ data: { id: event.id, type: event.type } });
+  try {
+    await tx.webhookEvent.create({ data: { id: event.id, type: event.type } });
+  } catch (error) {
+    // Concurrent duplicate delivery: the PK insert lost the race — treat as handled.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return false;
+    }
+    throw error;
+  }
   return true;
+}
+
+// True only when the event's subscription is the org's current one (or the org
+// has no recorded subscription yet). Guards late-delivered events from a
+// superseded subscription clobbering a newer subscription's state.
+function isCurrentSubscription(
+  recordedSubscriptionId: string | null,
+  eventSubscriptionId: string
+): boolean {
+  return recordedSubscriptionId === null || recordedSubscriptionId === eventSubscriptionId;
 }
 
 export async function POST(request: NextRequest) {
@@ -84,46 +102,60 @@ export async function POST(request: NextRequest) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const orgId = session.metadata?.orgId;
-        const plan = resolvePlanFromMetadata(session.metadata?.plan);
-        const subscriptionId = session.subscription as string;
 
-        if (orgId) {
-          await db.$transaction(async (tx) => {
-            if (!(await claimEvent(tx, event))) return;
-            const existing = await tx.organization.findUnique({
-              where: { id: orgId },
-              select: { settings: true },
-            });
-            const existingSettings = existing?.settings ? JSON.parse(existing.settings) : {};
-            await tx.organization.update({
-              where: { id: orgId },
-              data: {
-                plan,
-                subscriptionStatus: 'active',
-                stripeSubscriptionId: subscriptionId,
-                settings: JSON.stringify({
-                  ...existingSettings,
-                  planActivated: new Date().toISOString(),
-                  customerId: session.customer,
-                }),
-              },
-            });
-            await tx.auditLog.create({
-              data: {
-                orgId,
-                action: 'subscription_created',
-                metadata: JSON.stringify({
-                  plan,
-                  subscriptionId,
-                  customerId: session.customer,
-                  eventId: event.id,
-                }),
-              },
-            });
-          });
-
-          logger.info(`Subscription activated for org ${orgId}: ${plan}`);
+        // Only subscription-mode checkouts carry a subscription id; skip the rest.
+        if (
+          session.mode !== 'subscription' ||
+          typeof session.subscription !== 'string' ||
+          !orgId
+        ) {
+          break;
         }
+
+        const plan = resolvePlanFromMetadata(session.metadata?.plan);
+        const subscriptionId = session.subscription;
+
+        await db.$transaction(async (tx) => {
+          if (!(await claimEvent(tx, event))) return;
+          const existing = await tx.organization.findUnique({
+            where: { id: orgId },
+            select: { settings: true },
+          });
+          if (!existing) {
+            // Org deleted while the subscription is still live — consume the
+            // event so Stripe stops retrying, but skip the mutation.
+            logger.warn(`Checkout completed for missing org ${orgId}`);
+            return;
+          }
+          const existingSettings = existing.settings ? JSON.parse(existing.settings) : {};
+          await tx.organization.update({
+            where: { id: orgId },
+            data: {
+              plan,
+              subscriptionStatus: 'active',
+              stripeSubscriptionId: subscriptionId,
+              settings: JSON.stringify({
+                ...existingSettings,
+                planActivated: new Date().toISOString(),
+                customerId: session.customer,
+              }),
+            },
+          });
+          await tx.auditLog.create({
+            data: {
+              orgId,
+              action: 'subscription_created',
+              metadata: JSON.stringify({
+                plan,
+                subscriptionId,
+                customerId: session.customer,
+                eventId: event.id,
+              }),
+            },
+          });
+        });
+
+        logger.info(`Subscription activated for org ${orgId}: ${plan}`);
         break;
       }
 
@@ -133,19 +165,29 @@ export async function POST(request: NextRequest) {
 
         if (orgId) {
           const hasPlan = typeof subscription.metadata?.plan === 'string' && PLAN_IDS.has(subscription.metadata.plan);
-          const currentPlan = await db.organization.findUnique({
-            where: { id: orgId },
-            select: { plan: true },
-          });
-          const { plan, subscriptionStatus } = resolveSubscriptionState(
-            subscription.status,
-            hasPlan
-              ? (subscription.metadata!.plan as PlanType)
-              : ((currentPlan?.plan as PlanType) ?? 'starter')
-          );
 
           await db.$transaction(async (tx) => {
             if (!(await claimEvent(tx, event))) return;
+            const org = await tx.organization.findUnique({
+              where: { id: orgId },
+              select: { plan: true, stripeSubscriptionId: true },
+            });
+            if (!org) {
+              logger.warn(`Subscription updated for missing org ${orgId}`);
+              return;
+            }
+            if (!isCurrentSubscription(org.stripeSubscriptionId, subscription.id)) {
+              logger.warn(
+                `Stale subscription.updated for org ${orgId}: event sub ${subscription.id} != current ${org.stripeSubscriptionId}`
+              );
+              return;
+            }
+            const { plan, subscriptionStatus } = resolveSubscriptionState(
+              subscription.status,
+              hasPlan
+                ? (subscription.metadata!.plan as PlanType)
+                : ((org.plan as PlanType) ?? 'starter')
+            );
             await tx.organization.update({
               where: { id: orgId },
               data: { plan, subscriptionStatus, stripeSubscriptionId: subscription.id },
@@ -176,6 +218,20 @@ export async function POST(request: NextRequest) {
         if (orgId) {
           await db.$transaction(async (tx) => {
             if (!(await claimEvent(tx, event))) return;
+            const org = await tx.organization.findUnique({
+              where: { id: orgId },
+              select: { stripeSubscriptionId: true },
+            });
+            if (!org) {
+              logger.warn(`Subscription deleted for missing org ${orgId}`);
+              return;
+            }
+            if (!isCurrentSubscription(org.stripeSubscriptionId, subscription.id)) {
+              logger.warn(
+                `Stale subscription.deleted for org ${orgId}: event sub ${subscription.id} != current ${org.stripeSubscriptionId}`
+              );
+              return;
+            }
             await tx.organization.update({
               where: { id: orgId },
               data: { plan: 'starter', subscriptionStatus: 'canceled', stripeSubscriptionId: null },
@@ -208,6 +264,14 @@ export async function POST(request: NextRequest) {
           if (orgId) {
             await db.$transaction(async (tx) => {
               if (!(await claimEvent(tx, event))) return;
+              const org = await tx.organization.findUnique({
+                where: { id: orgId },
+                select: { id: true },
+              });
+              if (!org) {
+                logger.warn(`Payment succeeded for missing org ${orgId}`);
+                return;
+              }
               await tx.auditLog.create({
                 data: {
                   orgId,
@@ -237,6 +301,14 @@ export async function POST(request: NextRequest) {
           if (orgId) {
             await db.$transaction(async (tx) => {
               if (!(await claimEvent(tx, event))) return;
+              const org = await tx.organization.findUnique({
+                where: { id: orgId },
+                select: { id: true },
+              });
+              if (!org) {
+                logger.warn(`Payment failed for missing org ${orgId}`);
+                return;
+              }
               await tx.auditLog.create({
                 data: {
                   orgId,
