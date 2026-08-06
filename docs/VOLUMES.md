@@ -29,6 +29,7 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V6 | Multi-agent security+SRE audit → subscription GET/POST tenant-scoped, remediate GET authed, prisma CLI closure in runner, docker.yml sha-format/branch-gated scans, load.yml migration | `ff7ba4c` |
 | V6/V3/V2 | Full 8-role team wave: billing webhook idempotency (WebhookEvent) + metadata validation, audit-whitelist parity gate, requireProjectAccess+stripe tests, projects N+1 fix, aria-labels, debug e2e exclusion | `4ecf79e` |
 | V6 | Webhook review pass: consume events for deleted/missing orgs (no Webhook 500 retry loop), stale-subscription guard, P2002 dedupe race, checkout mode guard, org read inside tx | `75e81c6` |
+| V6 | Webhook nits closed: 30d WebhookEvent retention prune (scheduler tick), price-derived plan in subscription.updated, subscription.created/cancelled audit naming sync (whitelist + UI) | `027ecf7` |
 
 ## Process (per volume)
 
