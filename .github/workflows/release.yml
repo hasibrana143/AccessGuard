@@ -1,0 +1,41 @@
+# Release — creates GitHub Release with changelog on v* tag push.
+# docker.yml publishes the GHCR image for the same tags; this workflow
+# only adds the changelog + GitHub Release (docs/launch/PRODUCTION_CHECKLIST.md §4).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build changelog from conventional commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          PREV="$(git describe --tags --abbrev=0 "${TAG}~1" 2>/dev/null || true)"
+          {
+            echo "## What's Changed"
+            if [ -n "${PREV}" ]; then
+              git log --no-merges --format='- %s (%h)' "${PREV}..${TAG}"
+            else
+              git log --no-merges --format='- %s (%h)' "${TAG}"
+            fi
+          } > CHANGELOG.md
+          cat CHANGELOG.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: CHANGELOG.md
+          generate_release_notes: false

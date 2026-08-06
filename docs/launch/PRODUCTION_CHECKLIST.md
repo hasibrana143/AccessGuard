@@ -18,14 +18,15 @@
 - [x] **Secrets**: `.env` gitignored; CI uses test creds; secret scan in CI (V7/V8 plan)
 - [x] **Audit**: `AuditLog` whitelist + admin UI; `remediation.ai_cost` events
 - [x] **Input validation / SSRF guards** on scan URLs (`url-validation`)
-- [ ] **TLS in prod** (termination at LB/Ingress — cert-manager or managed cert)
-- [ ] **Dependency CVEs**: `npm audit` gates CI; container scan (Trivy) roadmap
+- [ ] **TLS in prod** (termination at LB/Ingress — cert-manager or managed cert) — infra, deploy-time
+- [x] **Dependency CVEs**: `npm audit` gates CI (ci.yml) · Trivy container scan + SBOM in docker.yml · npm audit verified 0 vulnerabilities (3efde6d)
 - [ ] **Pen-test** (external) — post-GA optional
 
 ## 3. Reliability & observability
-- [x] `/api/health` (DB connectivity) — extend to liveness/readiness
+- [x] `/api/health` (DB connectivity) — extended to liveness/readiness
 - [x] Sentry server/client/edge (DSN-gated)
-- [ ] Uptime monitoring + status page
+- [x] **Status page** live at `/status` (probes live + ready, noindex) — 44d0884
+- [ ] External uptime monitoring (UptimeRobot/etc. ping `/status`) — needs account
 - [ ] Prometheus/Grafana SLO dashboards + alerting (V7 plan)
 - [ ] Log aggregation (Loki/CloudWatch) — V7 plan
 - [ ] Queue (BullMQ) health monitoring
@@ -34,7 +35,8 @@
 - [x] docker.yml → GHCR (`v*`, `latest`, `sha`); multi-arch
 - [x] `docker-entrypoint` runs migrate on boot
 - [x] Rolling deploy + rollback path (RB01)
-- [ ] **Tag `v1.0.0`** + GH release (semantic release automation — V7 plan)
+- [x] **Release automation**: release.yml creates GitHub Release + changelog on `v*` tags
+- [ ] **Tag `v1.0.0`** + push → GHCR image + GitHub Release
 - [ ] **Pin `latest`** only after smoke pass
 
 ## 5. Product/legal/business
