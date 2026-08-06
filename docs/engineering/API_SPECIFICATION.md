@@ -73,4 +73,4 @@ checkout, coupon, create-customer, create-subscription, cancel-subscription, sub
 ## 10. Legal / docs / health
 `/api/legal/privacy` + `/tos` (static markdown), `/api/docs`, `/api/health` (public), `/api/flags` (feature toggles, `FLAG_CACHE_TTL`), `/api/notifications/test` (push notification sanity).
 
-**Missing/Explicit non-goals (verify fresh):** no `/api/github/webhook` (App install), no usage/quotas API beyond `stats/usage`, no payments backend for `plan` table sync beyond `checkout`; no dedicated `/api/openapi` icon snapshot (docs serves specs).**
+**Explicit non-goals (verify fresh):** no usage/quotas API beyond `stats/usage`, no payments backend for `plan` table sync beyond `checkout`; no dedicated `/api/openapi` icon snapshot (docs serves specs). **Implemented since:** `/api/github/webhook` (App install sync, HMAC verified), `/api/health/live` + `/api/health/ready` probes, `/api/reports/download` (PDF).**

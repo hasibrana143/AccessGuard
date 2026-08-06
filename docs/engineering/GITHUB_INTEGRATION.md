@@ -37,8 +37,10 @@ pipeline; no webhooks. NextAuth GitHub sign-in (identity) is separate from the r
 - Rate-limit + permission gates (`team.manage` for connect? repurposed `violation.remediate`).
 
 ## 5. Gaps / roadmap
-- No GitHub **App installation webhook** (`/api/github/webhook` missing) — installationId is
-  stubbed (`generateInviteToken` HMAC unused). App-install mode → per-repo events, no user token.
+- ✅ **App installation webhook** implemented (`/api/github/webhook`, HMAC-SHA256 verified) — syncs
+  `GithubConnection` from `installation` / `installation_repositories` events; org resolved via
+  `User.githubLogin`. Requires `GITHUB_APP_WEBHOOK_SECRET` (see `.env.example`). App-install mode
+  → per-repo events, no user token.
 - OAuth user tokens expire; no refresh flow auto-wire (revoke exists).
 - applyFixesToFile is string-match patching — brittle against formatting; upgrade to AST/range patches in V5.
 - Demo branch naming is TS-suffixed (dedupe ok).

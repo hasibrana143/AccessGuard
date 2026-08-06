@@ -750,6 +750,24 @@ const paths: Record<string, PathItem> = {
       },
     }),
   },
+  '/github/webhook': {
+    post: op({
+      tags: ['GitHub'],
+      summary: 'GitHub App installation webhook (HMAC-SHA256 verified)',
+      description:
+        'Ingests `installation` + `installation_repositories` events to keep GithubConnection in sync. Signature must match x-hub-signature-256 (GITHUB_APP_WEBHOOK_SECRET).',
+      security: [{ webhookSignature: [] }],
+      parameters: [
+        { name: 'x-github-event', in: 'header', required: true, schema: { type: 'string' } },
+        { name: 'x-hub-signature-256', in: 'header', required: true, schema: { type: 'string' } },
+      ],
+      responses: {
+        '200': { description: 'Event acknowledged' },
+        '401': { description: 'Invalid signature' },
+        '503': { description: 'Webhook not configured (secret missing)' },
+      },
+    }),
+  },
   '/github/connect': {
     get: authed(op({
       tags: ['GitHub'],
@@ -1602,6 +1620,11 @@ export const openApiSpec = {
         type: 'apiKey',
         in: 'header',
         name: 'x-scheduler-api-key',
+      },
+      webhookSignature: {
+        type: 'apiKey',
+        in: 'header',
+        name: 'x-hub-signature-256',
       },
     },
     schemas,

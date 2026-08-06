@@ -36,6 +36,7 @@ model User {
   customRoleId         String?
   avatar               String?
   githubToken          String?
+  githubLogin          String?
   emailVerifiedAt      DateTime?
   emailVerificationToken String?
   emailVerificationTokenExpiresAt DateTime?

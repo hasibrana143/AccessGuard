@@ -8,7 +8,7 @@ const AUDIT_ACTIONS = [
   'scan.started', 'scan.completed', 'scan.failed',
   'violation.status_changed', 'violation.fixed',
   'settings.updated', 'subscription.changed',
-  'github.connected', 'github.disconnected',
+  'github.connected', 'github.disconnected', 'github.connection_sync',
   'report.generated',
   'remediation.generated', 'remediation.ai_cost',
 ] as const;

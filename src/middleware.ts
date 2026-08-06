@@ -47,6 +47,7 @@ export default withAuth(
           '/api/docs',
           '/api/csrf-token',
           '/api/stripe/webhook',
+          '/api/github/webhook',
           '/share',
           '/api/reports/share',
         ];

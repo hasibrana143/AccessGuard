@@ -80,7 +80,7 @@ sequenceDiagram
 - **ADR-05:** queue-synced scans: 3 retries, monthly page-quota gate (`plan-limits.ts`).
 - **ADR-06:** LLM via NIM raw `/chat/completions`; template fallback when no key (never fail scans on AI).
 - **ADR-07:** Scanner strategies pluggable (axe-core / fetch-regex / dom-regex) with shared output type.
-- **ADR-08:** GitHub via OAuth user tokens (encrypted AES-GCM `src/lib/crypto.ts`); install webhook later.
+- **ADR-08:** GitHub via OAuth user tokens (encrypted AES-GCM `src/lib/crypto.ts`); App install webhook (`/api/github/webhook`, HMAC verified) added for install-event sync.
 - **ADR-09:** containerized deploy single-image; CI pushes GHCR; no Vercel.
 
 ## 6. Scale & capacity (current vs target)

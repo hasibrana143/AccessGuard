@@ -128,7 +128,10 @@ export async function GET(request: NextRequest) {
     if (user) {
       await db.user.update({
         where: { id: user.id },
-        data: { githubToken: encryptSecret(accessToken) },
+        data: {
+          githubToken: encryptSecret(accessToken),
+          githubLogin: userData.login,
+        },
       });
     }
 
