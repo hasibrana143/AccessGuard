@@ -800,6 +800,7 @@ export default function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        aria-label="Download invoice"
                         disabled={!inv.url}
                         onClick={() => inv.url && window.open(inv.url, '_blank', 'noopener,noreferrer')}
                       >

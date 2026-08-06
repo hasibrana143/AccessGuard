@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireRole, requireOrgAccess, requireVerifiedEmail } from '@/lib/rbac';
+import { requireAuth, requireRole, requireOrgAccess, requireVerifiedEmail, requireProjectAccess } from '@/lib/rbac';
 
 vi.mock('next-auth', () => ({
   getServerSession: vi.fn(),
@@ -10,6 +10,7 @@ vi.mock('@/lib/db', () => ({
   db: {
     user: { findUnique: vi.fn() },
     organization: { findFirst: vi.fn() },
+    project: { findFirst: vi.fn() },
   },
 }));
 
@@ -19,6 +20,7 @@ import { db } from '@/lib/db';
 const mockedGetServerSession = vi.mocked(getServerSession);
 const mockedFindUnique = vi.mocked(db.user.findUnique);
 const mockedOrgFindFirst = vi.mocked(db.organization.findFirst);
+const mockedProjectFindFirst = vi.mocked(db.project.findFirst);
 
 function createRequest(method = 'GET'): NextRequest {
   return new NextRequest(new URL('http://localhost:3000/api/test'), {
@@ -176,5 +178,74 @@ describe('email verification enforcement', () => {
     mockedFindUnique.mockResolvedValue({ emailVerifiedAt: new Date() } as never);
     const accepted = await requireVerifiedEmail(createRequest());
     expect(accepted instanceof NextResponse).toBe(false);
+  });
+});
+
+describe('requireProjectAccess (project IDOR guard)', () => {
+  beforeEach(() => {
+    mockedGetServerSession.mockResolvedValue(adminSession as never);
+    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: new Date() } as never);
+    mockedProjectFindFirst.mockResolvedValue({ id: 'proj-1', orgId: 'org-1' } as never);
+  });
+
+  it('rejects a missing project id with 400', async () => {
+    const result = await requireProjectAccess(createRequest(), null);
+    expect(result instanceof NextResponse).toBe(true);
+    if (!(result instanceof NextResponse)) return;
+    expect(result.status).toBe(400);
+  });
+
+  it('rejects unauthenticated access with 401', async () => {
+    mockedGetServerSession.mockResolvedValue(null as never);
+    const result = await requireProjectAccess(createRequest(), 'proj-1');
+    expect(result instanceof NextResponse).toBe(true);
+    if (!(result instanceof NextResponse)) return;
+    expect(result.status).toBe(401);
+  });
+
+  it('rejects a non-existent or inactive project with 404', async () => {
+    mockedProjectFindFirst.mockResolvedValue(null as never);
+    const result = await requireProjectAccess(createRequest(), 'ghost');
+    expect(result instanceof NextResponse).toBe(true);
+    if (!(result instanceof NextResponse)) return;
+    expect(result.status).toBe(404);
+    expect(mockedProjectFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'ghost', isActive: true } })
+    );
+  });
+
+  it('rejects cross-org project access with 403 (IDOR)', async () => {
+    mockedProjectFindFirst.mockResolvedValue({ id: 'proj-other', orgId: 'org-other' } as never);
+    const result = await requireProjectAccess(createRequest(), 'proj-other');
+    expect(result instanceof NextResponse).toBe(true);
+    if (!(result instanceof NextResponse)) return;
+    expect(result.status).toBe(403);
+    expect(await result.json()).toMatchObject({ error: 'Insufficient permissions' });
+  });
+
+  it('rejects write access for unverified users with 403', async () => {
+    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+    const result = await requireProjectAccess(createRequest('POST'), 'proj-1');
+    expect(result instanceof NextResponse).toBe(true);
+    if (!(result instanceof NextResponse)) return;
+    expect(result.status).toBe(403);
+  });
+
+  it('allows verified org access to the project', async () => {
+    const result = await requireProjectAccess(createRequest(), 'proj-1');
+    expect(result instanceof NextResponse).toBe(false);
+    if (result instanceof NextResponse) return;
+    expect(result.project).toEqual({ id: 'proj-1', orgId: 'org-1' });
+  });
+
+  it('rejects access when the required permission is missing', async () => {
+    const { PERMISSIONS } = await import('@/lib/permissions');
+    const { requireProjectAccess: guarded } = await import('@/lib/rbac');
+    const result = await guarded(createRequest('POST'), 'proj-1', {
+      permission: PERMISSIONS.CREATE_PROJECTS,
+    });
+    expect(result instanceof NextResponse).toBe(true);
+    if (!(result instanceof NextResponse)) return;
+    expect(result.status).toBe(403);
   });
 });

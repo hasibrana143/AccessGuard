@@ -2,15 +2,23 @@ import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
-const AUDIT_ACTIONS = [
+export const AUDIT_ACTIONS = [
   'user.login', 'user.logout', 'user.invited', 'user.removed',
   'project.created', 'project.updated', 'project.deleted',
   'scan.started', 'scan.completed', 'scan.failed',
   'violation.status_changed', 'violation.fixed',
-  'settings.updated', 'subscription.changed',
+  'settings.updated', 'settings_updated', 'subscription.changed',
+  'subscription_created', 'subscription_cancelled',
+  'payment_succeeded', 'payment_failed',
   'github.connected', 'github.disconnected', 'github.connection_sync',
-  'report.generated',
+  'github_connected', 'github_disconnected', 'github_pr_created',
+  'report.generated', 'report_generated', 'vpat_generated', 'executive_summary_generated',
   'remediation.generated', 'remediation.ai_cost',
+  'email_verified', 'mfa_enabled', 'mfa_disabled',
+  'api_key_regenerated', 'plan_limit_reached',
+  'scan_scheduled', 'scan_unscheduled', 'scan_scheduled_triggered', 'scan_blocked_plan_limit',
+  'custom_role_created', 'custom_role_updated', 'custom_role_deleted',
+  'team_invite_cancelled',
 ] as const;
 
 interface AuditLogInput {

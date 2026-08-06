@@ -246,3 +246,10 @@ model WcagRule {
   howToFix     String
   createdAt    DateTime @default(now())
 }
+
+// Stripe at-least-once delivery — dedupe key so webhook replays are a no-op
+model WebhookEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
+}

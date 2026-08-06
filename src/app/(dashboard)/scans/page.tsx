@@ -232,7 +232,7 @@ export default function ScansPage() {
                       Retry
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" onClick={() => scan.project?.url && window.open(scan.project.url, '_blank', 'noopener,noreferrer')}>
+                  <Button variant="ghost" size="sm" aria-label="Open project website" onClick={() => scan.project?.url && window.open(scan.project.url, '_blank', 'noopener,noreferrer')}>
                     <ExternalLink className="h-4 w-4" />
                   </Button>
                 </div>

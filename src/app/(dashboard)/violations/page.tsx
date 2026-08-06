@@ -441,6 +441,7 @@ export default function ViolationsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              aria-label="View pull request"
                               className="text-coral hover:text-coral"
                               onClick={(e) => { e.stopPropagation(); window.open(violation.githubPrUrl!, '_blank', 'noopener,noreferrer'); }}
                             >

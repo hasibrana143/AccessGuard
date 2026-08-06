@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const subscription = await createSubscription(customerId, finalPriceId);
+    const subscription = await createSubscription(customerId, finalPriceId, user.orgId);
 
     if (!subscription) {
       return NextResponse.json(

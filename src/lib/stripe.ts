@@ -108,12 +108,15 @@ export async function createCustomer(email: string, name?: string): Promise<Stri
 }
 
 // Create subscription
-export async function createSubscription(customerId: string, priceId: string): Promise<Stripe.Subscription | null> {
+export async function createSubscription(customerId: string, priceId: string, orgId: string): Promise<Stripe.Subscription | null> {
   const stripe = getStripeClient();
   if (!stripe) return null;
   return stripe.subscriptions.create({
     customer: customerId,
     items: [{ price: priceId }],
+    // Webhook handlers resolve the org via metadata.orgId — without this,
+    // non-checkout subscriptions never downgrade/update/cancel correctly.
+    metadata: { orgId, plan: getPlanFromPriceId(priceId) },
     payment_behavior: 'default_incomplete',
     expand: ['latest_invoice.payment_intent'],
   });

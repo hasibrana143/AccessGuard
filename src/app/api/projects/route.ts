@@ -40,45 +40,53 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Calculate violation summary for each project
-    const projectsWithSummary = await Promise.all(
-      projects.map(async (project) => {
-        const violations = await db.violation.groupBy({
-          by: ['severity'],
-          where: {
-            projectId: project.id,
-            status: 'open'
-          },
-          _count: true
-        });
+    // Calculate violation summary for each project — one grouped query for the
+    // whole org instead of a groupBy per project (was N+1 at scale)
+    const openByProject = await db.violation.groupBy({
+      by: ['projectId', 'severity'],
+      where: {
+        projectId: { in: projects.map((p) => p.id) },
+        status: 'open',
+      },
+      _count: true,
+    });
 
-        const violationSummary = {
-          critical: violations.find(v => v.severity === 'critical')?._count || 0,
-          serious: violations.find(v => v.severity === 'serious')?._count || 0,
-          moderate: violations.find(v => v.severity === 'moderate')?._count || 0,
-          minor: violations.find(v => v.severity === 'minor')?._count || 0
-        };
+    const summaryByProject = new Map<string, { critical: number; serious: number; moderate: number; minor: number; total: number }>();
+    for (const row of openByProject) {
+      const entry = summaryByProject.get(row.projectId) ?? { critical: 0, serious: 0, moderate: 0, minor: 0, total: 0 };
+      if (row.severity === 'critical' || row.severity === 'serious' || row.severity === 'moderate' || row.severity === 'minor') {
+        entry[row.severity] = row._count;
+        entry.total += row._count;
+      }
+      summaryByProject.set(row.projectId, entry);
+    }
 
-        const totalOpen = Object.values(violationSummary).reduce((a, b) => a + b, 0);
-        
-        // Calculate risk score based on violations
-        let riskScore = 100;
-        riskScore -= violationSummary.critical * 10;
-        riskScore -= violationSummary.serious * 5;
-        riskScore -= violationSummary.moderate * 2;
-        riskScore -= violationSummary.minor * 1;
-        riskScore = Math.max(0, Math.min(100, riskScore));
+    const projectsWithSummary = projects.map((project) => {
+      const summary = summaryByProject.get(project.id) ?? { critical: 0, serious: 0, moderate: 0, minor: 0, total: 0 };
+      const violationSummary = {
+        critical: summary.critical,
+        serious: summary.serious,
+        moderate: summary.moderate,
+        minor: summary.minor,
+      };
 
-        return {
-          ...project,
-          violations: violationSummary,
-          totalViolations: totalOpen,
-          riskScore: project.riskScore ?? riskScore,
-          isVerified: project.isVerified,
-          scanConfig: project.scanConfig
-        };
-      })
-    );
+      // Calculate risk score based on violations
+      let riskScore = 100;
+      riskScore -= violationSummary.critical * 10;
+      riskScore -= violationSummary.serious * 5;
+      riskScore -= violationSummary.moderate * 2;
+      riskScore -= violationSummary.minor * 1;
+      riskScore = Math.max(0, Math.min(100, riskScore));
+
+      return {
+        ...project,
+        violations: violationSummary,
+        totalViolations: summary.total,
+        riskScore: project.riskScore ?? riskScore,
+        isVerified: project.isVerified,
+        scanConfig: project.scanConfig
+      };
+    });
 
     return NextResponse.json({
       success: true,
