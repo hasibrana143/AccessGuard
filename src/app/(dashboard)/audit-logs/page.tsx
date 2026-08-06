@@ -33,6 +33,8 @@ const ACTION_META: Record<string, { label: string; icon: React.ComponentType<{ c
   'violation.fixed': { label: 'Violation Fixed', icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-500/10' },
   'settings.updated': { label: 'Settings Updated', icon: SettingsIcon, color: 'text-gray-500 bg-gray-500/10' },
   'subscription.changed': { label: 'Subscription Changed', icon: SettingsIcon, color: 'text-purple-500 bg-purple-500/10' },
+  'subscription.created': { label: 'Subscription Created', icon: SettingsIcon, color: 'text-purple-500 bg-purple-500/10' },
+  'subscription.cancelled': { label: 'Subscription Cancelled', icon: SettingsIcon, color: 'text-red-500 bg-red-500/10' },
   'github.connected': { label: 'GitHub Connected', icon: Github, color: 'text-gray-500 bg-gray-500/10' },
   'github.disconnected': { label: 'GitHub Disconnected', icon: Github, color: 'text-red-500 bg-red-500/10' },
   'report.generated': { label: 'Report Generated', icon: FileText, color: 'text-blue-500 bg-blue-500/10' },

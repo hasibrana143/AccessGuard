@@ -132,6 +132,19 @@ export async function processDueScheduledScans(): Promise<number> {
   return processed;
 }
 
+// Stripe dedupe table grows on every delivered event; prune processed rows
+// older than the retention window on each tick.
+export async function pruneWebhookEvents(retentionDays = 30): Promise<number> {
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+  const { count } = await db.webhookEvent.deleteMany({
+    where: { processedAt: { lt: cutoff } },
+  });
+  if (count > 0) {
+    logger.info({ count, retentionDays }, 'Pruned processed webhook events');
+  }
+  return count;
+}
+
 export function startSchedulerDaemon() {
   const redis = getRedis();
   if (!redis) {
@@ -159,6 +172,7 @@ export function startSchedulerDaemon() {
     'scheduler',
     async () => {
       await processDueScheduledScans();
+      await pruneWebhookEvents();
     },
     {
       connection: { url: process.env.REDIS_URL || 'redis://localhost:6379' },

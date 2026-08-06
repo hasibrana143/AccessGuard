@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
           await tx.auditLog.create({
             data: {
               orgId,
-              action: 'subscription_created',
+              action: 'subscription.created',
               metadata: JSON.stringify({
                 plan,
                 subscriptionId,
@@ -165,6 +165,12 @@ export async function POST(request: NextRequest) {
 
         if (orgId) {
           const hasPlan = typeof subscription.metadata?.plan === 'string' && PLAN_IDS.has(subscription.metadata.plan);
+          // Subscription metadata can go stale across in-subscription price
+          // changes — the item price is the source of truth for the updated
+          // event; fall back to metadata (gated), then the org's current plan.
+          const pricePlan = PRICING_PLANS.find(
+            (p) => p.priceId === subscription.items.data[0]?.price.id
+          )?.id as PlanType | undefined;
 
           await db.$transaction(async (tx) => {
             if (!(await claimEvent(tx, event))) return;
@@ -184,9 +190,10 @@ export async function POST(request: NextRequest) {
             }
             const { plan, subscriptionStatus } = resolveSubscriptionState(
               subscription.status,
-              hasPlan
-                ? (subscription.metadata!.plan as PlanType)
-                : ((org.plan as PlanType) ?? 'starter')
+              pricePlan ??
+                (hasPlan
+                  ? (subscription.metadata!.plan as PlanType)
+                  : ((org.plan as PlanType) ?? 'starter'))
             );
             await tx.organization.update({
               where: { id: orgId },
@@ -239,7 +246,7 @@ export async function POST(request: NextRequest) {
             await tx.auditLog.create({
               data: {
                 orgId,
-                action: 'subscription_cancelled',
+                action: 'subscription.cancelled',
                 metadata: JSON.stringify({
                   subscriptionId: subscription.id,
                   eventId: event.id,
