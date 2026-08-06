@@ -27,7 +27,7 @@
 | 8 | Testing — Unit, Integration, E2E, Accessibility, Load, Security | `docs/qa/*` (6 docs) | ✅ Done (commit 0de4714) |
 | 9 | Documentation — API Docs, User Guide, Admin Guide, Dev Guide, Runbooks | `docs/runbooks/*` (5 docs) | ✅ Done (commit 07c97cc) |
 | 10 | Business — Sales, Marketing, SEO, Pricing, Product Hunt, Investor Deck | `docs/business/*` (6 docs) | ✅ Done (commit 689424d) |
-| 11 | Operations — Support, Incident Response, SLA, Feature Flags, Analytics, KPI Dashboard | `docs/ops/*` (6 docs) | ✅ Done (commit pending) |
+| 11 | Operations — Support, Incident Response, SLA, Feature Flags, Analytics, KPI Dashboard | `docs/ops/*` (6 docs) | ✅ Done (commit 979ff05) |
 | 12 | Launch — Beta Plan, Production Checklist, Rollback, Roadmap, Versioning, Future | `docs/launch/*` | ❌ Pending |
 
 **Scale anchor (per user directive):** ~80–120 docs, 300–500 diagrams, 100–200 API specs,
