@@ -47,6 +47,16 @@ function authed(op: Operation): Operation {
 }
 
 const paths: Record<string, PathItem> = {
+  '/': {
+    get: op({
+      tags: ['System'],
+      summary: 'API root — service + database status',
+      responses: {
+        '200': jsonResponse('Service healthy', { $ref: '#/components/schemas/HealthResponse' }),
+        '503': { description: 'Database unreachable' },
+      },
+    }),
+  },
   '/health': {
     get: op({
       tags: ['System'],

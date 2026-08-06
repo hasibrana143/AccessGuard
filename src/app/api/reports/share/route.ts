@@ -12,6 +12,13 @@ import { PERMISSIONS } from '@/lib/permissions';
 export const DEFAULT_SHARE_TTL_DAYS = 30;
 export const MAX_SHARE_TTL_DAYS = 365;
 
+// Pure clamp so the expiry rule is unit-testable (docs/product PRD UC7).
+export function clampShareTtlDays(expiresInDays: unknown): number {
+  return Number.isFinite(expiresInDays)
+    ? Math.min(Math.max(Math.trunc(Number(expiresInDays)), 1), MAX_SHARE_TTL_DAYS)
+    : DEFAULT_SHARE_TTL_DAYS;
+}
+
 export async function POST(request: NextRequest) {
   const clientId = getClientIdentifier(request);
   const rateResult = await checkRateLimit(`report-share:${clientId}`, rateLimits.default);
@@ -31,9 +38,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const ttlDays = Number.isFinite(expiresInDays)
-      ? Math.min(Math.max(Math.trunc(Number(expiresInDays)), 1), MAX_SHARE_TTL_DAYS)
-      : DEFAULT_SHARE_TTL_DAYS;
+    const ttlDays = clampShareTtlDays(expiresInDays);
 
     const access = await requireProjectAccess(request, projectId);
     if (access instanceof NextResponse) return access;

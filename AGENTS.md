@@ -39,7 +39,8 @@ npx tsc -p tsconfig.check.json
 5. Push to origin/main.
 
 ## Current status (mid-Aug 2026)
-- ✅ V1 Product, V2 Design/UX, V3 Engineering, V5 AI, V6 Security
-- ⏳ V4 Development (docs in progress)
-- ⏳ V7 DevOps → V8 Testing → V9 Documentation → V10 Business → V11 Operations → V12 Launch
-- Tests: vitest 234 ✓ · Playwright baseline ~11 specs · lint 0 ✓
+- ✅ All 12 volumes complete + docs-to-code upgrade audited V1→V12 (see the upgrade log in `docs/VOLUMES.md`).
+- ✅ V1 Product, V2 Design/UX, V3 Engineering, V4 Development, V5 AI, V6 Security, V7 DevOps, V8 Testing, V9 Documentation, V10 Business, V11 Operations, V12 Launch.
+- Open deferrals (documented in volume docs): semantic-release, deploy/preview jobs, PostHog, PagerDuty, status page, pixel contrast analysis, i18n, soak test.
+- Typecheck: `npx tsc -p tsconfig.check.json` (source-only; never `tsc` on `.next-types`).
+- Tests: vitest 251 ✓ · coverage gate 55/50/58/57 · Playwright baseline ~11 specs · lint 0 ✓.
