@@ -116,7 +116,7 @@ function InviteContent() {
                 </p>
                 <button
                   onClick={() => router.push(`/auth/login?email=${encodeURIComponent(details.email)}`)}
-                  className="w-full py-2.5 rounded-lg bg-coral text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                  className="w-full py-2.5 rounded-lg bg-coral text-coral-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
                 >
                   Sign in to accept
                 </button>
@@ -167,7 +167,7 @@ function InviteContent() {
                   <button
                     type="submit"
                     disabled={accepting}
-                    className="w-full py-2.5 rounded-lg bg-coral text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                    className="w-full py-2.5 rounded-lg bg-coral text-coral-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
                     {accepting ? 'Accepting…' : 'Accept invite'}
                   </button>

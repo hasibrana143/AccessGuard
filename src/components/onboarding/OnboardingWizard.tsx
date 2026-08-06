@@ -131,7 +131,7 @@ export default function OnboardingWizard() {
           </button>
           <button
             onClick={next}
-            className="flex-1 py-3 rounded-lg bg-coral text-white text-sm font-semibold hover:bg-coral/90 flex items-center justify-center gap-2"
+            className="flex-1 py-3 rounded-lg bg-coral text-coral-foreground text-sm font-semibold hover:bg-coral/90 flex items-center justify-center gap-2"
           >
             {isTutorial ? 'Start Scanning' : current.action}
             <ArrowRight className="h-4 w-4" />

@@ -711,7 +711,7 @@ export default function SettingsPage() {
               {activeCoupon ? (
                 <div className="flex items-center justify-between p-4 border border-emerald-500/30 bg-emerald-500/5 rounded-lg">
                   <div>
-                    <p className="font-medium text-emerald-600 dark:text-emerald-400">{activeCoupon.code}</p>
+                    <p className="font-medium text-emerald-500">{activeCoupon.code}</p>
                     <p className="text-sm text-muted-foreground">
                       {activeCoupon.percentOff != null ? `${activeCoupon.percentOff}% off` : ''}
                       {' — '}{activeCoupon.description || 'Coupon applied'}

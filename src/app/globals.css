@@ -81,13 +81,13 @@
   --muted-foreground: oklch(0.5 0 0);
   --accent: oklch(0.65 0.18 160);
   --accent-foreground: oklch(0.15 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: oklch(0.55 0.22 25);
   --border: oklch(0.9 0 0);
   --input: oklch(0.9 0 0);
   --ring: oklch(0.55 0.2 25);
   --chart-1: oklch(0.55 0.2 25);
-  --chart-2: oklch(0.65 0.18 160);
-  --chart-3: oklch(0.7 0.15 50);
+  --chart-2: oklch(0.6 0.16 160);
+  --chart-3: oklch(0.58 0.16 50);
   --chart-4: oklch(0.6 0.15 200);
   --chart-5: oklch(0.65 0.12 280);
   --sidebar: oklch(0.98 0 0);
@@ -120,6 +120,15 @@
   --info: oklch(0.6 0.15 240);
   --info-foreground: oklch(0.98 0 0);
 
+  /* WCAG AA text-safe 500-shade overrides (light) — the default Tailwind v4
+     palette's 500 shades (e.g. emerald-500 #00bb7f, blue-500 #2b7fff,
+     red-500 #fb2c36) fail 4.5:1 as text on white. Class names stay semantic
+     (text-red-500 etc.); the tokens are tuned to pass on both card and white. */
+  --color-red-500: #c0281d;
+  --color-orange-500: #c2410c;
+  --color-blue-500: #1d4ed8;
+  --color-emerald-500: #047857;
+
   /* Elevation (light) */
   --elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.05), 0 1px 3px 0 rgb(0 0 0 / 0.06);
   --elevation-2: 0 2px 4px -1px rgb(0 0 0 / 0.07), 0 4px 8px -1px rgb(0 0 0 / 0.07);
@@ -133,7 +142,7 @@
   --card-foreground: oklch(0.95 0 0);
   --popover: oklch(0.16 0 0);
   --popover-foreground: oklch(0.95 0 0);
-  --primary: oklch(0.65 0.2 25);
+  --primary: oklch(0.7 0.2 25);
   --primary-foreground: oklch(0.12 0 0);
   --secondary: oklch(0.22 0 0);
   --secondary-foreground: oklch(0.95 0 0);
@@ -141,7 +150,7 @@
   --muted-foreground: oklch(0.65 0 0);
   --accent: oklch(0.7 0.18 160);
   --accent-foreground: oklch(0.12 0 0);
-  --destructive: oklch(0.65 0.2 25);
+  --destructive: oklch(0.55 0.22 25);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.65 0.2 25);
@@ -167,7 +176,7 @@
   --pass: oklch(0.7 0.18 160);
   
   /* AccessGuard Brand Colors - Dark Mode */
-  --coral: oklch(0.65 0.2 25);
+  --coral: oklch(0.7 0.2 25);
   --coral-foreground: oklch(0.12 0 0);
   --emerald: oklch(0.7 0.18 160);
   --emerald-foreground: oklch(0.12 0 0);
@@ -179,6 +188,14 @@
   --warning-foreground: oklch(0.15 0 0);
   --info: oklch(0.65 0.15 240);
   --info-foreground: oklch(0.98 0 0);
+
+  /* WCAG AA text-safe 500-shade overrides (dark) — lighter shades that pass
+     4.5:1 against the dark backgrounds while the light theme keeps the dark
+     variants above. */
+  --color-red-500: #f87171;
+  --color-orange-500: #fb923c;
+  --color-blue-500: #60a5fa;
+  --color-emerald-500: #34d399;
 
   /* Elevation (dark) */
   --elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.4), 0 1px 3px 0 rgb(0 0 0 / 0.45);

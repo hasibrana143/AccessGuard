@@ -190,7 +190,7 @@ export default function ReportsPage() {
             </p>
             <div className="flex gap-2">
               <Button
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+                className="w-full bg-blue-700 hover:bg-blue-800 text-white"
                 onClick={() => generateReport('vpat')}
                 disabled={generating !== null}
               >
@@ -224,7 +224,7 @@ export default function ReportsPage() {
             </p>
             <div className="flex gap-2">
               <Button
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white"
                 onClick={() => generateReport('summary')}
                 disabled={generating !== null}
               >

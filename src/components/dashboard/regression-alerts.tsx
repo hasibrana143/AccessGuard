@@ -146,7 +146,7 @@ export function RegressionAlerts({ projects }: { projects: Project[] }) {
                   )}
                 </ul>
               ) : (
-                <p className="text-xs text-emerald-600">
+                <p className="text-xs text-emerald-500">
                   {result.resolved > 0 ? `${result.resolved} issue(s) fixed since last scan.` : 'No new issues. All clear.'}
                 </p>
               )}

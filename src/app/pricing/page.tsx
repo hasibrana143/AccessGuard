@@ -64,7 +64,7 @@ export default function PricingPage() {
               }`}
             >
               {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-coral text-white px-4 py-1 rounded-full text-sm font-semibold">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-coral text-coral-foreground px-4 py-1 rounded-full text-sm font-semibold">
                   Most Popular
                 </div>
               )}
@@ -80,7 +80,7 @@ export default function PricingPage() {
                 href={plan.name === 'Enterprise' ? 'mailto:sales@accessguard.dev' : '/auth/register'}
                 className={`block text-center py-3 rounded-lg font-semibold mb-8 ${
                   plan.popular
-                    ? 'bg-coral text-white hover:bg-coral/90'
+                    ? 'bg-coral text-coral-foreground hover:bg-coral/90'
                     : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
                 }`}
               >

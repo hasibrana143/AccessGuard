@@ -83,7 +83,7 @@ export default async function StatusPage() {
                       check.up ? 'bg-emerald-500' : 'bg-red-500'
                     }`}
                   />
-                  <span className={check.up ? 'text-emerald-600' : 'text-red-600'}>
+                  <span className={check.up ? 'text-emerald-500' : 'text-red-500'}>
                     {check.detail}
                   </span>
                 </span>
