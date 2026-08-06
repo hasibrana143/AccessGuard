@@ -7,6 +7,11 @@ import { requireProjectAccess } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 
 // POST /api/reports/share - Create a shareable report
+// Body: { projectId, reportType?, expiresInDays? } — share links expire by default
+//       (PRD UC7: "attach shareable link with expiry"). Default 30 days, max 365.
+export const DEFAULT_SHARE_TTL_DAYS = 30;
+export const MAX_SHARE_TTL_DAYS = 365;
+
 export async function POST(request: NextRequest) {
   const clientId = getClientIdentifier(request);
   const rateResult = await checkRateLimit(`report-share:${clientId}`, rateLimits.default);
@@ -17,7 +22,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { projectId, reportType = 'wcag' } = body;
+    const { projectId, reportType = 'wcag', expiresInDays } = body;
 
     if (!projectId) {
       return NextResponse.json(
@@ -25,6 +30,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const ttlDays = Number.isFinite(expiresInDays)
+      ? Math.min(Math.max(Math.trunc(Number(expiresInDays)), 1), MAX_SHARE_TTL_DAYS)
+      : DEFAULT_SHARE_TTL_DAYS;
 
     const access = await requireProjectAccess(request, projectId);
     if (access instanceof NextResponse) return access;
@@ -84,6 +93,8 @@ export async function POST(request: NextRequest) {
     };
 
     const shareToken = randomBytes(16).toString('hex');
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ttlDays * 24 * 60 * 60 * 1000);
 
     const report = await db.complianceReport.create({
       data: {
@@ -93,8 +104,8 @@ export async function POST(request: NextRequest) {
         format: 'web',
         status: 'ready',
         summary: JSON.stringify(summary),
-        metadata: JSON.stringify({ shareToken, createdAt: new Date().toISOString() }),
-        generatedAt: new Date(),
+        metadata: JSON.stringify({ shareToken, createdAt: now.toISOString(), expiresAt: expiresAt.toISOString() }),
+        generatedAt: now,
       },
     });
 
@@ -118,6 +129,7 @@ export async function POST(request: NextRequest) {
         reportId: report.id,
         shareToken,
         shareUrl: `/share/${shareToken}`,
+        expiresAt,
       },
     });
   } catch (error) {
@@ -164,6 +176,7 @@ export async function GET(request: NextRequest) {
           reportType: r.reportType,
           createdAt: r.createdAt,
           shareToken: metadata.shareToken as string | undefined,
+          expiresAt: metadata.expiresAt as string | undefined,
         };
       }),
     });
