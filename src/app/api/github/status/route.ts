@@ -1,31 +1,27 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { isGitHubConfigured } from '@/lib/github';
+import { requireAuth } from '@/lib/rbac';
 import { db } from '@/lib/db';
 
-// GET /api/github/status - Check GitHub connection status
-export async function GET() {
-  const isConfigured = isGitHubConfigured();
-  
-  const user = await db.user.findFirst({ where: { email: 'demo@accessguard.com' } });
-  const isConnected = !!(user?.githubToken);
+// GET /api/github/status - Check the caller's GitHub connection status.
+// Guard chain: auth first (spec marks this route authed; was previously
+// anonymous + cross-tenant demo lookup — fixed to fail closed, per-caller).
+export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (auth instanceof NextResponse) return auth;
 
-  if (!isConfigured) {
-    return NextResponse.json({
-      success: true,
-      data: {
-        connected: false,
-        demo: true,
-        user: { login: 'demo-user', avatar_url: '', name: 'Demo User' }
-      }
-    });
-  }
+  const caller = await db.user.findUnique({
+    where: { id: auth.user.id },
+    select: { githubLogin: true, githubToken: true },
+  });
+  const connected = !!caller?.githubLogin && !!caller?.githubToken;
 
   return NextResponse.json({
     success: true,
     data: {
-      connected: isConnected,
-      demo: false,
-      user: isConnected ? { login: 'Connected User', avatar_url: '', name: 'Connected' } : null
-    }
+      configured: isGitHubConfigured(),
+      connected,
+      login: caller?.githubLogin ?? null,
+    },
   });
 }
