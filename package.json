@@ -23,7 +23,11 @@
     "db:push:prod": "echo 'WARNING: Use prisma migrate deploy instead. db push can cause data loss.' && exit 1",
     "db:backup": "node scripts/db-backup.mjs backup",
     "db:backup:prune": "node scripts/db-backup.mjs backup --prune",
-    "db:restore": "node scripts/db-backup.mjs restore"
+    "db:restore": "node scripts/db-backup.mjs restore",
+    "test:load:seed": "npx tsx tests/load/load-test-seed.ts",
+    "test:load:smoke": "k6 run tests/load/smoke.js",
+    "test:load:scan": "k6 run tests/load/scan-flow.js",
+    "test:load:ai": "k6 run tests/load/ai-remediate.js"
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1",

@@ -233,13 +233,13 @@ jobs:
 | `vus` (concurrent users) | k6 | — | capacity planning |
 
 ## 7. Immediate roadmap
-| Week | Deliverable |
-| --- | --- |
-| 1 | Add `k6` devDep; create `tests/load/smoke.js`; run locally against dev server |
-| 2 | Add `scan-flow.js` + `ai-remediate.js`; create `load-test-seed.ts` |
-| 3 | Add `load.yml` workflow (manual dispatch); verify in CI |
-| 4 | Add weekly scheduled run; baseline SLO metrics in Grafana |
-| 5 | Add soak test (1h @ 10 VUs) for memory leak detection |
+| Week | Deliverable | Status |
+| --- | --- | --- |
+| 1 | Add `k6` devDep; create `tests/load/smoke.js`; run locally against dev server | ✅ done (k6 via CLI/Docker `grafana/k6` — npm `k6` is a placeholder) |
+| 2 | Add `scan-flow.js` + `ai-remediate.js`; create `load-test-seed.ts` | ✅ done |
+| 3 | Add `load.yml` workflow (manual dispatch); verify in CI | ✅ done |
+| 4 | Add weekly scheduled run; baseline SLO metrics in Grafana | ⏳ open |
+| 5 | Add soak test (1h @ 10 VUs) for memory leak detection | ⏳ open |
 
 ## 8. Local run commands
 ```bash

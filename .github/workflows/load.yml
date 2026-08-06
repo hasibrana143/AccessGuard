@@ -1,0 +1,91 @@
+# Load Tests (k6) — docs/qa/LOAD_TESTING.md §4
+name: Load Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        type: choice
+        options: [smoke, scan-flow, ai-remediate, all]
+        default: smoke
+  schedule:
+    - cron: '0 3 * * 0'
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: accessguard
+          POSTGRES_PASSWORD: accessguard_secret
+          POSTGRES_DB: accessguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U accessguard"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+        env:
+          DATABASE_URL: postgresql://accessguard:accessguard_secret@localhost:5432/accessguard_test
+
+      - name: Start server
+        run: npm run start &
+        env:
+          DATABASE_URL: postgresql://accessguard:accessguard_secret@localhost:5432/accessguard_test
+          REDIS_URL: redis://localhost:6379
+          NEXTAUTH_SECRET: load-test-secret
+          NEXTAUTH_URL: http://localhost:3000
+
+      - name: Wait for server
+        run: sleep 10 && curl -f http://localhost:3000/api/health/live
+
+      - name: Seed load-test data
+        run: npx tsx tests/load/load-test-seed.ts
+        env:
+          DATABASE_URL: postgresql://accessguard:accessguard_secret@localhost:5432/accessguard_test
+
+      - name: Login and capture session cookie
+        run: |
+          COOKIE=$(curl -s -c - -X POST http://localhost:3000/api/auth/callback/credentials \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            -d 'email=loadtest@accessguard.dev&password=load-test-password-123&csrfToken=x' | \
+            grep -o 'next-auth.session-token=[^[:space:]]*' | head -1)
+          echo "AUTH_TOKEN=${COOKIE#next-auth.session-token=}" >> "$GITHUB_ENV"
+
+      - name: Run k6 (${{ inputs.scenario || 'smoke' }})
+        uses: grafana/k6-action@v0.2.0
+        with:
+          filename: tests/load/${{ inputs.scenario || 'smoke' }}.js
+          flags: --out json=k6-report.json
+          env: |
+            BASE_URL=http://localhost:3000
+            AUTH_TOKEN=${{ env.AUTH_TOKEN }}
+
+      - name: Upload k6 report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-report
+          path: k6-report.json
+          retention-days: 7
