@@ -1,0 +1,77 @@
+# Dependabot (docs/devops/GITHUB_ACTIONS.md §2 gap: dependency update automation)
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    groups:
+      nextjs:
+        patterns:
+          - "next"
+          - "next-auth"
+          - "@next/*"
+        update-types:
+          - minor
+          - patch
+      prisma:
+        patterns:
+          - "prisma"
+          - "@prisma/*"
+        update-types:
+          - minor
+          - patch
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+        update-types:
+          - minor
+          - patch
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "playwright"
+          - "@playwright/*"
+        update-types:
+          - minor
+          - patch
+      all-minor-patch:
+        update-types:
+          - minor
+          - patch
+    versioning-strategy: increase
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore: deps"
+      include: scope
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    commit-message:
+      prefix: "chore: docker"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: UTC
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore: ci"
+    open-pull-requests-limit: 5

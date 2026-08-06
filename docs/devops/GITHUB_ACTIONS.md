@@ -36,17 +36,17 @@
 
 ## 2. Gaps & hardening roadmap
 
-| Gap | Action | Effort |
-| --- | --- | --- |
-| **No semantic release** | Add `semantic-release` job on `main` → auto version, changelog, GH release, tag `v*` → triggers docker.yml | M |
-| **No dependency update automation** | Add Dependabot/Renovate config (`.github/dependabot.yml`) with grouped updates, auto-merge patch | S |
-| **No container scanning** | Add Trivy step in docker.yml (`aquasecurity/trivy-action`) fail on HIGH/CRITICAL | S |
-| **No SBOM** | Add `syft` in docker.yml, `attest` to GHCR | S |
-| **No multi-arch build** | Add `platforms: linux/amd64,linux/arm64` in build-push-action | S |
-| **No deployment job** | Add `deploy` job (after docker.yml) → ArgoCD sync / kubectl apply / SSH to VM | M |
-| **No PR preview envs** | Add `deploy-preview` job for PRs → temporary namespace / Vercel preview / preview URL | M |
-| **No coverage gate** | Add `vitest --coverage` threshold (e.g., 80% lines) | S |
-| **No commit signing enforcement** | Add `gh-actions-verify-signatures` or require signed commits in branch protection | S |
+| Gap | Action | Effort | Status |
+| --- | --- | --- | --- |
+| **No semantic release** | Add `semantic-release` job on `main` → auto version, changelog, GH release, tag `v*` → triggers docker.yml | M | ⏳ open |
+| **No dependency update automation** | Add Dependabot config (`.github/dependabot.yml`) with grouped updates, auto-merge patch | S | ✅ done |
+| **No container scanning** | Add Trivy step in docker.yml (`aquasecurity/trivy-action`) fail on HIGH/CRITICAL | S | ✅ done |
+| **No SBOM** | Add `syft` in docker.yml, `attest` to GHCR | S | ✅ done |
+| **No multi-arch build** | Add `platforms: linux/amd64,linux/arm64` in build-push-action | S | ✅ done |
+| **No deployment job** | Add `deploy` job (after docker.yml) → ArgoCD sync / kubectl apply / SSH to VM | M | ⏳ open |
+| **No PR preview envs** | Add `deploy-preview` job for PRs → temporary namespace / Vercel preview / preview URL | M | ⏳ open |
+| **No coverage gate** | Coverage thresholds raised 40 → 55/50/58/57 (`vitest.config.ts`) | S | ✅ done |
+| **No commit signing enforcement** | Add `gh-actions-verify-signatures` or require signed commits in branch protection | S | ⏳ Open or repo admin
 
 ## 3. Proposed pipeline structure (after gaps closed)
 
