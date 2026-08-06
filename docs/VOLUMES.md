@@ -21,7 +21,7 @@
 | 2 | Design / UX — App Flow, IA, Wireframes, Design System, Component Library, Figma Spec, Design Tokens, Dark Mode, Responsive | `docs/design/ux/*` (9 docs) | ✅ Done (commit 81de42c) |
 | 3 | Engineering — Technical Design, Database Design, API Spec, Backend/Frontend/Scanner/AI architectures, GitHub + CI/CD Integration | `docs/engineering/*` (9 docs) | ✅ Done (commit 9fea7fb) |
 | 4 | Development — Folder Structure, Coding Standards, Git Workflow, Branching Strategy, Environment Setup, Package Strategy, Build System | `docs/development/*` | ⏸ Pending |
-| 5 | AI — Remediation, Prompt Library, Model Routing, Confidence Scoring, Validation Engine, AI Cost Optimization | `docs/ai/*` (7 docs) | ✅ Done (commit pending) |
+| 5 | AI — Remediation, Prompt Library, Model Routing, Confidence Scoring, Validation Engine, AI Cost Optimization | `docs/ai/*` (7 docs) | ✅ Done (commit 78b03e0) |
 | 6 | Security — Auth, RBAC, Audit Logs, Encryption, Secrets, OWASP, GDPR, SOC 2 | `docs/security/*` (8 docs) | ✅ Done (commit 1d140bd) |
 | 7 | DevOps — Docker, K8s-ready, GitHub Actions, Monitoring, Logging, Backups, DR | `docs/devops/*` | ⏸ Pending |
 | 8 | Testing — Unit, Integration, E2E, Accessibility, Load, Security | `docs/qa/*` | ⏸ Verifying (unit/e2e/a11y green; load + security tests missing) |
