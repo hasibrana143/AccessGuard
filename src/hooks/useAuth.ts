@@ -2,7 +2,8 @@
 
 import { useSession, signOut, signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 export interface UseAuthReturn {
   user: {
@@ -26,6 +27,7 @@ export interface UseAuthReturn {
 export function useAuth(): UseAuthReturn {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const login = useCallback(async (email: string, password: string) => {
     const result = await signIn('credentials', {
@@ -46,10 +48,11 @@ export function useAuth(): UseAuthReturn {
   }, []);
 
   const logout = useCallback(async () => {
+    queryClient.clear();
     await signOut({ redirect: false });
     router.push('/');
     router.refresh();
-  }, [router]);
+  }, [queryClient, router]);
 
   const user = useMemo(() => {
     const u = session?.user;
@@ -65,6 +68,15 @@ export function useAuth(): UseAuthReturn {
       emailVerified: u.emailVerified,
     };
   }, [session?.user]);
+
+  const prevOrgRef = useRef<string | null>(null);
+  useEffect(() => {
+    const orgId = user?.orgId ?? null;
+    if (prevOrgRef.current !== null && prevOrgRef.current !== orgId) {
+      queryClient.clear();
+    }
+    prevOrgRef.current = orgId;
+  }, [user?.orgId, queryClient]);
 
   return {
     user,

@@ -5,10 +5,10 @@ import crypto from 'crypto';
  * `state` round-trip validation (CSRF + account-binding).
  */
 function getSignature(payload: string): string {
-  const secret =
-    process.env.NEXTAUTH_SECRET ||
-    process.env.OAUTH_STATE_SECRET ||
-    'accessguard-oauth-state-secret';
+  const secret = process.env.NEXTAUTH_SECRET || process.env.OAUTH_STATE_SECRET;
+  if (!secret) {
+    throw new Error('OAuth state signing secret is not configured (set NEXTAUTH_SECRET or OAUTH_STATE_SECRET)');
+  }
   return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 }
 

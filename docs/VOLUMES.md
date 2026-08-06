@@ -22,7 +22,7 @@
 | 3 | Engineering — Technical Design, Database Design, API Spec, Backend/Frontend/Scanner/AI architectures, GitHub + CI/CD Integration | `docs/engineering/*` (9 docs) | ✅ Done (this commit) |
 | 4 | Development — Folder Structure, Coding Standards, Git Workflow, Branching Strategy, Environment Setup, Package Strategy, Build System | `docs/development/*` | ⏸ Pending |
 | 5 | AI — Remediation, Prompt Library, Model Routing, Confidence Scoring, Validation Engine, AI Cost Optimization | `docs/ai/*` | ⏸ Pending |
-| 6 | Security — Auth, RBAC, Audit Logs, Encryption, Secrets, OWASP, GDPR, SOC 2 | `docs/security/*` | 🔄 In progress (audits 1–4 + gaps) |
+| 6 | Security — Auth, RBAC, Audit Logs, Encryption, Secrets, OWASP, GDPR, SOC 2 | `docs/security/*` (8 docs) | ✅ Done (this commit) |
 | 7 | DevOps — Docker, K8s-ready, GitHub Actions, Monitoring, Logging, Backups, DR | `docs/devops/*` | ⏸ Pending |
 | 8 | Testing — Unit, Integration, E2E, Accessibility, Load, Security | `docs/qa/*` | ⏸ Verifying (unit/e2e/a11y green; load + security tests missing) |
 | 9 | Documentation — API Docs, User Guide, Admin Guide, Dev Guide, Runbooks | `docs/runbooks/*` | ⏸ Pending |
@@ -66,3 +66,21 @@ Grounded in code (two explore passes over the full repo):
 - **9 docs** in `docs/engineering/*`; mermaid diagrams (ERD, sequence, flowcharts).
 - **Honest gaps recorded**: no k8s/deploy job, no load tests (k6), no analytics/i18n, no
   GH App webhook, canned `aiConfidenceScore 0.92` inconsistency, OpenAPI listing missing.
+
+## Volume 6 — Security `done`
+
+**Code fixes this round (audit HIGH + new):**
+1. **OAuth-state hardcoded fallback secret removed** — `oauth-state.ts` now fails closed
+   (HMAC-SHA256 signing requires `NEXTAUTH_SECRET`/`OAUTH_STATE_SECRET`); timing-safe compare.
+2. **Cross-tenant React Query bleed** — `useAuth` clears the query cache on logout AND
+   on org change (query keys weren't org-namespaced; `['projects']` global).
+3. **Audit-logs UI parity** — header bell (fetches admin-only `/api/audit-logs`) now
+   guarded by `isAdmin`; members no longer see a dead bell/403 link.
+4. **Security headers** — `next.config.ts` adds X-Frame-Options DENY, X-Content-Type-Options
+   nosniff, Referrer-Policy, Permissions-Policy, Strict-Transport-Security.
+
+**Docs:** `docs/security/*` (8): AUTHENTICATION, RBAC, AUDIT_LOGS, ENCRYPTION,
+SECRETS_MANAGEMENT, OWASP (top-10 map + backlog), GDPR_READINESS, SOC2_READINESS.
+
+**Verify:** tsc (source) 0, eslint 0, vitest **214/214**. (Note: `.next/dev` generated types
+were corrupt mid-write by the running dev server — source-only typecheck used.)

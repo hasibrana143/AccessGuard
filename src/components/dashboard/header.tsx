@@ -40,7 +40,7 @@ const NOTIFICATION_ACTIONS = new Set([
 
 export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeaderProps) {
   const router = useRouter();
-  const { user: authUser } = useAuth();
+  const { user: authUser, isAdmin } = useAuth();
   const [notifications, setNotifications] = useState<AuditNotification[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [branding, setBranding] = useState<{ logoUrl?: string; displayName?: string; primaryColor?: string } | null>(null);
@@ -68,7 +68,7 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
   }, [authUser?.orgId]);
 
   useEffect(() => {
-    if (!authUser?.orgId) return;
+    if (!authUser?.orgId || !isAdmin) return;
     let cancelled = false;
     setNotificationsLoading(true);
     fetch(`/api/audit-logs?limit=8&orgId=${encodeURIComponent(authUser.orgId)}`)
@@ -121,6 +121,7 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {isAdmin && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
@@ -161,6 +162,7 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
