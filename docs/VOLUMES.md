@@ -25,6 +25,7 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V12 | Audit: BETA_PLAN entry criteria code-grounded, all code items done | — |
 | V11 | Status page `/status` (probes live + ready, noindex) · dead-code cleanup (`github.ts` hardcoded webhook secret) · ROADMAP/BETA_PLAN/LOAD_TESTING sync | `44d0884` |
 | V6 | `/api/github/status` auth bypass fixed (was anonymous + cross-tenant demo lookup → fail-closed, per-caller) · full API auth sweep clean | `9d48080` |
+| V7 | Release automation (`release.yml` — changelog + GitHub Release on `v*` tags) · PRODUCTION_CHECKLIST synced to verified state | `cdb8184` |
 
 ## Process (per volume)
 
