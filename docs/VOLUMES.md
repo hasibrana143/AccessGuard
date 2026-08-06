@@ -3,6 +3,20 @@
 > **Rule:** The project is built to the volumes, not the volumes to the project.
 > Every volume follows: Requirement Analysis → Architecture Decision → Plan → Implementation → Testing → Documentation → Definition of Done.
 
+## Docs → Code Upgrade Log (mid-Aug 2026)
+
+Docs are the spec; after all 12 volumes were written, code was re-audited against them.
+
+| Vol | Upgrade | Commit |
+| --- | --- | --- |
+| V1 | Share-link expiry (1–365d, default 30) · white-label agency reports · `/api/reports/download` PDF | `5b5484a` |
+| V2 | CookieConsent → semantic tokens, 44px touch targets, focus rings | `9c2f2a3` |
+| V3 | OpenAPI spec 9 → 68 paths (67-handler inventory + 37 schemas) · `/api/health/live` + `/api/health/ready` probes | `7758cd6` |
+| V3 | GitHub App installation webhook (`/api/github/webhook`, HMAC-SHA256) + `User.githubLogin` mapping + audit whitelist | `6862d62` |
+| V4 | Governance only — no code change (branching/standards already followed) | — |
+| V5 | Audit: conforms (null confidence policy, template fallback, PR gate 0.7) | — |
+| V6 | Audit: conforms (JWT, MFA login gate, rate limits, AES-GCM, logger redaction) | — |
+
 ## Process (per volume)
 
 1. **Analyze** — volume scope, gaps vs existing build.
