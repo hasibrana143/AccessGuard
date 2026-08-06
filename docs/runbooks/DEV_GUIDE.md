@@ -39,7 +39,7 @@ Use source-only check: temp `tsconfig.check.json` (include `src`, exclude `.next
 4. New audit events → add to the whitelist type in `src/lib/audit.ts` (hard rule).
 5. If AI: never block on LLM failure — template fallback; report `costEstimate`.
 6. Test: `src/app/api/<domain>/route.test.ts` (mock session, real Prisma via transaction).
-7. If the endpoint is public/stable, add it to `src/lib/openapi.ts` (V9 gap: only 9/63 paths).
+7. If the endpoint is public/stable, add it to `src/lib/openapi.ts` (all 68 base paths now covered; keep parity).
 8. Update `docs/runbooks/API_REFERENCE.md` inventory.
 
 ## 4. Add a page/component

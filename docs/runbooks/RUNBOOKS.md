@@ -12,7 +12,9 @@ git tag v0.4.0 && git push origin v0.4.0
 # 4. Refresh deployment (VM: compose pull + up -d / K8s: rollout restart)
 docker compose up -d --pull always
 # 5. Verify
-curl -f https://<host>/api/health          # expects 200 {"status":"healthy","database":"connected"}
+curl -f https://<host>/api/health/live   # liveness: process up
+curl -f https://<host>/api/health/ready  # readiness: DB + Redis reachable (200 {"status":"ready",...})
+curl -f https://<host>/api/health        # legacy DB-only check (kept for backward compat)
 # 6. Watch Sentry for 15 min; check audit-logs for auth spikes
 ```
 Rollback: `docker compose up -d <previous-tag>` (keep last image tag) or

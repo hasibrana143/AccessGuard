@@ -175,9 +175,10 @@ Query: ?page=1&limit=20&action=remediation.ai_cost
 - Browser clients use session cookies; automation should use an org API key
   (`/api/settings/api-key`) with `Authorization: Bearer <key>` (bearer support in OpenAPI spec).
 
-## 6. OpenAPI spec gap & plan
-- `src/lib/openapi.ts` currently documents 9 paths (health, auth/register, auth/login,
-  projects, scans, violations, remediate, reports, settings). **63 real route files exist.**
-- Plan: progressively add missing paths (github/*, team/*, roles, stats/*, stripe/*, audit-logs,
-  schedule/*, account/*, flags, legal, notifications) — batch per domain, verify via
-  `GET /api/docs?format=json` + a spec-vs-routes script in CI (fail if a route has no spec).
+## 6. OpenAPI spec status
+- `src/lib/openapi.ts` **now covers all 68 base paths** (every route handler: auth, account,
+  projects, scans, schedule, violations, remediate, reports incl. share/download/exec-summary/vpat,
+  roles, github incl. webhook, stripe, teams, settings, stats, audit, flags, admin, legal, health
+  live/ready). 37 schemas, 19 tags, bearer + session + scheduler + webhook security schemes.
+- Optional hardening: a CI script that fails when a route handler has no OpenAPI path entry
+  (spec-vs-routes parity check).
