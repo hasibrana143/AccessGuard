@@ -1,0 +1,180 @@
+// Volume 5 — Prompt Library (versioned)
+// Single source of truth for LLM prompts used by remediation.
+// Bump PROMPT_VERSION whenever the prompt contract changes so outputs stay traceable.
+
+export const PROMPT_VERSION = 1;
+
+export interface RuleInfo {
+  name: string;
+  requirement: string;
+}
+
+// WCAG rule reference (kept here so both LLM prompts and template fixes share it)
+export const WCAG_RULES: Record<string, RuleInfo> = {
+  'color-contrast': {
+    name: 'Color Contrast (1.4.3)',
+    requirement: 'Text must have a contrast ratio of at least 4.5:1 for normal text and 3:1 for large text against its background.'
+  },
+  'image-alt': {
+    name: 'Non-text Content (1.1.1)',
+    requirement: 'All images must have alternative text that describes the content or function of the image. Decorative images should have empty alt attributes.'
+  },
+  label: {
+    name: 'Info and Relationships (1.3.1)',
+    requirement: 'All form inputs must have associated labels using the for attribute or by wrapping the input in a label element.'
+  },
+  'link-name': {
+    name: 'Link Purpose (2.4.4)',
+    requirement: 'Link text must describe the purpose of the link. Avoid generic text like "click here" or "read more".'
+  },
+  'keyboard-navigation': {
+    name: 'Keyboard (2.1.1)',
+    requirement: 'All interactive elements must be accessible via keyboard. Use semantic elements like button, a, or input, or add tabindex and keyboard event handlers.'
+  },
+  'focus-visible': {
+    name: 'Focus Visible (2.4.7)',
+    requirement: 'Any keyboard operable user interface must have a visible focus indicator.'
+  },
+  'heading-order': {
+    name: 'Info and Relationships (1.3.1)',
+    requirement: 'Heading levels must be in sequential order. Do not skip heading levels (e.g., h1 to h3).'
+  },
+  'aria-roles': {
+    name: 'Name, Role, Value (4.1.2)',
+    requirement: 'All user interface components must have appropriate ARIA roles, states, and properties.'
+  },
+  'form-error': {
+    name: 'Error Identification (3.3.1)',
+    requirement: 'Form errors must be identified and described to users. Use aria-describedby to associate error messages with form fields.'
+  },
+  'page-title': {
+    name: 'Page Titled (2.4.2)',
+    requirement: 'Each page must have a descriptive title that identifies the page content.'
+  },
+  'bypass-blocks': {
+    name: 'Bypass Blocks (2.4.1)',
+    requirement: 'A mechanism must be available to bypass blocks of content that are repeated on multiple pages.'
+  },
+  'document-lang': {
+    name: 'Language of Page (3.1.1)',
+    requirement: 'The default human language of each page must be identifiable using the lang attribute on the html element.'
+  }
+};
+
+export function getRuleInfo(ruleId: string, fallbackDescription: string): RuleInfo {
+  return WCAG_RULES[ruleId] || { name: ruleId, requirement: fallbackDescription };
+}
+
+export interface RemediationPromptInput {
+  ruleId: string;
+  wcagCriteria: string;
+  description: string;
+  elementHtml: string;
+  elementSelector: string;
+}
+
+export function buildSystemPrompt(): string {
+  return `You are an expert web accessibility consultant specializing in WCAG 2.1 Level AA compliance.
+Your job is to provide exact code fixes for accessibility violations.
+
+IMPORTANT RULES:
+1. Provide ONLY the fixed code - no explanations in the code block
+2. Use semantic HTML elements whenever possible
+3. Maintain all existing CSS classes and styles
+4. Do NOT use ARIA as a band-aid fix - use proper HTML elements first
+5. Ensure keyboard accessibility
+6. For React/JSX code, maintain proper syntax
+7. Keep the fix minimal and focused on the accessibility issue
+
+For each fix, also provide:
+- A brief explanation of what was changed and why
+- A confidence score (0-1) for the fix`;
+}
+
+export function buildUserPrompt(input: RemediationPromptInput): string {
+  const rule = getRuleInfo(input.ruleId, input.description);
+  return `Fix this WCAG violation:
+
+VIOLATION DETAILS:
+- Rule ID: ${input.ruleId}
+- Rule: ${rule.name}
+- WCAG Criteria: ${input.wcagCriteria}
+- Requirement: ${rule.requirement}
+- Issue: ${input.description}
+
+CURRENT CODE:
+${input.elementHtml}
+
+SELECTOR: ${input.elementSelector}
+
+Provide the fixed code, a brief explanation, and a confidence score (0-1). Format your response as:
+---CODE---
+[fixed code here]
+---EXPLANATION---
+[explanation here]
+---CONFIDENCE---
+[0-1 number]`;
+}
+
+export interface ParsedRemediation {
+  remediationCode: string;
+  explanation: string;
+  confidence: number;
+  promptVersion: number;
+}
+
+const DEFAULT_CONFIDENCE = 0.85;
+
+export function parseRemediationResponse(response: string): ParsedRemediation {
+  const codeMatch = response.match(/---CODE---\n([\s\S]*?)\n---EXPLANATION---/);
+  const explanationMatch = response.match(/---EXPLANATION---\n([\s\S]*?)\n---CONFIDENCE---/);
+  const confidenceMatch = response.match(/---CONFIDENCE---\n([\d.]+)/);
+
+  const remediationCode = codeMatch?.[1]?.trim() || '';
+  const explanation = explanationMatch?.[1]?.trim() || '';
+  const rawConfidence = parseFloat(confidenceMatch?.[1] || String(DEFAULT_CONFIDENCE));
+
+  return {
+    remediationCode,
+    explanation,
+    confidence: Math.min(1, Math.max(0, Number.isFinite(rawConfidence) ? rawConfidence : DEFAULT_CONFIDENCE)),
+    promptVersion: PROMPT_VERSION,
+  };
+}
+
+export function renderTemplateFix(html: string, ruleId: string, description: string): { remediationCode: string; explanation: string } {
+  const rule = getRuleInfo(ruleId, description);
+
+  const fixFor: Record<string, () => { remediationCode: string; explanation: string }> = {
+    'image-alt': () => ({
+      remediationCode: html.replace(/(<img\b[^>]*?)\/?>/i, (match, open: string) =>
+        match.includes('alt=') ? match : `${open} alt="${description || 'Descriptive alt text for this image'}" />`
+      ),
+      explanation: 'Added a descriptive alt attribute so screen readers can describe the image content.',
+    }),
+    label: () => ({
+      remediationCode: html.includes('id=')
+        ? html
+        : `<label for="${Math.random().toString(36).slice(2, 8)}">${description || 'Field label'}</label>\n${html}`,
+      explanation: 'Associated the input with a label so screen readers announce the field purpose.',
+    }),
+    'link-name': () => ({
+      remediationCode: html.replace(/(<a\b[^>]*?>)[\s\S]*?(<\/a>)/i, `$1${description || 'Read more about this topic'}$2`),
+      explanation: 'Replaced generic link text with descriptive text that identifies the link destination.',
+    }),
+    'color-contrast': () => ({
+      remediationCode: html,
+      explanation: 'Adjust the CSS text color/background combination to reach a 4.5:1 contrast ratio (WCAG 2.1 AA).',
+    }),
+  };
+
+  const fix = fixFor[ruleId]?.() ?? {
+    remediationCode: html,
+    explanation: `Fix the ${rule.name} violation: ${rule.requirement}`,
+  };
+
+  return {
+    remediationCode: fix.remediationCode,
+    explanation: `${fix.explanation} Rule: ${rule.name}.`,
+  };
+}

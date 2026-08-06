@@ -27,7 +27,7 @@ function detectViolations(html: string, url: string): ScannerViolation[] {
       url, elementSelector: null, elementHtml: match[0].substring(0, 500),
       description: 'Image element missing alt attribute.',
       remediationCode: match[0].replace('<img', '<img alt="Descriptive text here"'),
-      aiExplanation: 'Added descriptive alt attribute.', aiConfidenceScore: 0.9, status: 'open',
+      aiExplanation: 'Added descriptive alt attribute.', aiConfidenceScore: null, status: 'open',
     });
   }
 
@@ -38,7 +38,7 @@ function detectViolations(html: string, url: string): ScannerViolation[] {
       url, elementSelector: null, elementHtml: match[0].substring(0, 500),
       description: 'Image has generic alt text.',
       remediationCode: match[0].replace(/alt="[^"]*"/, 'alt="Specific description"'),
-      aiExplanation: 'Replaced generic alt text.', aiConfidenceScore: 0.85, status: 'open',
+      aiExplanation: 'Replaced generic alt text.', aiConfidenceScore: null, status: 'open',
     });
   }
 
@@ -52,7 +52,7 @@ function detectViolations(html: string, url: string): ScannerViolation[] {
       url, elementSelector: null, elementHtml: el.substring(0, 500),
       description: 'Form field may be missing associated label.',
       remediationCode: `<label for="input-id" class="sr-only">Label</label>\n${el.replace('<input', '<input id="input-id"')}`,
-      aiExplanation: 'Added label element.', aiConfidenceScore: 0.95, status: 'open',
+      aiExplanation: 'Added label element.', aiConfidenceScore: null, status: 'open',
     });
   }
 
@@ -63,7 +63,7 @@ function detectViolations(html: string, url: string): ScannerViolation[] {
       url, elementSelector: null, elementHtml: match[0].substring(0, 500),
       description: `Generic link text "${match[1]}".`,
       remediationCode: match[0].replace(match[1], `${match[1]} about this topic`),
-      aiExplanation: 'Added context to link text.', aiConfidenceScore: 0.87, status: 'open',
+      aiExplanation: 'Added context to link text.', aiConfidenceScore: null, status: 'open',
     });
   }
 
@@ -73,7 +73,7 @@ function detectViolations(html: string, url: string): ScannerViolation[] {
       url, elementSelector: 'html', elementHtml: '<html>',
       description: 'Document missing language attribute.',
       remediationCode: '<html lang="en">',
-      aiExplanation: 'Added lang="en" attribute.', aiConfidenceScore: 0.99, status: 'open',
+      aiExplanation: 'Added lang="en" attribute.', aiConfidenceScore: null, status: 'open',
     });
   }
 
@@ -83,7 +83,7 @@ function detectViolations(html: string, url: string): ScannerViolation[] {
       url, elementSelector: 'title', elementHtml: '<title></title>',
       description: 'Page missing title element.',
       remediationCode: '<title>Page Title | Site Name</title>',
-      aiExplanation: 'Added page title.', aiConfidenceScore: 0.98, status: 'open',
+      aiExplanation: 'Added page title.', aiConfidenceScore: null, status: 'open',
     });
   }
 
@@ -95,7 +95,7 @@ function detectViolations(html: string, url: string): ScannerViolation[] {
         url, elementSelector: null, elementHtml: `role="${match[1]}"`,
         description: `Invalid ARIA role "${match[1]}".`,
         remediationCode: 'role="region"',
-        aiExplanation: 'Replaced invalid role.', aiConfidenceScore: 0.9, status: 'open',
+        aiExplanation: 'Replaced invalid role.', aiConfidenceScore: null, status: 'open',
       });
     }
   }

@@ -10,6 +10,7 @@ const AUDIT_ACTIONS = [
   'settings.updated', 'subscription.changed',
   'github.connected', 'github.disconnected',
   'report.generated',
+  'remediation.generated', 'remediation.ai_cost',
 ] as const;
 
 interface AuditLogInput {

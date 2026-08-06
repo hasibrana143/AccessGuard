@@ -118,7 +118,7 @@ async function runAxeOnPage(page: Page, url: string): Promise<ScannerViolation[]
           description: violation.help,
           remediationCode: code,
           aiExplanation: `${explanation}\n\n${violation.helpUrl}`,
-          aiConfidenceScore: 0.92,
+          aiConfidenceScore: null,
           status: 'open',
         });
       }

@@ -278,7 +278,7 @@ export const fetchAnalysisStrategy: ScannerStrategy = {
                 description: matchResult.description,
                 remediationCode: matchResult.remediationCode,
                 aiExplanation: matchResult.aiExplanation,
-                aiConfidenceScore: 0.88,
+                aiConfidenceScore: null,
                 status: 'open',
               });
             }

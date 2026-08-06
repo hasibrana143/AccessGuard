@@ -15,7 +15,7 @@ vi.mock('../strategies/dom-analysis', () => ({
     scan: vi.fn((_url: string, html: string | null) =>
       Promise.resolve(
         html
-          ? { violations: [{ ruleId: 'image-alt', wcagCriteria: '1.1.1', severity: 'critical' as const, url: _url, elementSelector: null, elementHtml: '<img>', description: 'test', remediationCode: '', aiExplanation: '', aiConfidenceScore: 0.9, status: 'open' as const }], pagesScanned: 1 }
+          ? { violations: [{ ruleId: 'image-alt', wcagCriteria: '1.1.1', severity: 'critical' as const, url: _url, elementSelector: null, elementHtml: '<img>', description: 'test', remediationCode: '', aiExplanation: '', aiConfidenceScore: null, status: 'open' as const }], pagesScanned: 1 }
           : { violations: [], pagesScanned: 0, error: 'No HTML' }
       )
     ),

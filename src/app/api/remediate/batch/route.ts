@@ -4,6 +4,7 @@ import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimit
 import { logger } from '@/lib/error-logger';
 import { requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { createAuditLog } from '@/lib/audit';
 
 const BATCH_LIMIT = 50;
 
@@ -13,6 +14,15 @@ type BatchResult = {
   cached?: boolean;
   confidence?: number | null;
   error?: string;
+};
+
+type CostAccumulator = {
+  llmCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  models: Record<string, number>;
 };
 
 // POST /api/remediate/batch - Generate AI remediation for multiple violations
@@ -59,6 +69,14 @@ export async function POST(request: NextRequest) {
     const { generateRemediation } = await import('@/app/api/remediate/remediation');
 
     const results: BatchResult[] = [];
+    const costs: CostAccumulator = {
+      llmCalls: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      costUsd: 0,
+      models: {},
+    };
     for (const violation of violations) {
       try {
         if (violation.remediationCode && !forceRegenerate) {
@@ -89,6 +107,16 @@ export async function POST(request: NextRequest) {
           },
         });
 
+        if (result.usage && result.costEstimate) {
+          costs.llmCalls += 1;
+          costs.promptTokens += result.usage.promptTokens;
+          costs.completionTokens += result.usage.completionTokens;
+          costs.totalTokens += result.usage.totalTokens;
+          costs.costUsd += result.costEstimate.costUsd;
+          const model = result.model || 'unknown';
+          costs.models[model] = (costs.models[model] || 0) + 1;
+        }
+
         results.push({
           violationId: violation.id,
           success: true,
@@ -106,6 +134,23 @@ export async function POST(request: NextRequest) {
     }
 
     const succeeded = results.filter(r => r.success).length;
+
+    if (costs.llmCalls > 0) {
+      await createAuditLog({
+        orgId: auth.user.orgId,
+        action: 'remediation.ai_cost',
+        userId: auth.user.id,
+        metadata: {
+          batchSize: results.length,
+          llmCalls: costs.llmCalls,
+          promptTokens: costs.promptTokens,
+          completionTokens: costs.completionTokens,
+          totalTokens: costs.totalTokens,
+          costUsd: Math.round(costs.costUsd * 1_000_000) / 1_000_000,
+          models: costs.models,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,

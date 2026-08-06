@@ -21,7 +21,7 @@
 | 2 | Design / UX — App Flow, IA, Wireframes, Design System, Component Library, Figma Spec, Design Tokens, Dark Mode, Responsive | `docs/design/ux/*` (9 docs) | ✅ Done (commit 81de42c) |
 | 3 | Engineering — Technical Design, Database Design, API Spec, Backend/Frontend/Scanner/AI architectures, GitHub + CI/CD Integration | `docs/engineering/*` (9 docs) | ✅ Done (commit 9fea7fb) |
 | 4 | Development — Folder Structure, Coding Standards, Git Workflow, Branching Strategy, Environment Setup, Package Strategy, Build System | `docs/development/*` | ⏸ Pending |
-| 5 | AI — Remediation, Prompt Library, Model Routing, Confidence Scoring, Validation Engine, AI Cost Optimization | `docs/ai/*` | ⏸ Pending |
+| 5 | AI — Remediation, Prompt Library, Model Routing, Confidence Scoring, Validation Engine, AI Cost Optimization | `docs/ai/*` (7 docs) | ✅ Done (commit pending) |
 | 6 | Security — Auth, RBAC, Audit Logs, Encryption, Secrets, OWASP, GDPR, SOC 2 | `docs/security/*` (8 docs) | ✅ Done (commit 1d140bd) |
 | 7 | DevOps — Docker, K8s-ready, GitHub Actions, Monitoring, Logging, Backups, DR | `docs/devops/*` | ⏸ Pending |
 | 8 | Testing — Unit, Integration, E2E, Accessibility, Load, Security | `docs/qa/*` | ⏸ Verifying (unit/e2e/a11y green; load + security tests missing) |
@@ -84,3 +84,22 @@ SECRETS_MANAGEMENT, OWASP (top-10 map + backlog), GDPR_READINESS, SOC2_READINESS
 
 **Verify:** tsc (source) 0, eslint 0, vitest **214/214**. (Note: `.next/dev` generated types
 were corrupt mid-write by the running dev server — source-only typecheck used.)
+
+## Volume 5 — AI `done`
+
+**Code (Vol 5):**
+1. **Integrity fix**: scanner's fake `aiConfidenceScore` (0.92 / 0.85–0.99) removed in all
+   three strategies (axe-core, fetch, dom) → `null`. Confidence is only ever real (from LLM).
+2. **Prompt Library** `src/ai/prompts.ts` — `PROMPT_VERSION`, `WCAG_RULES`, builders,
+   strict marker parser, `renderTemplateFix`.
+3. **Model Router** `src/ai/model-router.ts` — primary→fallback providers, 30s timeout,
+   usage parsing, no-key skip.
+4. **Cost accounting** `src/ai/cost.ts` — per-1M pricing table + `estimateCost`;
+   `/api/remediate` (+ batch aggregate) writes org-scoped `remediation.ai_cost` audit events.
+5. Remediation module rewired (`source`/`model`/`usage`/`costEstimate` returned); template
+   fallback on no-key/provider-fail/no-code — AI never blocks.
+
+**Docs:** `docs/ai/*` (7): REMEDIATION, PROMPT_LIBRARY, MODEL_ROUTING, CONFIDENCE_SCORING,
+VALIDATION_ENGINE, COST_OPTIMIZATION, EVALS.
+
+**Verify:** tsc 0, eslint 0, vitest **234/234** (+20 AI tests), build pending.

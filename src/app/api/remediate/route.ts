@@ -5,6 +5,7 @@ import { logger } from '@/lib/error-logger';
 import { generateRemediation, WCAG_RULES } from './remediation';
 import { requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { createAuditLog } from '@/lib/audit';
 
 // POST /api/remediate - Generate AI remediation for a violation
 export async function POST(request: NextRequest) {
@@ -74,6 +75,25 @@ export async function POST(request: NextRequest) {
         aiConfidenceScore: result.confidence
       }
     });
+
+    // Track real LLM usage / cost per org (only when a model was actually called)
+    if (result.usage && result.costEstimate) {
+      await createAuditLog({
+        orgId: auth.user.orgId,
+        action: 'remediation.ai_cost',
+        userId: auth.user.id,
+        metadata: {
+          violationId,
+          model: result.model,
+          source: result.source,
+          promptTokens: result.usage.promptTokens,
+          completionTokens: result.usage.completionTokens,
+          totalTokens: result.usage.totalTokens,
+          costUsd: result.costEstimate.costUsd,
+          estimate: result.costEstimate.estimate,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,
