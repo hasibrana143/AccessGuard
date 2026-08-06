@@ -96,13 +96,13 @@ const paths: Record<string, PathItem> = {
     }),
   },
   '/csrf-token': {
-    get: op({
+    get: authed(op({
       tags: ['Authentication'],
       summary: 'Get CSRF token for NextAuth forms',
       responses: {
         '200': { description: 'CSRF token' },
       },
-    }),
+    })),
   },
   '/auth/register': {
     post: op({
@@ -751,14 +751,14 @@ const paths: Record<string, PathItem> = {
     })),
   },
   '/github/callback': {
-    get: op({
+    get: authed(op({
       tags: ['GitHub'],
-      summary: 'OAuth callback (public)',
+      summary: 'OAuth callback (requires verified session; redirects)',
       parameters: [{ name: 'code', in: 'query', schema: { type: 'string' } }, { name: 'state', in: 'query', schema: { type: 'string' } }],
       responses: {
         '200': { description: 'Callback handled (redirect)' },
       },
-    }),
+    })),
   },
   '/github/webhook': {
     post: op({

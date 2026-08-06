@@ -111,10 +111,20 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/remediate - Get WCAG rules reference
-export async function GET() {
-  return NextResponse.json({
-    success: true,
-    data: WCAG_RULES
-  });
+// GET /api/remediate - Get WCAG rules reference (authed per spec)
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await requireVerifiedEmail(request);
+    if (auth instanceof NextResponse) return auth;
+
+    return NextResponse.json({
+      success: true,
+      data: WCAG_RULES
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch WCAG rules' },
+      { status: 500 }
+    );
+  }
 }

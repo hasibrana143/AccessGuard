@@ -2,7 +2,7 @@
 set -e
 
 echo "Running database migrations..."
-npx prisma migrate deploy 2>&1 || {
+node node_modules/prisma/build/index.js migrate deploy 2>&1 || {
   code=$?
   echo "ERROR: Migration failed with exit code $code."
   echo "If you need to apply schema changes without a migration file, run:"

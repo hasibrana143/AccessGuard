@@ -15,7 +15,12 @@ playwright.config.ts
 .dockerignore
 Dockerfile
 docker-compose.yml
-prisma/dev.db
-prisma/dev.db-journal
+.env.example
+tests/
 e2e/
 __tests__/
+playwright-report/
+coverage/
+k6-report.json
+prisma/dev.db
+prisma/dev.db-journal

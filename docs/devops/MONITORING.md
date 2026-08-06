@@ -10,9 +10,9 @@
 - **Gaps**: No custom alerts, no release tracking automation, no performance budgets
 
 ### Health checks
-- **Postgres**: `pg_isready` (compose), k8s liveness/readiness not yet implemented
-- **Redis**: `redis-cli ping` (compose)
-- **App**: No `/api/health` endpoints yet (see KUBERNETES.md for design)
+- **Postgres**: `pg_isready` (compose), k8s readiness probe hits `/api/health/ready`
+- **Redis**: `redis-cli ping` (compose); `/api/health/ready` checks Redis when `REDIS_URL` set
+- **App**: `/api/health/live` (process up) + `/api/health/ready` (DB+Redis, 503 on failure) — also surfaced on the public `/status` page
 
 ### Metrics
 - None emitted by app (no Prometheus `/metrics`, no OpenTelemetry)

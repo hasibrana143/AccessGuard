@@ -32,7 +32,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix={{branch}}-
+            type=sha,format=long,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
       - uses: docker/setup-buildx-action@v3
@@ -50,9 +50,10 @@ jobs:
           sbom: true
 
       - name: Trivy image scan (fail on HIGH/CRITICAL)
+        if: github.ref_type == 'branch'
         uses: aquasecurity/trivy-action@0.24.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
@@ -60,12 +61,13 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF
+        if: github.ref_type == 'branch' && always()
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
           sarif_file: trivy-results.sarif
 
       - name: Syft SBOM attest
+        if: github.ref_type == 'branch'
         uses: anchore/sbom-action@v0.17.3
         with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}
