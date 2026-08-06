@@ -27,6 +27,7 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V6 | `/api/github/status` auth bypass fixed (was anonymous + cross-tenant demo lookup → fail-closed, per-caller) · full API auth sweep clean | `9d48080` |
 | V7 | Release automation (`release.yml` — changelog + GitHub Release on `v*` tags) · PRODUCTION_CHECKLIST synced to verified state | `cdb8184` |
 | V6 | Multi-agent security+SRE audit → subscription GET/POST tenant-scoped, remediate GET authed, prisma CLI closure in runner, docker.yml sha-format/branch-gated scans, load.yml migration | `ff7ba4c` |
+| V6/V3/V2 | Full 8-role team wave: billing webhook idempotency (WebhookEvent) + metadata validation, audit-whitelist parity gate, requireProjectAccess+stripe tests, projects N+1 fix, aria-labels, debug e2e exclusion | `4ecf79e` |
 
 ## Process (per volume)
 
