@@ -1,5 +1,5 @@
 # Build stage
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 WORKDIR /app
 
 # Install OpenSSL (required by Prisma) and build tools
@@ -21,7 +21,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Runtime stage
-FROM node:22-alpine AS runner
+FROM node:25-alpine AS runner
 WORKDIR /app
 
 # Install OpenSSL and Puppeteer dependencies
