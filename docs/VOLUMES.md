@@ -18,10 +18,12 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V6 | Audit: conforms (JWT, MFA login gate, rate limits, AES-GCM, logger redaction) | — |
 | V7 | Dependabot config · Trivy scan + SBOM + multi-arch in docker.yml · coverage gate 40→55/50/58/57 | `c761f06` |
 | V8 | `tests/load/*` k6 suite (smoke/scan-flow/ai-remediate) + seed · load.yml workflow · npm load-test scripts | `80b0a54` |
+| V8 | Soak test (`tests/load/soak.js`, 1h @ 10 VUs) · `test:load:soak` script · load.yml soak option + 90m timeout | <commit> |
 | V9 | OpenAPI parity notes (68 paths) · health live/ready probes in RB01 · DEV_GUIDE update | `7e29051` |
 | V10 | `sitemap.ts` + `robots.ts` · JSON-LD (SoftwareApplication + FAQPage) · share noindex layout | `7693a69` |
 | V11 | Audit: deferrals documented (PostHog, PagerDuty, status page, ticket system) | — |
 | V12 | Audit: BETA_PLAN entry criteria code-grounded, all code items done | — |
+| V11 | Status page `/status` (probes live + ready, noindex) · dead-code cleanup (`github.ts` hardcoded webhook secret) · ROADMAP/BETA_PLAN/LOAD_TESTING sync | <commit> |
 
 ## Process (per volume)
 
