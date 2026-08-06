@@ -144,14 +144,6 @@ ${violationsList}
 `;
 }
 
-// Generate invite token for GitHub App installation
-export async function generateInviteToken(orgId: string): Promise<string> {
-  const crypto = await import('crypto');
-  const secret = process.env.GITHUB_WEBHOOK_SECRET || 'github-webhook-secret';
-  const payload = JSON.stringify({ orgId, timestamp: Date.now() });
-  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
-}
-
 // Validate write access to repository
 export async function validateWriteAccess(token: string, owner: string, repo: string): Promise<boolean> {
   try {

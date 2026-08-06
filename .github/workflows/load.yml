@@ -6,7 +6,7 @@ on:
     inputs:
       scenario:
         type: choice
-        options: [smoke, scan-flow, ai-remediate, all]
+        options: [smoke, scan-flow, ai-remediate, soak, all]
         default: smoke
   schedule:
     - cron: '0 3 * * 0'
@@ -14,7 +14,7 @@ on:
 jobs:
   load:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:16-alpine

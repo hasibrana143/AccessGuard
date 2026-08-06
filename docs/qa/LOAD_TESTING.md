@@ -239,7 +239,7 @@ jobs:
 | 2 | Add `scan-flow.js` + `ai-remediate.js`; create `load-test-seed.ts` | ✅ done |
 | 3 | Add `load.yml` workflow (manual dispatch); verify in CI | ✅ done |
 | 4 | Add weekly scheduled run; baseline SLO metrics in Grafana | ⏳ open |
-| 5 | Add soak test (1h @ 10 VUs) for memory leak detection | ⏳ open |
+| 5 | Add soak test (1h @ 10 VUs) for memory leak detection | ✅ done (`tests/load/soak.js`, `npm run test:load:soak`) |
 
 ## 8. Local run commands
 ```bash

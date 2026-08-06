@@ -55,7 +55,7 @@
 
 ## 7. Launch-day infra readiness (final)
 - docker.yml GHCR image + `latest` ready; rollout automation (RB01).
-- `/api/health` monitor active; status page (or simple uptime HTML).
+- `/api/health` monitor active; status page live at `/status` (probes live + ready).
 - Backup automated + offsite (V7 BACKUPS roadmap).
 - Rate limits tuned to survive PH traffic spike.
 - Launch discount code (`LAUNCH40`, V10 PRODUCT_HUNT) tested in Stripe.

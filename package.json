@@ -27,7 +27,8 @@
     "test:load:seed": "npx tsx tests/load/load-test-seed.ts",
     "test:load:smoke": "k6 run tests/load/smoke.js",
     "test:load:scan": "k6 run tests/load/scan-flow.js",
-    "test:load:ai": "k6 run tests/load/ai-remediate.js"
+    "test:load:ai": "k6 run tests/load/ai-remediate.js",
+    "test:load:soak": "k6 run tests/load/soak.js"
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1",

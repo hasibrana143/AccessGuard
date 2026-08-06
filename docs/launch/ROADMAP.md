@@ -5,10 +5,10 @@
 
 ## Q1 — Launch stabilization (P0)
 - [ ] Semantic release automation (tags/changelog) — GITHUB_ACTIONS.md
-- [ ] Trivy container scan + SBOM in docker.yml
-- [ ] `/api/health/live` + `/api/health/ready` split
+- [x] Trivy container scan + SBOM in docker.yml
+- [x] `/api/health/live` + `/api/health/ready` split
 - [ ] Prometheus/Grafana SLO dashboards + alerting (V7 MONITORING plan)
-- [ ] Uptime/status page
+- [x] Uptime/status page (`/status`, probes live + ready)
 - [ ] Annual billing toggle (PRICING_PLAYBOOK E1)
 - [ ] Trial nudge emails (SALES trigger sequence)
 - [ ] PostHog analytics wiring (V11 ANALYTICS)
@@ -27,7 +27,7 @@
 - [ ] SSO/SAML + SCIM for Enterprise tier
 - [ ] Multi-zone / multi-region deployment (KUBERNETES roadmap)
 - [ ] WAL archiving + PITR backups (BACKUPS phase 2)
-- [ ] Load tests k6 in CI weekly + soak test (LOAD_TESTING)
+- [x] Load tests k6 in CI weekly + soak test (LOAD_TESTING)
 - [ ] Security DAST suite in CI (SECURITY_TESTING)
 - [ ] Feature flags UI (admin panel) + flag audit events
 - [ ] KPI weekly report automation (KPI_DASHBOARD)
