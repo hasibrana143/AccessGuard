@@ -30,6 +30,7 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V6/V3/V2 | Full 8-role team wave: billing webhook idempotency (WebhookEvent) + metadata validation, audit-whitelist parity gate, requireProjectAccess+stripe tests, projects N+1 fix, aria-labels, debug e2e exclusion | `4ecf79e` |
 | V6 | Webhook review pass: consume events for deleted/missing orgs (no Webhook 500 retry loop), stale-subscription guard, P2002 dedupe race, checkout mode guard, org read inside tx | `75e81c6` |
 | V6 | Webhook nits closed: 30d WebhookEvent retention prune (scheduler tick), price-derived plan in subscription.updated, subscription.created/cancelled audit naming sync (whitelist + UI) | `027ecf7` |
+| V8/V2 | Pixel-contrast audit (V11 deferral closed): dedicated light+dark WCAG AA color-contrast guard (13 routes x2 themes). Token fixes — dark --coral/--primary 0.65→0.7, --destructive→0.55, 500-shade overrides (red/orange/blue/emerald) both themes, chart-2/3 darkened. Components — bg-coral text-white→text-coral-foreground (onboarding/pricing/invite), reports buttons→700/800, status/settings emerald-600→500 | `3356ef0` |
 
 ## Process (per volume)
 
