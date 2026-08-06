@@ -58,8 +58,8 @@
 5. OG image for landing.
 
 ## 7. Open items (code-backed)
+- [x] `sitemap.ts`/`robots.ts` (auto-generated; app shell + `/share` + `/api` excluded).
+- [x] Structured data on landing (`SoftwareApplication` + `FAQPage` JSON-LD in root layout).
 - [ ] Blog/Changelog routes (`/blog/*`) + CMS (MDX or headless).
 - [ ] Per-page `metadata` (route groups).
-- [ ] `sitemap.ts`/`robots.ts`.
-- [ ] `/share` noindex header.
-- [ ] Structured data on landing.
+- [x] `/share` noindex header (robots noindex via share layout metadata).
