@@ -19,6 +19,7 @@ export const AUDIT_ACTIONS = [
   'scan_scheduled', 'scan_unscheduled', 'scan_scheduled_triggered', 'scan_blocked_plan_limit',
   'custom_role_created', 'custom_role_updated', 'custom_role_deleted',
   'team_invite_cancelled',
+  'sso.config_updated', 'sso.config_removed',
 ] as const;
 
 interface AuditLogInput {

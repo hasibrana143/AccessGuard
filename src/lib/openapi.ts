@@ -1294,6 +1294,42 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/admin/sso': {
+    get: authed(op({
+      tags: ['Admin'],
+      summary: 'Read SSO configuration (admin/owner)',
+      description:
+        'Returns SSO state for the org: enabled flag, provider, issuer, entry point, and whether a certificate is configured. The raw certificate is never returned.',
+      responses: {
+        '200': { description: 'SSO config (certificate omitted)' },
+        '403': { description: 'Requires admin/owner role' },
+      },
+    })),
+    patch: authed(op({
+      tags: ['Admin'],
+      summary: 'Upsert SSO configuration (admin/owner)',
+      description:
+        'Configure SAML SSO: provider (okta | azure-ad | google-workspace | custom-saml), issuer, https entry point, PEM certificate. Enabling requires the full set. Emits sso.config_updated / sso.config_removed audit events.',
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({
+          type: 'object',
+          properties: {
+            ssoEnabled: { type: 'boolean' },
+            ssoProvider: { type: 'string', enum: ['okta', 'azure-ad', 'google-workspace', 'custom-saml'] },
+            ssoIssuer: { type: 'string' },
+            ssoEntryPoint: { type: 'string', format: 'uri' },
+            ssoCertificate: { type: 'string', description: 'PEM certificate block' },
+          },
+        }),
+      },
+      responses: {
+        '200': { description: 'SSO config updated' },
+        '400': { description: 'Validation error' },
+        '403': { description: 'Requires admin/owner role' },
+      },
+    })),
+  },
   '/notifications/test': {
     post: authed(op({
       tags: ['Notifications'],
