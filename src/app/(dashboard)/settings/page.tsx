@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Building2, CreditCard, Copy, Terminal, Github, Plus, Download, Trash2, Loader2, Upload, ShieldCheck, CheckCircle2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +18,8 @@ import { RolesManager } from '@/components/dashboard/roles-manager';
 import { setPushEnabled, getPushPermission, getPushState, subscribePushPermissionChanges, showBrowserNotification } from '@/lib/push';
 
 export default function SettingsPage() {
+  const t = useTranslations('settings');
+  const tc = useTranslations('common');
   const { user } = useAuth();
   const { toast } = useToast();
   const [profileName, setProfileName] = useState('');
@@ -83,12 +86,12 @@ export default function SettingsPage() {
       const data = await res.json();
       if (data.success) {
         setMfaSetupQr(data.data.qrDataUrl);
-        toast({ title: 'Scan the QR Code', description: 'Use your authenticator app to scan and enter the 6-digit code.' });
+        toast({ title: t('scanQrTitle'), description: t('scanQrMsg') });
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to start setup', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('setupStartFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to start setup', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('setupStartFailed'), variant: 'destructive' });
     } finally {
       setMfaLoading(false);
     }
@@ -108,12 +111,12 @@ export default function SettingsPage() {
         setMfaEnabled(true);
         setMfaSetupQr(null);
         setMfaSetupCode('');
-        toast({ title: 'MFA Enabled', description: 'Your account is now protected with two-factor authentication.' });
+        toast({ title: t('mfaEnabled'), description: t('mfaEnabledMsg') });
       } else {
-        toast({ title: 'Invalid Code', description: data.error || 'Check your authenticator app and try again', variant: 'destructive' });
+        toast({ title: t('invalidCode'), description: data.error || t('invalidCodeMsg'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to enable MFA', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('mfaEnableFailed'), variant: 'destructive' });
     } finally {
       setMfaLoading(false);
     }
@@ -121,7 +124,7 @@ export default function SettingsPage() {
 
   const handleDisableMfa = async () => {
     if (!user?.id) return;
-    const code = window.prompt('Enter a code from your authenticator app to disable MFA:');
+    const code = window.prompt(t('mfaDisablePrompt'));
     if (!code) return;
     setMfaLoading(true);
     try {
@@ -131,12 +134,12 @@ export default function SettingsPage() {
       const data = await res.json();
       if (data.success) {
         setMfaEnabled(false);
-        toast({ title: 'MFA Disabled', description: 'Two-factor authentication has been turned off.' });
+        toast({ title: t('mfaDisabled'), description: t('mfaDisabledMsg') });
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to disable MFA', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('mfaDisableFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to disable MFA', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('mfaDisableFailed'), variant: 'destructive' });
     } finally {
       setMfaLoading(false);
     }
@@ -263,12 +266,12 @@ export default function SettingsPage() {
       if (data.success) {
         setApiKey(data.data.apiKey);
         setMaskedKey(data.data.maskedKey);
-        toast({ title: 'API Key Generated', description: 'Your new API key is ready. Copy it now — it is only shown once.' });
+        toast({ title: t('apiKeyGenerated'), description: t('apiKeyGeneratedMsg') });
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to generate key', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('keyGenerateFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to generate key', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('keyGenerateFailed'), variant: 'destructive' });
     } finally {
       setApiKeyLoading(false);
     }
@@ -277,36 +280,36 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground">Manage your account and preferences</p>
+        <h1 className="text-2xl font-bold">{t('title')}</h1>
+        <p className="text-muted-foreground">{t('subtitle')}</p>
       </div>
 
       <Tabs defaultValue="profile">
         <TabsList className="grid w-full grid-cols-8">
-          <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="team">Team</TabsTrigger>
-          <TabsTrigger value="notifications">Alerts</TabsTrigger>
-          <TabsTrigger value="billing">Billing</TabsTrigger>
-          <TabsTrigger value="privacy">Privacy</TabsTrigger>
-          <TabsTrigger value="api">API</TabsTrigger>
-          <TabsTrigger value="github">GitHub</TabsTrigger>
-          <TabsTrigger value="appearance">Appearance</TabsTrigger>
+          <TabsTrigger value="profile">{t('tabs.profile')}</TabsTrigger>
+          <TabsTrigger value="team">{t('tabs.team')}</TabsTrigger>
+          <TabsTrigger value="notifications">{t('tabs.alerts')}</TabsTrigger>
+          <TabsTrigger value="billing">{t('tabs.billing')}</TabsTrigger>
+          <TabsTrigger value="privacy">{t('tabs.privacy')}</TabsTrigger>
+          <TabsTrigger value="api">{t('tabs.api')}</TabsTrigger>
+          <TabsTrigger value="github">{t('tabs.github')}</TabsTrigger>
+          <TabsTrigger value="appearance">{t('tabs.appearance')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Profile Information</CardTitle>
-              <CardDescription>Update your account details</CardDescription>
+              <CardTitle>{t('profileInfo')}</CardTitle>
+              <CardDescription>{t('profileInfoDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
-                <Label htmlFor="profile-name">Name</Label>
-                <Input id="profile-name" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Your name" autoComplete="name" />
+                <Label htmlFor="profile-name">{t('name')}</Label>
+                <Input id="profile-name" value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder={t('namePlaceholder')} autoComplete="name" />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="profile-email">Email</Label>
-                <Input id="profile-email" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder="your@email.com" autoComplete="email" />
+                <Label htmlFor="profile-email">{t('email')}</Label>
+                <Input id="profile-email" value={profileEmail} onChange={(e) => setProfileEmail(e.target.value)} placeholder={t('emailPlaceholder')} autoComplete="email" />
               </div>
               <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" disabled={profileSaving} onClick={async () => {
                 setProfileSaving(true);
@@ -318,33 +321,33 @@ export default function SettingsPage() {
                   });
                   const data = await res.json();
                   if (data.success) {
-                    toast({ title: 'Saved', description: 'Profile updated successfully' });
+                    toast({ title: t('saved'), description: t('profileUpdatedMsg') });
                   } else {
-                    toast({ title: 'Error', description: data.error || 'Failed to save', variant: 'destructive' });
+                    toast({ title: tc('error'), description: data.error || t('saveFailed'), variant: 'destructive' });
                   }
                 } catch {
-                  toast({ title: 'Error', description: 'Failed to save profile', variant: 'destructive' });
+                  toast({ title: tc('error'), description: t('profileSaveFailed'), variant: 'destructive' });
                 } finally {
                   setProfileSaving(false);
                 }
               }}>
-                {profileSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Changes'}
+                {profileSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('saving')}</> : t('saveChanges')}
               </Button>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Organization</CardTitle>
-              <CardDescription>Manage your organization settings</CardDescription>
+              <CardTitle>{t('organization')}</CardTitle>
+              <CardDescription>{t('orgDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
-                <Label htmlFor="org-name">Organization Name</Label>
-                <Input id="org-name" defaultValue={user?.orgName || ''} placeholder="Organization name" autoComplete="organization" />
+                <Label htmlFor="org-name">{t('orgName')}</Label>
+                <Input id="org-name" defaultValue={user?.orgName || ''} placeholder={t('orgNamePlaceholder')} autoComplete="organization" />
               </div>
               <div className="grid gap-2">
-                <Label>Organization Logo</Label>
+                <Label>{t('orgLogo')}</Label>
                 <div className="flex items-center gap-4">
                   <Button
                     variant="outline"
@@ -369,14 +372,14 @@ export default function SettingsPage() {
                             });
                             const data = await res.json();
                             if (data.success) {
-                              toast({ title: 'Logo Uploaded', description: 'Organization logo saved. It will appear on PDF reports.' });
+                              toast({ title: t('logoUploaded'), description: t('logoUploadedMsg') });
                             } else {
-                              toast({ title: 'Error', description: data.error || 'Failed to upload logo', variant: 'destructive' });
+                              toast({ title: tc('error'), description: data.error || t('logoUploadFailed'), variant: 'destructive' });
                             }
                           };
                           reader.readAsDataURL(file);
                         } catch {
-                          toast({ title: 'Error', description: 'Failed to upload logo', variant: 'destructive' });
+                          toast({ title: tc('error'), description: t('logoUploadFailed'), variant: 'destructive' });
                         } finally {
                           setLogoUploading(false);
                         }
@@ -385,9 +388,9 @@ export default function SettingsPage() {
                     }}
                   >
                     {logoUploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                    Upload Logo
+                    {t('uploadLogo')}
                   </Button>
-                  <span className="text-xs text-muted-foreground">PNG, JPG or SVG. Will appear on PDF reports.</span>
+                  <span className="text-xs text-muted-foreground">{t('logoHint')}</span>
                 </div>
               </div>
               <div className="flex items-center justify-between p-4 border border-border rounded-lg">
@@ -396,8 +399,8 @@ export default function SettingsPage() {
                     <Building2 className="h-5 w-5 text-coral" />
                   </div>
                   <div>
-                    <p className="font-medium">Growth Plan</p>
-                    <p className="text-sm text-muted-foreground">Manage your subscription</p>
+                    <p className="font-medium">{t('growthPlan')}</p>
+                    <p className="text-sm text-muted-foreground">{t('manageSubscription')}</p>
                   </div>
                 </div>
                 <Button variant="outline" disabled={billingLoading} onClick={async () => {
@@ -412,14 +415,14 @@ export default function SettingsPage() {
                     if (data.success && data.data?.url) {
                       window.location.href = data.data.url;
                     } else {
-                      toast({ title: 'Error', description: data.error || 'Failed to create checkout', variant: 'destructive' });
+                      toast({ title: tc('error'), description: data.error || t('checkoutFailed'), variant: 'destructive' });
                     }
                   } catch {
-                    toast({ title: 'Error', description: 'Failed to connect to billing', variant: 'destructive' });
+                    toast({ title: tc('error'), description: t('billingConnectFailed'), variant: 'destructive' });
                   } finally {
                     setBillingLoading(false);
                   }
-                }}>{billingLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading...</> : 'Upgrade'}</Button>
+                }}>{billingLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('loading')}</> : t('upgrade')}</Button>
               </div>
             </CardContent>
           </Card>
@@ -432,15 +435,15 @@ export default function SettingsPage() {
         <TabsContent value="notifications" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Email Notifications</CardTitle>
-              <CardDescription>Choose what notifications you receive</CardDescription>
+              <CardTitle>{t('emailNotifications')}</CardTitle>
+              <CardDescription>{t('emailNotificationsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {[
-                { key: 'criticalViolations', label: 'Critical violations detected', description: 'Get notified when critical issues are found' },
-                { key: 'weeklyDigest', label: 'Weekly digest', description: 'Receive a weekly summary of your compliance status' },
-                { key: 'scanCompleted', label: 'Scan completed', description: 'Get notified when a scan finishes' },
-                { key: 'newFeatures', label: 'New features', description: 'Learn about new AccessGuard features' }
+                { key: 'criticalViolations', label: t('alertCritical'), description: t('alertCriticalDesc') },
+                { key: 'weeklyDigest', label: t('alertWeekly'), description: t('alertWeeklyDesc') },
+                { key: 'scanCompleted', label: t('alertScan'), description: t('alertScanDesc') },
+                { key: 'newFeatures', label: t('alertFeatures'), description: t('alertFeaturesDesc') }
               ].map((item) => (
                 <div key={item.key} className="flex items-center justify-between py-3 border-b border-border last:border-0">
                   <label htmlFor={`switch-${item.key}`} className="flex-1 cursor-pointer">
@@ -456,7 +459,7 @@ export default function SettingsPage() {
                 </div>
               ))}
               <div className="flex items-center justify-between pt-2">
-                <p className="text-xs text-muted-foreground">Changes are saved to your organization settings.</p>
+                <p className="text-xs text-muted-foreground">{t('alertSavedHint')}</p>
                 <Button
                   className="bg-coral hover:bg-coral/90 text-coral-foreground"
                   disabled={alertsSaving}
@@ -470,18 +473,18 @@ export default function SettingsPage() {
                       });
                       const data = await res.json();
                       if (data.success) {
-                        toast({ title: 'Alert Settings Saved', description: 'Notification preferences updated.' });
+                        toast({ title: t('alertSettingsSaved'), description: t('alertSettingsSavedMsg') });
                       } else {
-                        toast({ title: 'Error', description: data.error || 'Failed to save settings', variant: 'destructive' });
+                        toast({ title: tc('error'), description: data.error || t('settingsSaveFailed'), variant: 'destructive' });
                       }
                     } catch {
-                      toast({ title: 'Error', description: 'Failed to save settings', variant: 'destructive' });
+                      toast({ title: tc('error'), description: t('settingsSaveFailed'), variant: 'destructive' });
                     } finally {
                       setAlertsSaving(false);
                     }
                   }}
                 >
-                  {alertsSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Alert Settings'}
+                  {alertsSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('saving')}</> : t('saveAlertSettings')}
                 </Button>
               </div>
             </CardContent>
@@ -489,21 +492,21 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Slack / Microsoft Teams</CardTitle>
-              <CardDescription>Send scan alerts to your team channel</CardDescription>
+              <CardTitle>{t('slackTeams')}</CardTitle>
+              <CardDescription>{t('slackTeamsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
-                <Label htmlFor="slack-webhook">Incoming Webhook URL</Label>
+                <Label htmlFor="slack-webhook">{t('webhookUrl')}</Label>
                 <Input
                   id="slack-webhook"
                   type="url"
-                  placeholder="https://hooks.slack.com/services/... or Teams webhook URL"
+                  placeholder={t('webhookPlaceholder')}
                   value={webhookUrl}
                   onChange={(e) => setWebhookUrl(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Create a Slack Incoming Webhook or Teams incoming webhook and paste the URL here.
+                  {t('webhookHint')}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -512,7 +515,7 @@ export default function SettingsPage() {
                   disabled={webhookSaving}
                   onClick={async () => {
                     if (!webhookUrl.trim()) {
-                      toast({ title: 'Error', description: 'Enter a webhook URL first', variant: 'destructive' });
+                      toast({ title: tc('error'), description: t('webhookRequired'), variant: 'destructive' });
                       return;
                     }
                     setWebhookSaving(true);
@@ -524,18 +527,18 @@ export default function SettingsPage() {
                       });
                       const data = await res.json();
                       if (data.success) {
-                        toast({ title: 'Webhook Saved', description: 'Channel notifications enabled' });
+                        toast({ title: t('webhookSaved'), description: t('webhookSavedMsg') });
                       } else {
-                        toast({ title: 'Error', description: data.error || 'Failed to save webhook', variant: 'destructive' });
+                        toast({ title: tc('error'), description: data.error || t('webhookSaveFailed'), variant: 'destructive' });
                       }
                     } catch {
-                      toast({ title: 'Error', description: 'Failed to save webhook', variant: 'destructive' });
+                      toast({ title: tc('error'), description: t('webhookSaveFailed'), variant: 'destructive' });
                     } finally {
                       setWebhookSaving(false);
                     }
                   }}
                 >
-                  {webhookSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Webhook'}
+                  {webhookSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('saving')}</> : t('saveWebhook')}
                 </Button>
                 <Button variant="outline" disabled={webhookSaving || !webhookUrl.trim()} onClick={async () => {
                   setWebhookSaving(true);
@@ -547,17 +550,17 @@ export default function SettingsPage() {
                     });
                     const data = await res.json();
                     if (data.success) {
-                      toast({ title: 'Test Sent', description: 'Check your channel for the test message' });
+                      toast({ title: t('testSent'), description: t('testSentMsg') });
                     } else {
-                      toast({ title: 'Failed', description: data.error || 'Could not send test message', variant: 'destructive' });
+                      toast({ title: t('testFailed'), description: data.error || t('testFailedMsg'), variant: 'destructive' });
                     }
                   } catch {
-                    toast({ title: 'Error', description: 'Failed to send test message', variant: 'destructive' });
+                    toast({ title: tc('error'), description: t('testSendFailed'), variant: 'destructive' });
                   } finally {
                     setWebhookSaving(false);
                   }
                 }}>
-                  Send Test
+                  {t('sendTest')}
                 </Button>
               </div>
             </CardContent>
@@ -565,16 +568,16 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Browser Push Notifications</CardTitle>
-              <CardDescription>Get desktop notifications when scans complete</CardDescription>
+              <CardTitle>{t('pushNotifications')}</CardTitle>
+              <CardDescription>{t('pushNotificationsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between py-3">
                 <div>
-                  <p className="font-medium">Desktop notifications</p>
+                  <p className="font-medium">{t('desktopNotifications')}</p>
                   <p className="text-sm text-muted-foreground">
-                    Permission status: <strong>{pushPermission}</strong>
-                    {pushPermission === 'granted' && pushEnabled && ' • Notifications will appear when scans complete'}
+                    {t('permissionStatus')} <strong>{pushPermission}</strong>
+                    {pushPermission === 'granted' && pushEnabled && t('pushActive')}
                   </p>
                 </div>
                 <Switch
@@ -585,24 +588,23 @@ export default function SettingsPage() {
                     setPushEnabledState(ok && getPushPermission() === 'granted');
                     if (!ok) {
                       toast({
-                        title: 'Notifications Blocked',
-                        description: 'Enable notifications for AccessGuard in your browser settings first.',
+                        title: t('notificationsBlocked'),
+                        description: t('notificationsBlockedMsg'),
                         variant: 'destructive',
                       });
                     }
                   }}
-                  aria-label="Enable browser push notifications"
+                  aria-label={t('enablePushAria')}
                 />
               </div>
               {pushPermission === 'denied' && (
                 <p className="text-sm text-destructive">
-                  Notifications are blocked in your browser. Use the site settings (lock icon) to allow them for
-                  AccessGuard, then try again.
+                  {t('pushDeniedMsg')}
                 </p>
               )}
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">
-                  Test that browser notifications work on this device.
+                  {t('pushTestHint')}
                 </p>
                 <Button
                   variant="outline"
@@ -610,10 +612,10 @@ export default function SettingsPage() {
                   disabled={!pushEnabled || pushPermission !== 'granted'}
                   onClick={() => {
                     showBrowserNotification('AccessGuard Test', { body: 'Browser push notifications are working!' });
-                    toast({ title: 'Test Notification Sent', description: 'Check your desktop for the notification' });
+                    toast({ title: t('testNotificationSent'), description: t('testNotificationSentMsg') });
                   }}
                 >
-                  Send Test Notification
+                  {t('sendTestNotification')}
                 </Button>
               </div>
             </CardContent>
@@ -623,29 +625,29 @@ export default function SettingsPage() {
         <TabsContent value="billing" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Current Plan</CardTitle>
-              <CardDescription>Manage your subscription</CardDescription>
+              <CardTitle>{t('currentPlan')}</CardTitle>
+              <CardDescription>{t('manageSubscription')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                 <div>
-                  <p className="font-medium">Growth Plan</p>
-                  <p className="text-sm text-muted-foreground">$149/month • Billed monthly</p>
+                  <p className="font-medium">{t('growthPlan')}</p>
+                  <p className="text-sm text-muted-foreground">{t('billedMonthly')}</p>
                 </div>
-                <Badge className="bg-emerald-700 text-white">Active</Badge>
+                <Badge className="bg-emerald-700 text-white">{t('active')}</Badge>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 border border-border rounded-lg">
-                  <p className="text-sm text-muted-foreground">Websites</p>
+                  <p className="text-sm text-muted-foreground">{t('websites')}</p>
                   <p className="text-2xl font-bold">{usage?.websitesUsed ?? 0} <span className="text-sm font-normal text-muted-foreground">/ 10</span></p>
                 </div>
                 <div className="p-4 border border-border rounded-lg">
-                  <p className="text-sm text-muted-foreground">Pages Scanned (30d)</p>
+                  <p className="text-sm text-muted-foreground">{t('pagesScanned30d')}</p>
                   <p className="text-2xl font-bold">{usage?.pagesScanned?.toLocaleString() ?? 0} <span className="text-sm font-normal text-muted-foreground">/ 1,000</span></p>
                 </div>
               </div>
               <div className="p-4 border border-border rounded-lg">
-                <p className="text-sm text-muted-foreground">Scans Run (30d)</p>
+                <p className="text-sm text-muted-foreground">{t('scansRun30d')}</p>
                 <p className="text-2xl font-bold">{usage?.scansRun ?? 0}</p>
               </div>
               <div className="flex gap-2">
@@ -659,16 +661,16 @@ export default function SettingsPage() {
                     });
                     const data = await res.json();
                     if (data.success) {
-                      toast({ title: 'Canceled', description: data.data?.message || 'Subscription will cancel at period end' });
+                      toast({ title: t('canceled'), description: data.data?.message || t('canceledMsg') });
                     } else {
-                      toast({ title: 'Error', description: data.error || 'Failed to cancel', variant: 'destructive' });
+                      toast({ title: tc('error'), description: data.error || t('cancelFailed'), variant: 'destructive' });
                     }
                   } catch {
-                    toast({ title: 'Error', description: 'Failed to cancel subscription', variant: 'destructive' });
+                    toast({ title: tc('error'), description: t('cancelFailedMsg'), variant: 'destructive' });
                   } finally {
                     setBillingLoading(false);
                   }
-                }}>Cancel Subscription</Button>
+                }}>{t('cancelSubscription')}</Button>
                 <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" disabled={billingLoading} onClick={async () => {
                   setBillingLoading(true);
                   try {
@@ -681,40 +683,40 @@ export default function SettingsPage() {
                     if (data.success && data.data?.url) {
                       window.location.href = data.data.url;
                     } else {
-                      toast({ title: 'Error', description: data.error || 'Failed to create checkout', variant: 'destructive' });
+                      toast({ title: tc('error'), description: data.error || t('checkoutFailed'), variant: 'destructive' });
                     }
                   } catch {
-                    toast({ title: 'Error', description: 'Failed to connect to billing', variant: 'destructive' });
+                    toast({ title: tc('error'), description: t('billingConnectFailed'), variant: 'destructive' });
                   } finally {
                     setBillingLoading(false);
                   }
-                }}>{billingLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading...</> : 'Upgrade Plan'}</Button>
+                }}>{billingLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('loading')}</> : t('upgradePlan')}</Button>
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Billing Currency</CardTitle>
-              <CardDescription>Display currency for pricing and invoices (admin only)</CardDescription>
+              <CardTitle>{t('billingCurrency')}</CardTitle>
+              <CardDescription>{t('billingCurrencyDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-end gap-3">
                 <div className="grid gap-2 flex-1">
-                  <Label htmlFor="billing-currency">Currency</Label>
+                  <Label htmlFor="billing-currency">{t('currency')}</Label>
                   <Select
                     value={currency}
                     onValueChange={setCurrency}
                     disabled={currencySaving}
                   >
                     <SelectTrigger id="billing-currency" className="w-full">
-                      <SelectValue placeholder="Select currency" />
+                      <SelectValue placeholder={t('selectCurrency')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="usd">USD ($) — United States Dollar</SelectItem>
-                      <SelectItem value="eur">EUR (€) — Euro</SelectItem>
-                      <SelectItem value="gbp">GBP (£) — British Pound</SelectItem>
-                      <SelectItem value="inr">INR (₹) — Indian Rupee</SelectItem>
+                      <SelectItem value="usd">{t('usd')}</SelectItem>
+                      <SelectItem value="eur">{t('eur')}</SelectItem>
+                      <SelectItem value="gbp">{t('gbp')}</SelectItem>
+                      <SelectItem value="inr">{t('inr')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -731,36 +733,36 @@ export default function SettingsPage() {
                       });
                       const data = await res.json();
                       if (data.success) {
-                        toast({ title: 'Currency Updated', description: `Billing currency set to ${data.data.currency.toUpperCase()}` });
+                        toast({ title: t('currencyUpdated'), description: t('currencyUpdatedMsg', { code: data.data.currency.toUpperCase() }) });
                       } else {
-                        toast({ title: 'Error', description: data.error || 'Failed to update currency', variant: 'destructive' });
+                        toast({ title: tc('error'), description: data.error || t('currencyUpdateFailed'), variant: 'destructive' });
                       }
                     } catch {
-                      toast({ title: 'Error', description: 'Failed to update currency', variant: 'destructive' });
+                      toast({ title: tc('error'), description: t('currencyUpdateFailed'), variant: 'destructive' });
                     } finally {
                       setCurrencySaving(false);
                     }
                   }}
                 >
-                  {currencySaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Currency'}
+                  {currencySaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('saving')}</> : t('saveCurrency')}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                FX rates are a quarterly snapshot; invoices from Stripe are always billed in USD and converted for display.
+                {t('fxRatesHint')}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Payment Method</CardTitle>
+              <CardTitle>{t('paymentMethod')}</CardTitle>
             </CardHeader>            <CardContent>
               <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                 <div className="flex items-center gap-3">
                   <CreditCard className="h-8 w-8 text-muted-foreground" />
                   <div>
                     <p className="font-medium">&bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; 4242</p>
-                    <p className="text-sm text-muted-foreground">Expires 12/2025</p>
+                    <p className="text-sm text-muted-foreground">{t('expires')}</p>
                   </div>
                 </div>
                 <Button variant="outline" size="sm" disabled={billingLoading} onClick={async () => {
@@ -775,22 +777,22 @@ export default function SettingsPage() {
                     if (data.success && data.data?.url) {
                       window.location.href = data.data.url;
                     } else {
-                      toast({ title: 'Error', description: 'Update payment from Stripe portal', variant: 'destructive' });
+                      toast({ title: tc('error'), description: 'Update payment from Stripe portal', variant: 'destructive' });
                     }
                   } catch {
-                    toast({ title: 'Error', description: 'Failed to connect to Stripe', variant: 'destructive' });
+                    toast({ title: tc('error'), description: t('stripeConnectFailed'), variant: 'destructive' });
                   } finally {
                     setBillingLoading(false);
                   }
-                }}>Update</Button>
+                }}>{t('update')}</Button>
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Coupons</CardTitle>
-              <CardDescription>Apply a discount coupon to your subscription</CardDescription>
+              <CardTitle>{t('coupons')}</CardTitle>
+              <CardDescription>{t('couponsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {activeCoupon ? (
@@ -798,23 +800,23 @@ export default function SettingsPage() {
                   <div>
                     <p className="font-medium text-emerald-500">{activeCoupon.code}</p>
                     <p className="text-sm text-muted-foreground">
-                      {activeCoupon.percentOff != null ? `${activeCoupon.percentOff}% off` : ''}
-                      {' — '}{activeCoupon.description || 'Coupon applied'}
+                      {activeCoupon.percentOff != null ? t('percentOff', { percent: activeCoupon.percentOff }) : ''}
+                      {' — '}{activeCoupon.description || t('couponApplied')}
                     </p>
                   </div>
-                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-500">Applied</Badge>
+                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-500">{t('applied')}</Badge>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No coupon applied.</p>
+                <p className="text-sm text-muted-foreground">{t('noCoupon')}</p>
               )}
               <div className="flex gap-2">
                 <div className="grid gap-2 flex-1">
-                  <Label htmlFor="coupon-code" className="sr-only">Coupon code</Label>
+                  <Label htmlFor="coupon-code" className="sr-only">{t('couponCode')}</Label>
                   <Input
                     id="coupon-code"
                     value={couponCode}
                     onChange={(e) => setCouponCode(e.target.value)}
-                    placeholder="Enter coupon code (e.g. WELCOME20)"
+                    placeholder={t('couponPlaceholder')}
                     autoComplete="off"
                   />
                 </div>
@@ -831,20 +833,20 @@ export default function SettingsPage() {
                       });
                       const data = await res.json();
                       if (data.success) {
-                        toast({ title: 'Coupon Applied', description: data.data.description });
+                        toast({ title: t('couponAppliedTitle'), description: data.data.description });
                         setActiveCoupon(data.data);
                         setCouponCode('');
                       } else {
-                        toast({ title: 'Error', description: data.error || 'Invalid coupon', variant: 'destructive' });
+                        toast({ title: tc('error'), description: data.error || t('invalidCoupon'), variant: 'destructive' });
                       }
                     } catch {
-                      toast({ title: 'Error', description: 'Failed to apply coupon', variant: 'destructive' });
+                      toast({ title: tc('error'), description: t('couponApplyFailed'), variant: 'destructive' });
                     } finally {
                       setCouponLoading(false);
                     }
                   }}
                 >
-                  {couponLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Applying...</> : 'Apply Coupon'}
+                  {couponLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('applying')}</> : t('applyCoupon')}
                 </Button>
               </div>
             </CardContent>
@@ -852,10 +854,10 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Invoices</CardTitle>
+              <CardTitle>{t('invoices')}</CardTitle>
               <CardDescription>
-                Recent billing invoices
-                {invoicesDemo && <span className="ml-2 text-xs text-muted-foreground">(sample data — Stripe not connected)</span>}
+                {t('invoicesDesc')}
+                {invoicesDemo && <span className="ml-2 text-xs text-muted-foreground">{t('invoicesSample')}</span>}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -864,7 +866,7 @@ export default function SettingsPage() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : invoices.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No invoices found</p>
+                <p className="text-sm text-muted-foreground text-center py-8">{t('noInvoices')}</p>
               ) : (
                 <div className="divide-y divide-border">
                   {invoices.map((inv) => (
@@ -885,7 +887,7 @@ export default function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        aria-label="Download invoice"
+                        aria-label={t('downloadInvoice')}
                         disabled={!inv.url}
                         onClick={() => inv.url && window.open(inv.url, '_blank', 'noopener,noreferrer')}
                       >
@@ -902,34 +904,34 @@ export default function SettingsPage() {
         <TabsContent value="privacy" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Data & Privacy</CardTitle>
-              <CardDescription>Manage your data and account</CardDescription>
+              <CardTitle>{t('dataPrivacy')}</CardTitle>
+              <CardDescription>{t('dataPrivacyDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
                 <h3 className="font-medium mb-2 flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-coral" />
-                  Two-Factor Authentication (MFA)
+                  {t('mfaTitle')}
                 </h3>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Add an extra layer of security using any authenticator app (Google Authenticator, Authy, 1Password).
+                  {t('mfaDesc')}
                 </p>
                 {mfaEnabled ? (
                   <div className="flex flex-col gap-3">
                     <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 self-start">
                       <CheckCircle2 className="h-3 w-3 mr-1" />
-                      MFA Enabled
+                      {t('mfaEnabled')}
                     </Badge>
                     <Button variant="outline" className="text-destructive" disabled={mfaLoading} onClick={handleDisableMfa}>
-                      {mfaLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Disabling...</> : 'Disable MFA'}
+                      {mfaLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('disabling')}</> : t('disableMfa')}
                     </Button>
                   </div>
                 ) : mfaSetupQr ? (
                   <div className="flex flex-col gap-3 max-w-xs">
                     { }
-                    <img src={mfaSetupQr} alt="Scan with your authenticator app" className="rounded-lg border border-border" />
+                    <img src={mfaSetupQr} alt={t('mfaQrAlt')} className="rounded-lg border border-border" />
                     <div className="grid gap-2">
-                      <Label htmlFor="mfa-code">Enter 6-digit code from your app</Label>
+                      <Label htmlFor="mfa-code">{t('mfaCodeLabel')}</Label>
                       <div className="flex gap-2">
                         <Input
                           id="mfa-code"
@@ -942,25 +944,25 @@ export default function SettingsPage() {
                           className="text-center text-lg tracking-[0.3em] font-mono"
                         />
                         <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" disabled={mfaLoading || mfaSetupCode.length !== 6} onClick={handleConfirmMfa}>
-                          {mfaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enable'}
+                          {mfaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : t('enable')}
                         </Button>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => setMfaSetupQr(null)}>Cancel</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setMfaSetupQr(null)}>{tc('cancel')}</Button>
                   </div>
                 ) : (
                   <Button variant="outline" disabled={mfaLoading} onClick={handleSetupMfa}>
-                    {mfaLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Preparing...</> : 'Set Up MFA'}
+                    {mfaLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('preparing')}</> : t('setUpMfa')}
                   </Button>
                 )}
               </div>
 
               <div>
-                <h3 className="font-medium mb-2">Export Your Data</h3>
-                <p className="text-sm text-muted-foreground mb-3">Download all your account data in JSON format</p>
+                <h3 className="font-medium mb-2">{t('exportData')}</h3>
+                <p className="text-sm text-muted-foreground mb-3">{t('exportDataDesc')}</p>
                 <Button variant="outline" onClick={() => {
                   fetch('/api/account/export').then(async (res) => {
-                    if (!res.ok) throw new Error('Export failed');
+                    if (!res.ok) throw new Error(t('exportFailed'));
                     const blob = await res.blob();
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -968,18 +970,18 @@ export default function SettingsPage() {
                     a.download = `accessguard-export-${new Date().toISOString().split('T')[0]}.json`;
                     a.click();
                     URL.revokeObjectURL(url);
-                    toast({ title: 'Export complete', description: 'Your data has been downloaded' });
-                  }).catch(() => toast({ title: 'Export failed', description: 'Please try again later', variant: 'destructive' }));
+                    toast({ title: t('exportComplete'), description: t('exportCompleteMsg') });
+                  }).catch(() => toast({ title: t('exportFailed'), description: t('exportFailedMsg'), variant: 'destructive' }));
                 }}>
                   <Download className="h-4 w-4 mr-2" />
-                  Export My Data
+                  {t('exportMyData')}
                 </Button>
               </div>
 
               <div>
-                <h3 className="font-medium mb-2">Organization Data Export (GDPR Art. 20)</h3>
+                <h3 className="font-medium mb-2">{t('orgExportTitle')}</h3>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Portable JSON snapshot of the organization: users, projects, violations (90 days), scans, audit log, roles and invites. Admins only.
+                  {t('orgExportDesc')}
                 </p>
                 <Button variant="outline" disabled={orgExporting} onClick={async () => {
                   setOrgExporting(true);
@@ -994,39 +996,38 @@ export default function SettingsPage() {
                       a.download = `accessguard-org-export-${new Date().toISOString().split('T')[0]}.json`;
                       a.click();
                       URL.revokeObjectURL(url);
-                      toast({ title: 'Export complete', description: 'Organization data downloaded' });
+                      toast({ title: t('exportComplete'), description: t('orgExportCompleteMsg') });
                     } else {
-                      toast({ title: 'Export failed', description: data.error || 'You need admin or owner role', variant: 'destructive' });
+                      toast({ title: t('exportFailed'), description: data.error || t('orgExportDenied'), variant: 'destructive' });
                     }
                   } catch {
-                    toast({ title: 'Error', description: 'Failed to export organization data', variant: 'destructive' });
+                    toast({ title: tc('error'), description: t('orgExportFailed'), variant: 'destructive' });
                   } finally {
                     setOrgExporting(false);
                   }
                 }}>
-                  {orgExporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Exporting...</> : <><Download className="h-4 w-4 mr-2" />Export Organization Data</>}
+                  {orgExporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('exporting')}</> : <><Download className="h-4 w-4 mr-2" />{t('exportOrgData')}</>}
                 </Button>
               </div>
 
               <div className="border-t border-border pt-6">
                 <h3 className="font-medium mb-2 flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-coral" />
-                  Data Residency Region
+                  {t('dataResidency')}
                 </h3>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Choose where your organization's data is processed. Selecting the EU applies GDPR-compliant processing
-                  and raises a procurement review for the hosting vendor. Admin or owner required.
+                  {t('dataResidencyDesc')}
                 </p>
                 <div className="flex items-end gap-3">
                   <div className="grid gap-2 flex-1">
-                    <Label htmlFor="data-region">Region</Label>
+                    <Label htmlFor="data-region">{t('region')}</Label>
                     <Select value={dataRegion} onValueChange={setDataRegion} disabled={regionSaving}>
                       <SelectTrigger id="data-region" className="w-full">
-                        <SelectValue placeholder="Select region" />
+                        <SelectValue placeholder={t('selectRegion')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="us">US — United States</SelectItem>
-                        <SelectItem value="eu">EU — European Union (GDPR processing)</SelectItem>
+                        <SelectItem value="us">{t('regionUs')}</SelectItem>
+                        <SelectItem value="eu">{t('regionEu')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1035,9 +1036,7 @@ export default function SettingsPage() {
                     disabled={regionSaving}
                     onClick={async () => {
                       if (dataRegion === 'eu') {
-                        const consent = window.confirm(
-                          'Switching to EU region means your data is processed under GDPR in the EU. New audit events (vendor review) will be recorded. Continue?'
-                        );
+                        const consent = window.confirm(t('euConsent'));
                         if (!consent) return;
                       }
                       setRegionSaving(true);
@@ -1049,29 +1048,29 @@ export default function SettingsPage() {
                         });
                         const data = await res.json();
                         if (data.success) {
-                          toast({ title: 'Region Updated', description: `Data residency set to ${data.dataRegion.toUpperCase()}` });
+                          toast({ title: t('regionUpdated'), description: t('regionUpdatedMsg', { code: data.dataRegion.toUpperCase() }) });
                         } else {
-                          toast({ title: 'Error', description: data.error || 'Failed to update region', variant: 'destructive' });
+                          toast({ title: tc('error'), description: data.error || t('regionUpdateFailed'), variant: 'destructive' });
                         }
                       } catch {
-                        toast({ title: 'Error', description: 'Failed to update region', variant: 'destructive' });
+                        toast({ title: tc('error'), description: t('regionUpdateFailed'), variant: 'destructive' });
                       } finally {
                         setRegionSaving(false);
                       }
                     }}
                   >
-                    {regionSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Region'}
+                    {regionSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('saving')}</> : t('saveRegion')}
                   </Button>
                 </div>
               </div>
 
               <div className="border-t border-border pt-6">
-                <h3 className="font-medium mb-2 text-destructive">Delete Account</h3>
-                <p className="text-sm text-muted-foreground mb-3">Permanently delete your account and all associated data. This action cannot be undone.</p>
+                <h3 className="font-medium mb-2 text-destructive">{t('deleteAccount')}</h3>
+                <p className="text-sm text-muted-foreground mb-3">{t('deleteAccountDesc')}</p>
                 <Button variant="destructive" onClick={async () => {
-                  const confirmed = window.prompt('Type "DELETE MY ACCOUNT" to confirm');
+                  const confirmed = window.prompt(t('deletePrompt'));
                   if (confirmed !== 'DELETE MY ACCOUNT') {
-                    toast({ title: 'Cancelled', description: 'Type DELETE MY ACCOUNT to confirm' });
+                    toast({ title: t('deleteCanceled'), description: t('deleteConfirmHint') });
                     return;
                   }
                   try {
@@ -1082,28 +1081,28 @@ export default function SettingsPage() {
                     });
                     const data = await res.json();
                     if (data.success) {
-                      toast({ title: 'Account deleted', description: 'Redirecting...' });
+                      toast({ title: t('accountDeleted'), description: t('redirecting') });
                       window.location.href = '/';
                     } else {
-                      toast({ title: 'Failed', description: data.error || 'Please try again', variant: 'destructive' });
+                      toast({ title: t('deleteCanceled'), description: data.error || t('deleteFailedTry'), variant: 'destructive' });
                     }
                   } catch {
-                    toast({ title: 'Error', description: 'Failed to delete account', variant: 'destructive' });
+                    toast({ title: tc('error'), description: t('accountDeleteFailed'), variant: 'destructive' });
                   }
                 }}>
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Account
+                  {t('deleteAccount')}
                 </Button>
               </div>
 
               <div className="border-t border-border pt-6">
-                <h3 className="font-medium mb-2">Legal Documents</h3>
+                <h3 className="font-medium mb-2">{t('legalDocuments')}</h3>
                 <div className="flex gap-3">
                   <Button variant="ghost" onClick={() => window.open('/api/legal/privacy', '_blank')}>
-                    Privacy Policy
+                    {t('privacyPolicy')}
                   </Button>
                   <Button variant="ghost" onClick={() => window.open('/api/legal/tos', '_blank')}>
-                    Terms of Service
+                    {t('termsOfService')}
                   </Button>
                 </div>
               </div>
@@ -1114,39 +1113,39 @@ export default function SettingsPage() {
         <TabsContent value="api" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>API Keys</CardTitle>
-              <CardDescription>Manage API keys for integrations</CardDescription>
+              <CardTitle>{t('apiKeys')}</CardTitle>
+              <CardDescription>{t('apiKeysDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="p-4 border border-border rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="font-medium">Production Key</p>
+                  <p className="font-medium">{t('productionKey')}</p>
                   {apiKey && (
                     <Button variant="ghost" size="sm" onClick={() => {
                       navigator.clipboard.writeText(apiKey).then(() => {
-                        toast({ title: 'Copied', description: 'API key copied to clipboard' });
+                        toast({ title: t('copied'), description: t('copiedMsg') });
                       });
                     }}>
                       <Copy className="h-4 w-4 mr-1" />
-                      Copy
+                      {t('copy')}
                     </Button>
                   )}
                 </div>
                 <code className="text-sm text-muted-foreground font-mono">
-                  {apiKey ? maskedKey : 'No API key generated yet'}
+                  {apiKey ? maskedKey : t('noApiKey')}
                 </code>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Use this key in the <code className="font-mono">Authorization: Bearer</code> header of API requests.
-                  It is stored encrypted in your organization settings.
+                  {t('apiKeyHint1', { header: 'Authorization: Bearer' })}
+                  {t('apiKeyHint2')}
                 </p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" disabled={apiKeyLoading} onClick={handleRegenerateKey}>
-                  {apiKeyLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</> : apiKey ? 'Regenerate Key' : 'Generate Key'}
+                  {apiKeyLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('generating')}</> : apiKey ? t('regenerateKey') : t('generateKey')}
                 </Button>
                 <Button variant="outline" onClick={() => window.open('https://docs.accessguard.dev', '_blank', 'noopener,noreferrer')}>
                   <Terminal className="h-4 w-4 mr-2" />
-                  View Documentation
+                  {t('viewDocs')}
                 </Button>
               </div>
             </CardContent>
@@ -1156,16 +1155,16 @@ export default function SettingsPage() {
         <TabsContent value="github" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>GitHub Integration</CardTitle>
-              <CardDescription>Connect to GitHub for automated PRs</CardDescription>
+              <CardTitle>{t('githubIntegration')}</CardTitle>
+              <CardDescription>{t('githubIntegrationDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                 <div className="flex items-center gap-3">
                   <Github className="h-8 w-8" />
                   <div>
-                    <p className="font-medium">Connected to GitHub</p>
-                    <p className="text-sm text-muted-foreground">3 repositories linked</p>
+                    <p className="font-medium">{t('connectedToGithub')}</p>
+                    <p className="text-sm text-muted-foreground">{t('reposLinked', { count: 3 })}</p>
                   </div>
                 </div>
                 <Button variant="outline" size="sm" disabled={githubLoading} onClick={async () => {
@@ -1176,20 +1175,20 @@ export default function SettingsPage() {
                     if (data.success) {
                       const repos = data.data || [];
                       if (repos.length > 0) {
-                        toast({ title: 'Connected', description: `${repos.length} repositories linked` });
+                        toast({ title: t('connected'), description: t('reposLinked', { count: repos.length }) });
                       } else {
-                        toast({ title: 'No repos', description: 'Connect GitHub to see repositories' });
+                        toast({ title: t('noRepos'), description: t('connectGithub') });
                         window.location.href = '/api/github/connect';
                       }
                     } else {
-                      toast({ title: 'Error', description: 'Failed to fetch repos', variant: 'destructive' });
+                      toast({ title: tc('error'), description: t('reposFetchFailed'), variant: 'destructive' });
                     }
                   } catch {
-                    toast({ title: 'Error', description: 'GitHub not connected', variant: 'destructive' });
+                    toast({ title: tc('error'), description: t('githubNotConnected'), variant: 'destructive' });
                   } finally {
                     setGithubLoading(false);
                   }
-                }}>{githubLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading...</> : 'Manage'}</Button>
+                }}>{githubLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('loading')}</> : t('manage')}</Button>
               </div>
               <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" disabled={githubLoading} onClick={async () => {
                 setGithubLoading(true);
@@ -1199,7 +1198,7 @@ export default function SettingsPage() {
                   setGithubLoading(false);
                 }
               }}>
-                {githubLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Connecting...</> : <><Plus className="h-4 w-4 mr-1" />Add Repository</>}
+                {githubLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('connecting')}</> : <><Plus className="h-4 w-4 mr-1" />{t('addRepository')}</>}
               </Button>
             </CardContent>
           </Card>
@@ -1207,14 +1206,14 @@ export default function SettingsPage() {
         <TabsContent value="appearance" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>Appearance</CardTitle>
-              <CardDescription>Choose how AccessGuard looks</CardDescription>
+              <CardTitle>{t('appearance')}</CardTitle>
+              <CardDescription>{t('appearanceDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">Theme</p>
-                  <p className="text-sm text-muted-foreground">Switch between dark and light mode</p>
+                  <p className="text-sm font-medium">{t('theme')}</p>
+                  <p className="text-sm text-muted-foreground">{t('themeDesc')}</p>
                 </div>
                 <ThemeToggle />
               </div>
@@ -1223,22 +1222,22 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Branding</CardTitle>
-              <CardDescription>White-label AccessGuard for your organization (logo is set in the Organization section)</CardDescription>
+              <CardTitle>{t('branding')}</CardTitle>
+              <CardDescription>{t('brandingDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-2">
-                <Label htmlFor="brand-name">Display name</Label>
+                <Label htmlFor="brand-name">{t('displayName')}</Label>
                 <Input
                   id="brand-name"
                   value={branding.displayName}
                   onChange={(e) => setBranding((prev) => ({ ...prev, displayName: e.target.value }))}
-                  placeholder="Shown next to the logo in the dashboard header"
+                  placeholder={t('displayNamePlaceholder')}
                   maxLength={60}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="brand-color">Primary color</Label>
+                <Label htmlFor="brand-color">{t('primaryColor')}</Label>
                 <div className="flex items-center gap-3">
                   <input
                     id="brand-color"
@@ -1246,13 +1245,13 @@ export default function SettingsPage() {
                     value={branding.primaryColor}
                     onChange={(e) => setBranding((prev) => ({ ...prev, primaryColor: e.target.value }))}
                     className="h-10 w-14 rounded-md border border-border bg-transparent cursor-pointer"
-                    aria-label="Primary brand color"
+                    aria-label={t('brandColorAria')}
                   />
                   <Input
                     value={branding.primaryColor}
                     onChange={(e) => setBranding((prev) => ({ ...prev, primaryColor: e.target.value }))}
                     className="w-32 font-mono text-sm"
-                    aria-label="Primary brand color hex value"
+                    aria-label={t('brandColorHexAria')}
                     maxLength={7}
                   />
                   <div
@@ -1261,11 +1260,11 @@ export default function SettingsPage() {
                     aria-hidden="true"
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">Applied to buttons and accents in the dashboard after saving.</p>
+                <p className="text-xs text-muted-foreground">{t('brandColorHint')}</p>
               </div>
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">
-                  A logo uploaded in the Organization section also appears in the header and on PDF reports.
+                  {t('brandLogoHint')}
                 </p>
                 <div className="flex gap-2">
                   <Button
@@ -1283,19 +1282,19 @@ export default function SettingsPage() {
                         if (data.success) {
                           document.documentElement.style.setProperty('--primary', branding.primaryColor);
                           document.documentElement.style.setProperty('--coral', branding.primaryColor);
-                          toast({ title: 'Branding Saved', description: 'Your organization branding is now applied.' });
+                          toast({ title: t('brandingSaved'), description: t('brandingSavedMsg') });
                         } else {
-                          toast({ title: 'Error', description: data.error || 'Failed to save branding', variant: 'destructive' });
+                          toast({ title: tc('error'), description: data.error || t('brandingSaveFailed'), variant: 'destructive' });
                         }
                       } catch {
-                        toast({ title: 'Error', description: 'Failed to save branding', variant: 'destructive' });
+                        toast({ title: tc('error'), description: t('brandingSaveFailed'), variant: 'destructive' });
                       } finally {
                         setBrandingSaving(false);
                       }
                     }}
                   >
                     {brandingSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                    Save Branding
+                    {t('saveBranding')}
                   </Button>
                 </div>
               </div>
