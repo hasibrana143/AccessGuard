@@ -870,5 +870,21 @@
     "recentScans": "हाल के स्कैन",
     "scanCounts": "{pages} पेज \u00b7 {violations} उल्लंघन \u00b7 {date}",
     "noScans": "अभी कोई स्कैन नहीं"
+  },
+  "header": {
+    "openMenu": "मेनू खोलें",
+    "branding": "ब्रांडिंग",
+    "orgLogoAlt": "संगठन का लोगो",
+    "searchLabel": "उल्लंघन और प्रोजेक्ट खोजें",
+    "searchPlaceholder": "उल्लंघन, प्रोजेक्ट खोजें...",
+    "notifications": "सूचनाएँ",
+    "noRecentActivity": "कोई हालिया गतिविधि नहीं",
+    "viewAllActivity": "सभी गतिविधि देखें",
+    "helpSupport": "सहायता और समर्थन",
+    "helpSupportTip": "सहायता और समर्थन",
+    "user": "उपयोगकर्ता",
+    "pricingPlans": "मूल्य निर्धारण और प्लान",
+    "settings": "सेटिंग्स",
+    "signOut": "साइन आउट"
   }
 }

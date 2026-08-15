@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Menu, Search, Bell, HelpCircle, Settings, LogOut, ChevronDown, CreditCard, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +40,7 @@ const NOTIFICATION_ACTIONS = new Set([
 ]);
 
 export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeaderProps) {
+  const t = useTranslations('header');
   const router = useRouter();
   const { user: authUser, isAdmin } = useAuth();
   const [notifications, setNotifications] = useState<AuditNotification[]>([]);
@@ -96,13 +98,13 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
     <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="flex items-center justify-between h-16 px-4 sm:px-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Open menu">
+          <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label={t('openMenu')}>
             <Menu className="h-5 w-5" />
           </Button>
           {branding && (branding.logoUrl || branding.displayName) && (
-            <div className="hidden md:flex items-center gap-2 min-w-0" aria-label="Branding">
+            <div className="hidden md:flex items-center gap-2 min-w-0" aria-label={t('branding')}>
               {branding.logoUrl ? (
-                <img src={branding.logoUrl} alt="Organization logo" className="h-7 w-7 object-contain rounded" />
+                <img src={branding.logoUrl} alt={t('orgLogoAlt')} className="h-7 w-7 object-contain rounded" />
               ) : null}
               {branding.displayName ? (
                 <span className="font-semibold truncate max-w-[160px]">{branding.displayName}</span>
@@ -110,11 +112,11 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
             </div>
           )}
           <div className="relative hidden sm:block">
-            <Label htmlFor="header-search" className="sr-only">Search violations and projects</Label>
+            <Label htmlFor="header-search" className="sr-only">{t('searchLabel')}</Label>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <Input
               id="header-search"
-              placeholder="Search violations, projects..."
+              placeholder={t('searchPlaceholder')}
               className="w-72 pl-9 bg-muted/50"
               autoComplete="off"
             />
@@ -124,7 +126,7 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
           {isAdmin && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
+              <Button variant="ghost" size="icon" className="relative" aria-label={t('notifications')}>
                 <Bell className="h-5 w-5" />
                 {notifications.length > 0 && (
                   <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-coral" aria-hidden="true" />
@@ -132,14 +134,14 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80">
-              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+              <DropdownMenuLabel>{t('notifications')}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {notificationsLoading ? (
                 <div className="flex items-center justify-center py-6">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
               ) : notifications.length === 0 ? (
-                <div className="py-6 text-center text-sm text-muted-foreground">No recent activity</div>
+                <div className="py-6 text-center text-sm text-muted-foreground">{t('noRecentActivity')}</div>
               ) : (
                 <div className="max-h-80 overflow-y-auto">
                   {notifications.map((n) => (
@@ -157,7 +159,7 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push('/audit-logs')} className="justify-center text-sm">
-                View all activity
+                {t('viewAllActivity')}
                 <ArrowRight className="h-3.5 w-3.5 ml-1" />
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -166,11 +168,11 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Help and support" onClick={() => window.open('https://github.com', '_blank', 'noopener,noreferrer')}>
+                <Button variant="ghost" size="icon" aria-label={t('helpSupport')} onClick={() => window.open('https://github.com', '_blank', 'noopener,noreferrer')}>
                   <HelpCircle className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Help & Support</TooltipContent>
+              <TooltipContent>{t('helpSupportTip')}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
@@ -182,7 +184,7 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
                     {user?.name?.charAt(0) || 'U'}
                   </AvatarFallback>
                 </Avatar>
-                <span className="hidden sm:inline text-sm">{user?.name || 'User'}</span>
+                <span className="hidden sm:inline text-sm">{user?.name || t('user')}</span>
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
@@ -196,16 +198,16 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => router.push('/pricing')}>
                 <CreditCard className="h-4 w-4 mr-2" />
-                Pricing & Plans
+                {t('pricingPlans')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push('/settings')}>
                 <Settings className="h-4 w-4 mr-2" />
-                Settings
+                {t('settings')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onLogout} className="text-red-500 focus:text-red-500">
                 <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
+                {t('signOut')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -870,5 +870,21 @@
     "recentScans": "Recent Scans",
     "scanCounts": "{pages} pages \u00b7 {violations} violations \u00b7 {date}",
     "noScans": "No scans yet"
+  },
+  "header": {
+    "openMenu": "Open menu",
+    "branding": "Branding",
+    "orgLogoAlt": "Organization logo",
+    "searchLabel": "Search violations and projects",
+    "searchPlaceholder": "Search violations, projects...",
+    "notifications": "Notifications",
+    "noRecentActivity": "No recent activity",
+    "viewAllActivity": "View all activity",
+    "helpSupport": "Help and support",
+    "helpSupportTip": "Help & Support",
+    "user": "User",
+    "pricingPlans": "Pricing & Plans",
+    "settings": "Settings",
+    "signOut": "Sign Out"
   }
 }
