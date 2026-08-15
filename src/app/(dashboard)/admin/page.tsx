@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Shield, Users, Building2, Activity, Loader2, RefreshCw, Database, Server,
   Cpu, ScrollText, CheckCircle2, XCircle, AlertTriangle, UserCog
@@ -52,13 +53,6 @@ interface AdminData {
   flags: Record<string, boolean>;
 }
 
-const FLAGS = [
-  { key: 'scanner.ai_remediation', label: 'AI Remediation', description: 'AI-generated fix code for violations' },
-  { key: 'scheduler.automation', label: 'Scheduled Scans', description: 'Automatic recurring scans' },
-  { key: 'auth.github', label: 'GitHub Integration', description: 'GitHub OAuth login and PR creation' },
-  { key: 'notifications.email', label: 'Email Notifications', description: 'Scan and alert emails' },
-];
-
 function HealthBadge({ status }: { status: string }) {
   const ok = status === 'ok';
   return (
@@ -70,6 +64,8 @@ function HealthBadge({ status }: { status: string }) {
 }
 
 export default function AdminPage() {
+  const t = useTranslations('admin');
+  const tc = useTranslations('common');
   const { user } = useAuth();
   const { toast } = useToast();
   const [data, setData] = useState<AdminData | null>(null);
@@ -88,10 +84,10 @@ export default function AdminPage() {
         setData(json.data);
         if (json.data.flags) setFlags(json.data.flags);
       } else {
-        toast({ title: 'Error', description: json.error || 'Failed to load admin data', variant: 'destructive' });
+        toast({ title: tc('error'), description: json.error || t('loadFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to load admin data', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('loadFailed'), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -110,13 +106,13 @@ export default function AdminPage() {
       });
       const json = await res.json();
       if (json.success) {
-        toast({ title: 'Role Updated', description: `User role changed to ${role}` });
+        toast({ title: t('roleUpdated'), description: t('roleUpdatedMsg', { role }) });
         fetchData();
       } else {
-        toast({ title: 'Error', description: json.error || 'Failed to update role', variant: 'destructive' });
+        toast({ title: tc('error'), description: json.error || t('roleUpdateFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to update role', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('roleUpdateFailed'), variant: 'destructive' });
     }
   };
 
@@ -131,12 +127,12 @@ export default function AdminPage() {
       const json = await res.json();
       if (json.success) {
         setFlags(prev => ({ ...prev, [flag]: enabled }));
-        toast({ title: enabled ? 'Enabled' : 'Disabled', description: `${flag} ${enabled ? 'enabled' : 'disabled'}` });
+        toast({ title: enabled ? t('enabled') : t('disabled'), description: t('flagToggled', { flag, state: enabled ? t('enabled') : t('disabled') }) });
       } else {
-        toast({ title: 'Error', description: json.error || 'Failed to update flag', variant: 'destructive' });
+        toast({ title: tc('error'), description: json.error || t('flagUpdateFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to update flag', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('flagUpdateFailed'), variant: 'destructive' });
     } finally {
       setFlagUpdating(null);
     }
@@ -147,8 +143,8 @@ export default function AdminPage() {
       <div className="flex items-center justify-center py-24">
         <div className="text-center">
           <Shield className="h-12 w-12 mx-auto mb-3 text-muted-foreground/40" />
-          <h1 className="text-xl font-bold mb-1">Admin Access Required</h1>
-          <p className="text-sm text-muted-foreground">Only admins can view this panel.</p>
+          <h1 className="text-xl font-bold mb-1">{t('adminRequired')}</h1>
+          <p className="text-sm text-muted-foreground">{t('adminRequiredMsg')}</p>
         </div>
       </div>
     );
@@ -158,12 +154,12 @@ export default function AdminPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Admin Panel</h1>
-          <p className="text-muted-foreground">System health, users, and organization management</p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
+          {t('refresh')}
         </Button>
       </div>
 
@@ -178,22 +174,22 @@ export default function AdminPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Database className="h-5 w-5 text-coral" />
-                  System Health
+                  {t('systemHealth')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {[
-                  { label: 'Database', icon: Database, value: data?.health.database },
-                  { label: 'Redis Queue', icon: Server, value: data?.health.redis },
-                  { label: 'API', icon: Cpu, value: data?.health.api },
-                  { label: 'Worker', icon: Activity, value: data?.health.worker },
+                  { label: t('database'), icon: Database, value: data?.health.database },
+                  { label: t('redisQueue'), icon: Server, value: data?.health.redis },
+                  { label: t('api'), icon: Cpu, value: data?.health.api },
+                  { label: t('worker'), icon: Activity, value: data?.health.worker },
                 ].map((row) => (
                   <div key={row.label} className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm">
                       <row.icon className="h-4 w-4 text-muted-foreground" />
                       {row.label}
                     </div>
-                    <HealthBadge status={row.value || 'unknown'} />
+                    <HealthBadge status={row.value || t('unknown')} />
                   </div>
                 ))}
               </CardContent>
@@ -203,16 +199,16 @@ export default function AdminPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Activity className="h-5 w-5 text-coral" />
-                  Usage Analytics
+                  {t('usageAnalytics')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: 'Projects', value: data?.usage.projects },
-                    { label: 'Scans', value: data?.usage.scans },
-                    { label: 'Violations', value: data?.usage.violations },
-                    { label: 'Audit Events', value: data?.usage.auditLogs },
+                    { label: t('projects'), value: data?.usage.projects },
+                    { label: t('scans'), value: data?.usage.scans },
+                    { label: t('violations'), value: data?.usage.violations },
+                    { label: t('auditEvents'), value: data?.usage.auditLogs },
                   ].map((s) => (
                     <div key={s.label} className="p-3 rounded-lg bg-muted/50">
                       <p className="text-2xl font-bold">{s.value ?? '—'}</p>
@@ -221,7 +217,7 @@ export default function AdminPage() {
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground mt-3">
-                  {data?.usage.scansThisWeek ?? 0} scans in the last 7 days
+                  {t('scansLast7d', { count: data?.usage.scansThisWeek ?? 0 })}
                 </p>
               </CardContent>
             </Card>
@@ -230,7 +226,7 @@ export default function AdminPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Building2 className="h-5 w-5 text-coral" />
-                  Organizations
+                  {t('organizations')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -241,12 +237,12 @@ export default function AdminPage() {
                       <Badge variant="outline" className="text-xs">{org.plan}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {org._count.users} users · {org._count.projects} projects · {org.slug}
+                      {t('orgCounts', { users: org._count.users, projects: org._count.projects, slug: org.slug })}
                     </p>
                   </div>
                 ))}
                 {(!data?.orgs || data.orgs.length === 0) && (
-                  <p className="text-sm text-muted-foreground text-center py-4">No organizations</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">{t('noOrganizations')}</p>
                 )}
               </CardContent>
             </Card>
@@ -256,9 +252,9 @@ export default function AdminPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Users className="h-5 w-5 text-coral" />
-                User Management
+                {t('userManagement')}
               </CardTitle>
-              <CardDescription>Manage team members and roles</CardDescription>
+              <CardDescription>{t('userManagementDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y divide-border">
@@ -269,31 +265,31 @@ export default function AdminPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
-                        <span className="font-medium text-sm truncate">{u.name || 'Unnamed'}</span>
+                        <span className="font-medium text-sm truncate">{u.name || t('unnamed')}</span>
                         <Badge variant="outline" className="text-xs">{u.role}</Badge>
                         {u.emailVerifiedAt && (
-                          <Badge variant="outline" className="text-xs border-emerald-500/20 text-emerald-500">verified</Badge>
+                          <Badge variant="outline" className="text-xs border-emerald-500/20 text-emerald-500">{t('verified')}</Badge>
                         )}
                         {u.mfaEnabledAt && (
-                          <Badge variant="outline" className="text-xs border-blue-500/20 text-blue-500">MFA</Badge>
+                          <Badge variant="outline" className="text-xs border-blue-500/20 text-blue-500">{t('mfa')}</Badge>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">{u.email} · joined {formatRelativeTime(u.createdAt)}</p>
+                      <p className="text-xs text-muted-foreground truncate">{t('joined', { email: u.email, date: formatRelativeTime(u.createdAt) })}</p>
                     </div>
                     <Select value={u.role} onValueChange={(role) => handleSetRole(u.id, role)}>
-                      <SelectTrigger className="w-28" aria-label={`Role for ${u.email}`}>
+                      <SelectTrigger className="w-28" aria-label={t('roleAria', { email: u.email })}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="member">Member</SelectItem>
-                        <SelectItem value="viewer">Viewer</SelectItem>
+                        <SelectItem value="admin">{t('admin')}</SelectItem>
+                        <SelectItem value="member">{t('member')}</SelectItem>
+                        <SelectItem value="viewer">{t('viewer')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 ))}
                 {(!data?.users || data.users.length === 0) && (
-                  <p className="text-sm text-muted-foreground text-center py-8">No users found</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">{t('noUsers')}</p>
                 )}
               </div>
             </CardContent>
@@ -303,12 +299,17 @@ export default function AdminPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <ScrollText className="h-5 w-5 text-coral" />
-                Feature Flags
+                {t('featureFlags')}
               </CardTitle>
-              <CardDescription>Enable or disable platform features</CardDescription>
+              <CardDescription>{t('featureFlagsDesc')}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {FLAGS.map((flag) => (
+              {[
+                { key: 'scanner.ai_remediation', label: t('flagAi'), description: t('flagAiDesc') },
+                { key: 'scheduler.automation', label: t('flagScheduled'), description: t('flagScheduledDesc') },
+                { key: 'auth.github', label: t('flagGithub'), description: t('flagGithubDesc') },
+                { key: 'notifications.email', label: t('flagEmail'), description: t('flagEmailDesc') },
+              ].map((flag) => (
                 <div key={flag.key} className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">{flag.label}</p>
@@ -328,7 +329,7 @@ export default function AdminPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Activity className="h-5 w-5 text-coral" />
-                Recent Scans
+                {t('recentScans')}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -347,14 +348,14 @@ export default function AdminPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium">{scan.project.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {scan.pagesScanned} pages · {scan.violationsFound} violations · {formatRelativeTime(scan.createdAt)}
+                        {t('scanCounts', { pages: scan.pagesScanned, violations: scan.violationsFound, date: formatRelativeTime(scan.createdAt) })}
                       </p>
                     </div>
                     <Badge variant="outline" className="text-xs">{scan.status}</Badge>
                   </div>
                 ))}
                 {(!data?.recentScans || data.recentScans.length === 0) && (
-                  <p className="text-sm text-muted-foreground text-center py-8">No scans yet</p>
+                  <p className="text-sm text-muted-foreground text-center py-8">{t('noScans')}</p>
                 )}
               </div>
             </CardContent>
