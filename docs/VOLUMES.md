@@ -36,6 +36,9 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V13 | Enterprise spec: SSO_SCIM_AUDIT_EXPORT (SAML 2.0 WorkOS→passport-saml, SCIM 2.0 RFC 7644, audit webhook export) · THREAT_MODEL (STRIDE, 3 critical flows, P0: SSRF/CSV-injection/prompt-injection — verified already mitigated in code) | `c10913d` |
 | V13 | Compliance: CERTIFICATION_PROGRAM (SOC 2 Type II via Vanta/Drata, ISO 27001 ISMS+SoA, HIPAA gate, FedRAMP phasing) · FinOps: REVENUE_FRAUD_BURN (ASC 606, Stripe Radar, velocity checks, 13-wk cash, runway) · AI safety: AI_SAFETY_EU_AI_ACT (Limited Risk, Art. 50 transparency, prompt-injection defense, model cards, per-org token cap) | `89a35ff` |
 | V13 | Enterprise code: GET /api/audit-logs/export — SIEM-ready JSON/CSV/CEF export, formula-injection sanitized, guard chain (rate→auth→org→admin→window→10k cap) · OpenAPI parity + 8 contract tests | `db21ff9` |
+| V13 | i18n infrastructure: next-intl 4.13 (en + hi), localePrefix never (URLs unchanged, middleware/e2e untouched), cookie→Accept-Language→en resolution, LocaleSwitcher, login page fully translated, root layout async + provider | `3ffa181` `19727bf` |
+| V13 | Data residency: Organization.dataRegion + add_org_data_region migration · GET/PATCH /api/settings/region (admin-gated) · GET /api/org/data-export GDPR Art. 20 portability (sensitive fields excluded) · prisma.seed config so reset auto-seeds | `05496c3` `237c656` |
+| V13 | Customer success: Organization.churnScore + lastChurnCalcAt · src/lib/churn.ts (S1 +3 no scan 30d, S2 +2 no activity, S3 +4 billing trouble; bands 5 at-risk / 8 high-risk) · weekly cron via scheduler daemon tick with 7d Redis gate · admin API exposes churn/region | `e4d9109` |
 
 ## Process (per volume)
 
