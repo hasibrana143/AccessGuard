@@ -5,6 +5,7 @@ import {
   AlertTriangle, AlertCircle, CheckCircle2, Download, Github, Search, Globe, Code, Clock,
   Sparkles, EyeOff, XCircle, Check, Loader2, CheckSquare, Square, ExternalLink
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +20,8 @@ import { getSeverityBadge, getStatusBadge, formatRelativeTime, SEVERITY_BG, SEVE
 import type { Violation, Severity, ViolationStatus } from '@/types';
 
 export default function ViolationsPage() {
+  const t = useTranslations('violations');
+  const tc = useTranslations('common');
   const { toast } = useToast();
   const [selectedViolation, setSelectedViolation] = useState<Violation | null>(null);
   const [severityFilter, setSeverityFilter] = useState<string>('all');
@@ -99,19 +102,19 @@ export default function ViolationsPage() {
   const handleStatusUpdate = async (id: string, status: ViolationStatus) => {
     try {
       await updateStatus.mutateAsync({ id, status });
-      toast({ title: 'Updated', description: `Violation marked as ${status}` });
+      toast({ title: t('updated'), description: t('markedAs', { status }) });
       setSelectedViolation(null);
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to update status', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('updateFailed'), variant: 'destructive' });
     }
   };
 
   const handleGenerateFix = async (violationId: string) => {
     try {
       await generateRemediation.mutateAsync({ violationId, forceRegenerate: true });
-      toast({ title: 'Fix Generated', description: 'AI remediation code has been generated' });
+      toast({ title: t('fixGenerated'), description: t('fixGeneratedMsg') });
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to generate fix', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('fixFailed'), variant: 'destructive' });
     }
   };
 
@@ -138,14 +141,14 @@ export default function ViolationsPage() {
       const firstViolation = filteredViolations.find(v => ids.includes(v.id));
       const projectId = firstViolation?.projectId;
       if (!projectId) {
-        toast({ title: 'Error', description: 'Could not determine project for selected violations', variant: 'destructive' });
+        toast({ title: tc('error'), description: t('bulkNoProject'), variant: 'destructive' });
         return;
       }
       await bulkUpdate.mutateAsync({ ids, status, projectId });
-      toast({ title: 'Updated', description: `${ids.length} violations marked as ${status}` });
+      toast({ title: t('updated'), description: t('bulkUpdated', { count: ids.length, status }) });
       setSelectedIds(new Set());
     } catch {
-      toast({ title: 'Error', description: 'Failed to bulk update violations', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('bulkUpdateFailed'), variant: 'destructive' });
     }
   };
 
@@ -164,10 +167,10 @@ export default function ViolationsPage() {
           setSelectedRepo(data.data[0].fullName);
         }
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to fetch repositories', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('fetchReposFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to fetch repositories', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('fetchReposFailed'), variant: 'destructive' });
     } finally {
       setReposLoading(false);
     }
@@ -179,7 +182,7 @@ export default function ViolationsPage() {
       ? Array.from(selectedIds)
       : filteredViolations.filter(v => v.remediationCode).map(v => v.id);
     if (ids.length === 0) {
-      toast({ title: 'No fixes available', description: 'Select violations or generate AI fixes first', variant: 'destructive' });
+      toast({ title: t('noFixesAvailable'), description: t('noFixesAvailableDesc'), variant: 'destructive' });
       return;
     }
     setPrSubmitting(true);
@@ -192,34 +195,36 @@ export default function ViolationsPage() {
       });
       const data = await res.json();
       if (!data.success) {
-        toast({ title: 'Error', description: data.error || 'Failed to create PR', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('prCreateFailed'), variant: 'destructive' });
       } else {
         const info = data.data || {};
         setPrResult({
           prUrl: info.prUrl,
-          message: info.message || 'Pull request created successfully',
+          message: info.message || t('prCreated'),
           demoMode: data.demoMode || false,
           violationsCount: info.violationsCount || ids.length,
           project: info.project,
         });
         toast({
-          title: data.demoMode ? 'Preview Generated' : 'PR Created',
-          description: data.demoMode ? 'Demo preview ready (GitHub not connected)' : 'Pull request created successfully',
+          title: data.demoMode ? t('previewGenerated') : t('prCreated'),
+          description: data.demoMode ? t('githubNotConnected') : t('prCreated'),
         });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to create PR', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('prCreateFailed'), variant: 'destructive' });
     } finally {
       setPrSubmitting(false);
     }
   };
 
+  const selectedFixCount = filteredViolations.filter(v => v.remediationCode).length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Violations</h1>
-          <p className="text-muted-foreground">Review and remediate accessibility issues</p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => {
@@ -229,11 +234,11 @@ export default function ViolationsPage() {
             window.open(`/api/violations/export?${params}`, '_blank');
           }}>
             <Download className="h-4 w-4 mr-2" />
-            Export CSV
+            {t('exportCsv')}
           </Button>
           <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={openPrDialog}>
             <Github className="h-4 w-4 mr-2" />
-            Create Fix PRs
+            {t('createFixPrs')}
           </Button>
         </div>
       </div>
@@ -242,11 +247,11 @@ export default function ViolationsPage() {
         <CardContent className="py-4">
           <div className="flex flex-wrap items-center gap-4">
             <div className="relative flex-1 min-w-64">
-              <Label htmlFor="violations-search" className="sr-only">Search violations</Label>
+              <Label htmlFor="violations-search" className="sr-only">{t('searchLabel')}</Label>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input
                 id="violations-search"
-                placeholder="Search violations..."
+                placeholder={t('searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -254,42 +259,42 @@ export default function ViolationsPage() {
               />
             </div>
             <Select value={severityFilter} onValueChange={setSeverityFilter}>
-              <SelectTrigger className="w-40" aria-label="Filter by severity">
-                <SelectValue placeholder="Severity" />
+              <SelectTrigger className="w-40" aria-label={t('filterBySeverity')}>
+                <SelectValue placeholder={t('severity')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Severities</SelectItem>
-                <SelectItem value="critical">Critical</SelectItem>
-                <SelectItem value="serious">Serious</SelectItem>
-                <SelectItem value="moderate">Moderate</SelectItem>
-                <SelectItem value="minor">Minor</SelectItem>
+                <SelectItem value="all">{t('allSeverities')}</SelectItem>
+                <SelectItem value="critical">{t('critical')}</SelectItem>
+                <SelectItem value="serious">{t('serious')}</SelectItem>
+                <SelectItem value="moderate">{t('moderate')}</SelectItem>
+                <SelectItem value="minor">{t('minor')}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40" aria-label="Filter by status">
-                <SelectValue placeholder="Status" />
+              <SelectTrigger className="w-40" aria-label={t('filterByStatus')}>
+                <SelectValue placeholder={t('status')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="fixed">Fixed</SelectItem>
-                <SelectItem value="ignored">Ignored</SelectItem>
+                <SelectItem value="all">{t('allStatuses')}</SelectItem>
+                <SelectItem value="open">{t('open')}</SelectItem>
+                <SelectItem value="fixed">{t('fixed')}</SelectItem>
+                <SelectItem value="ignored">{t('ignored')}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-44" aria-label="Sort by">
-                <SelectValue placeholder="Sort by" />
+              <SelectTrigger className="w-44" aria-label={t('sortByLabel')}>
+                <SelectValue placeholder={t('sortByLabel')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="severity-desc">Severity: High to Low</SelectItem>
-                <SelectItem value="severity-asc">Severity: Low to High</SelectItem>
-                <SelectItem value="date-new">Newest first</SelectItem>
-                <SelectItem value="date-old">Oldest first</SelectItem>
-                <SelectItem value="rule">Rule ID (A-Z)</SelectItem>
+                <SelectItem value="severity-desc">{t('sortSeverityDesc')}</SelectItem>
+                <SelectItem value="severity-asc">{t('sortSeverityAsc')}</SelectItem>
+                <SelectItem value="date-new">{t('sortNewest')}</SelectItem>
+                <SelectItem value="date-old">{t('sortOldest')}</SelectItem>
+                <SelectItem value="rule">{t('sortRule')}</SelectItem>
               </SelectContent>
             </Select>
             <Badge variant="secondary" className="px-3 py-1">
-              {filteredViolations.length} violations
+              {t('count', { count: filteredViolations.length })}
             </Badge>
           </div>
         </CardContent>
@@ -301,7 +306,7 @@ export default function ViolationsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CheckSquare className="h-4 w-4 text-coral" />
-                <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                <span className="text-sm font-medium">{t('selected', { count: selectedIds.size })}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -311,7 +316,7 @@ export default function ViolationsPage() {
                   disabled={bulkUpdate.isPending}
                 >
                   <Check className="h-4 w-4 mr-1" />
-                  Mark Fixed
+                  {t('markFixed')}
                 </Button>
                 <Button
                   variant="outline"
@@ -320,7 +325,7 @@ export default function ViolationsPage() {
                   disabled={bulkUpdate.isPending}
                 >
                   <EyeOff className="h-4 w-4 mr-1" />
-                  Ignore
+                  {t('ignore')}
                 </Button>
                 <Button
                   variant="outline"
@@ -329,14 +334,14 @@ export default function ViolationsPage() {
                   disabled={bulkUpdate.isPending}
                 >
                   <XCircle className="h-4 w-4 mr-1" />
-                  False Positive
+                  {t('falsePositive')}
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setSelectedIds(new Set())}
                 >
-                  Clear
+                  {t('clear')}
                 </Button>
               </div>
             </div>
@@ -361,7 +366,7 @@ export default function ViolationsPage() {
                 ) : (
                   <Square className="h-3.5 w-3.5" />
                 )}
-                Select All
+                {t('selectAll')}
               </button>
             </div>
           )}
@@ -430,7 +435,7 @@ export default function ViolationsPage() {
                               {Math.round(violation.aiConfidenceScore * 100)}%
                             </Badge>
                           </TooltipTrigger>
-                          <TooltipContent>AI confidence score</TooltipContent>
+                          <TooltipContent>{t('aiConfidenceScore')}</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
@@ -441,14 +446,14 @@ export default function ViolationsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              aria-label="View pull request"
+                              aria-label={t('viewPullRequest')}
                               className="text-coral hover:text-coral"
                               onClick={(e) => { e.stopPropagation(); window.open(violation.githubPrUrl!, '_blank', 'noopener,noreferrer'); }}
                             >
                               <ExternalLink className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>View pull request</TooltipContent>
+                          <TooltipContent>{t('viewPullRequest')}</TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
@@ -457,7 +462,7 @@ export default function ViolationsPage() {
                       size="sm"
                       onClick={(e) => { e.stopPropagation(); setSelectedViolation(violation); }}
                     >
-                      View Fix
+                      {t('viewFix')}
                     </Button>
                   </div>
                 </div>
@@ -469,9 +474,9 @@ export default function ViolationsPage() {
             <Card>
               <CardContent className="py-16 text-center">
                 <CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-emerald-500" />
-                <h3 className="text-lg font-semibold mb-2">No violations found</h3>
+                <h3 className="text-lg font-semibold mb-2">{t('noViolationsFound')}</h3>
                 <p className="text-muted-foreground">
-                  {searchQuery ? 'Try adjusting your search or filters.' : 'All accessibility issues have been resolved!'}
+                  {searchQuery ? t('adjustSearch') : t('allResolved')}
                 </p>
               </CardContent>
             </Card>
@@ -480,7 +485,7 @@ export default function ViolationsPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between pt-4">
               <p className="text-sm text-muted-foreground">
-                Page {Math.min(page, totalPages)} of {totalPages} ({filteredViolations.length} violations)
+                {t('pageOf', { current: Math.min(page, totalPages), total: totalPages, count: filteredViolations.length })}
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -489,7 +494,7 @@ export default function ViolationsPage() {
                   disabled={page <= 1}
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                 >
-                  Previous
+                  {t('previous')}
                 </Button>
                 <Button
                   variant="outline"
@@ -497,7 +502,7 @@ export default function ViolationsPage() {
                   disabled={page >= totalPages}
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 >
-                  Next
+                  {t('next')}
                 </Button>
               </div>
             </div>
@@ -532,13 +537,13 @@ export default function ViolationsPage() {
 
           <div className="flex-1 overflow-auto space-y-4">
             <div>
-              <h4 className="text-sm font-medium mb-2">Description</h4>
+              <h4 className="text-sm font-medium mb-2">{t('description')}</h4>
               <p className="text-sm text-muted-foreground">{selectedViolation?.description}</p>
             </div>
 
             {selectedViolation?.elementSelector && (
               <div>
-                <h4 className="text-sm font-medium mb-2">Element Selector</h4>
+                <h4 className="text-sm font-medium mb-2">{t('elementSelectorLabel')}</h4>
                 <code className="block p-3 bg-muted rounded-lg text-sm font-mono">
                   {selectedViolation.elementSelector}
                 </code>
@@ -549,7 +554,7 @@ export default function ViolationsPage() {
               <div>
                 <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
                   <Code className="h-4 w-4" />
-                  Current Code
+                  {t('currentCode')}
                 </h4>
                 <pre className="p-4 bg-muted rounded-lg text-sm font-mono overflow-x-auto text-red-400/80">
                   <code>{selectedViolation.elementHtml}</code>
@@ -562,11 +567,11 @@ export default function ViolationsPage() {
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="text-sm font-medium flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-coral" />
-                    AI-Suggested Fix
+                    {t('aiSuggestedFix')}
                   </h4>
                   {remediation?.confidence && (
                     <Badge variant="secondary" className="text-xs">
-                      {Math.round(remediation.confidence * 100)}% confidence
+                      {t('confidence', { percent: Math.round(remediation.confidence * 100) })}
                     </Badge>
                   )}
                 </div>
@@ -582,7 +587,7 @@ export default function ViolationsPage() {
                 {(remediation?.explanation || selectedViolation?.aiExplanation) && (
                   <div className="mt-3 p-3 bg-muted/50 rounded-lg">
                     <p className="text-sm text-muted-foreground">
-                      <strong>Explanation:</strong> {remediation?.explanation || selectedViolation?.aiExplanation}
+                      <strong>{t('explanation')}</strong> {remediation?.explanation || selectedViolation?.aiExplanation}
                     </p>
                   </div>
                 )}
@@ -598,7 +603,7 @@ export default function ViolationsPage() {
                 disabled={updateStatus.isPending}
               >
                 <EyeOff className="h-4 w-4 mr-2" />
-                Ignore
+                {t('ignore')}
               </Button>
               <Button
                 variant="outline"
@@ -606,7 +611,7 @@ export default function ViolationsPage() {
                 disabled={updateStatus.isPending}
               >
                 <XCircle className="h-4 w-4 mr-2" />
-                False Positive
+                {t('falsePositive')}
               </Button>
             </div>
             <div className="flex gap-2">
@@ -617,7 +622,7 @@ export default function ViolationsPage() {
                 disabled={updateStatus.isPending}
               >
                 <Check className="h-4 w-4 mr-2" />
-                Mark Fixed
+                {t('markFixed')}
               </Button>
               <Button
                 className="bg-coral hover:bg-coral/90 text-coral-foreground"
@@ -625,9 +630,9 @@ export default function ViolationsPage() {
                 disabled={generateRemediation.isPending}
               >
                 {generateRemediation.isPending ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('generating')}</>
                 ) : (
-                  <><Sparkles className="h-4 w-4 mr-2" />Generate Fix</>
+                  <><Sparkles className="h-4 w-4 mr-2" />{t('generateFix')}</>
                 )}
               </Button>
             </div>
@@ -640,13 +645,13 @@ export default function ViolationsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Github className="h-5 w-5 text-coral" />
-              Create Fix PRs
+              {t('createFixPrs')}
             </DialogTitle>
             <DialogDescription>
-              Generate a pull request with AI-suggested accessibility fixes for{' '}
-              <strong>{selectedIds.size > 0 ? `${selectedIds.size} selected` : `${filteredViolations.filter(v => v.remediationCode).length} violations with fixes`}</strong>.
-              {selectedIds.size === 0 && filteredViolations.filter(v => v.remediationCode).length === 0 && (
-                <span className="block mt-1 text-red-500">No violations with generated fixes found. Generate fixes first.</span>
+              {t('createPrDesc')}{' '}
+              <strong>{selectedIds.size > 0 ? t('prSelectedCount', { count: selectedIds.size }) : t('prFixCount', { count: selectedFixCount })}</strong>.
+              {selectedIds.size === 0 && selectedFixCount === 0 && (
+                <span className="block mt-1 text-red-500">{t('prNoFixes')}</span>
               )}
             </DialogDescription>
           </DialogHeader>
@@ -660,15 +665,15 @@ export default function ViolationsPage() {
               <>
                 {demoMode && (
                   <div className="p-3 rounded-lg border border-coral/20 bg-coral/5 text-sm text-muted-foreground">
-                    GitHub is not connected — a demo preview will be generated instead of a real PR.
+                    {t('githubNotConnected')}
                   </div>
                 )}
                 <div className="grid gap-2">
-                  <Label htmlFor="pr-repo">Repository</Label>
+                  <Label htmlFor="pr-repo">{t('repository')}</Label>
                   {repos.length > 0 ? (
                     <Select value={selectedRepo} onValueChange={setSelectedRepo}>
                       <SelectTrigger id="pr-repo">
-                        <SelectValue placeholder={demoMode ? 'Select a repository' : 'Select a repository'} />
+                        <SelectValue placeholder={t('selectRepository')} />
                       </SelectTrigger>
                       <SelectContent>
                         {repos.map((repo) => (
@@ -679,26 +684,22 @@ export default function ViolationsPage() {
                       </SelectContent>
                     </Select>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No repositories found.</p>
+                    <p className="text-sm text-muted-foreground">{t('noRepositories')}</p>
                   )}
                 </div>
 
                 {prResult && (
                   <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
                     <div className="flex items-center gap-2">
-                      {prResult.demoMode ? (
-                        <CheckCircle2 className="h-4 w-4 text-coral" />
-                      ) : (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      )}
+                      <CheckCircle2 className={`h-4 w-4 ${prResult.demoMode ? 'text-coral' : 'text-emerald-500'}`} />
                       <span className="text-sm font-medium">
-                        {prResult.demoMode ? 'Preview Generated' : 'Pull Request Created'}
+                        {prResult.demoMode ? t('previewGenerated') : t('prCreated')}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground">{prResult.message}</p>
                     {prResult.violationsCount != null && (
                       <p className="text-xs text-muted-foreground">
-                        {prResult.violationsCount} fix file(s){prResult.project ? ` for ${prResult.project.name}` : ''}
+                        {t('fixFiles', { count: prResult.violationsCount })}{prResult.project ? ` ${t('forProject', { name: prResult.project.name })}` : ''}
                       </p>
                     )}
                     {prResult.prUrl && (
@@ -709,7 +710,7 @@ export default function ViolationsPage() {
                         onClick={() => window.open(prResult.prUrl, '_blank', 'noopener,noreferrer')}
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        View PR on GitHub
+                        {t('viewPrOnGithub')}
                       </Button>
                     )}
                   </div>
@@ -720,7 +721,7 @@ export default function ViolationsPage() {
 
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setPrDialogOpen(false)} disabled={prSubmitting}>
-              Close
+              {tc('close')}
             </Button>
             <Button
               className="bg-coral hover:bg-coral/90 text-coral-foreground"
@@ -728,9 +729,9 @@ export default function ViolationsPage() {
               disabled={prSubmitting || (repos.length > 0 && !selectedRepo)}
             >
               {prSubmitting ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</>
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('creatingPr')}</>
               ) : (
-                <><Github className="h-4 w-4 mr-2" />Create PR</>
+                <><Github className="h-4 w-4 mr-2" />{t('createPr')}</>
               )}
             </Button>
           </DialogFooter>
