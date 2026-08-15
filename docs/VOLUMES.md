@@ -43,6 +43,8 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V13 | Enterprise SCIM 2.0 (RFC 7644): per-org encrypted bearer token · /api/scim/v2/Users (list with filter/startIndex/count, idempotent provision) + /Users/{id} (get/deprovision/delete) + ServiceProviderConfig discovery · token rotation via /api/admin/scim · scim.* audit events · org-scoped rate limit | `42d7bb4` |
 | V13 | Operations docs + registry: DATA_RESIDENCY (region + GDPR portability), VENDOR_MANAGEMENT (procurement/DPA, vendor_review audit), CUSTOMER_SUCCESS (churn bands + admin widget), VENDOR_REGISTRY.yaml (9 vendors, DPA/SOC2/regions) · vendor_review emitted on region switch | `36388e7` |
 | V13 | Multi-currency billing: Organization.currency (usd/eur/gbp/inr) · CURRENCIES/CURRENCY_RATES/formatPrice (Intl, INR zero-decimal) in src/lib/stripe.ts · GET/PATCH /api/billing/currency (admin-gated, audit, rate-limited) | `786b222` |
+| V13 | Settings UI (enterprise/privacy): billing currency selector, Data Residency Region with EU consent confirm, GDPR Art. 20 org data export button — all wired to the new endpoints | `0a80744` |
+| V13 | i18n phase 2: register page (form+toasts+terms), sidebar navigation (nav.* keys), forgot-password + reset-password pages, dashboard page (title/subtitle/actions) — all en+hi with LocaleSwitcher | `d5b889c` `89a07a3` `171acbe` `cc1b27b` |
 
 ## Process (per volume)
 
