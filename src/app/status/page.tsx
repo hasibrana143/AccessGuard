@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { getTranslations } from 'next-intl/server';
 
 // Public status page (docs/launch/ROADMAP.md: uptime/status page).
 // Probes the same endpoints K8s uses (live + ready) so this page can never
@@ -6,10 +7,13 @@ import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'System Status — AccessGuard',
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('statusPage');
+  return {
+    title: t('metaTitle'),
+    robots: { index: false, follow: false },
+  };
+}
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -19,7 +23,7 @@ type ProbeResult = {
   up: boolean;
 };
 
-async function probe(path: string): Promise<ProbeResult> {
+async function probe(path: string, labels: { ok: string; unreachable: string }): Promise<ProbeResult> {
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       cache: 'no-store',
@@ -31,16 +35,18 @@ async function probe(path: string): Promise<ProbeResult> {
     };
     return {
       name: path.replace('/api/health/', ''),
-      detail: body.status ?? (res.ok ? 'ok' : `HTTP ${res.status}`),
+      detail: body.status ?? (res.ok ? labels.ok : `HTTP ${res.status}`),
       up: res.ok,
     };
   } catch {
-    return { name: path.replace('/api/health/', ''), detail: 'unreachable', up: false };
+    return { name: path.replace('/api/health/', ''), detail: labels.unreachable, up: false };
   }
 }
 
 export default async function StatusPage() {
-  const [live, ready] = await Promise.all([probe('/api/health/live'), probe('/api/health/ready')]);
+  const t = await getTranslations('statusPage');
+  const labels = { ok: t('ok'), unreachable: t('unreachable') };
+  const [live, ready] = await Promise.all([probe('/api/health/live', labels), probe('/api/health/ready', labels)]);
   const checks = [live, ready];
   const allUp = checks.every((c) => c.up);
 
@@ -60,11 +66,11 @@ export default async function StatusPage() {
               } animate-pulse`}
             />
             <h1 className="text-xl font-bold text-primary">
-              {allUp ? 'All Systems Operational' : 'Partial Outage'}
+              {allUp ? t('allOperational') : t('partialOutage')}
             </h1>
           </div>
           <p className="text-sm text-muted-foreground mb-6">
-            Accessibility compliance platform — service health snapshot.
+            {t('subtitle')}
           </p>
 
           <ul className="space-y-3">
@@ -92,8 +98,7 @@ export default async function StatusPage() {
           </ul>
 
           <p className="mt-6 text-xs text-muted-foreground">
-            Last checked: {new Date().toISOString()} — reload the page for a fresh
-            snapshot.
+            {t('lastChecked', { time: new Date().toISOString() })}
           </p>
         </div>
       </div>

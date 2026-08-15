@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Shield, ArrowRight, Loader2, CheckCircle2, AlertCircle, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +12,7 @@ function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const t = useTranslations('verifyEmail');
   const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
   const [resending, setResending] = useState(false);
 
@@ -26,20 +28,20 @@ function VerifyEmailContent() {
         const data = await res.json();
         setStatus(data.success ? 'success' : 'error');
         if (data.success) {
-          toast({ title: 'Email Verified', description: 'Your email has been confirmed.' });
+          toast({ title: t('toastVerifiedTitle'), description: t('toastVerifiedDesc') });
         }
       } catch {
         setStatus('error');
       }
     })();
-  }, [searchParams, toast]);
+  }, [searchParams, toast, t]);
 
   const handleResend = async () => {
     setResending(true);
     try {
       const email = searchParams.get('email');
       if (!email) {
-        toast({ title: 'Error', description: 'Email not found. Go to Settings > Profile to resend.', variant: 'destructive' });
+        toast({ title: t('toastErrorTitle'), description: t('toastEmailNotFound'), variant: 'destructive' });
         return;
       }
       const res = await fetch('/api/auth/verify-email', {
@@ -49,12 +51,12 @@ function VerifyEmailContent() {
       });
       const data = await res.json();
       if (data.success) {
-        toast({ title: 'Verification Email Sent', description: data.demoToken ? `Demo token: ${data.demoToken}` : 'Check your inbox.' });
+        toast({ title: t('toastSentTitle'), description: data.demoToken ? t('toastDemoToken', { token: data.demoToken }) : t('toastCheckInbox') });
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to resend', variant: 'destructive' });
+        toast({ title: t('toastErrorTitle'), description: data.error || t('toastFailedDesc'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to resend verification email', variant: 'destructive' });
+      toast({ title: t('toastErrorTitle'), description: t('toastFailedResend'), variant: 'destructive' });
     } finally {
       setResending(false);
     }
@@ -65,7 +67,7 @@ function VerifyEmailContent() {
       <div className="w-full max-w-md">
         <Button variant="ghost" onClick={() => router.push('/')} className="mb-6">
           <ArrowRight className="h-4 w-4 mr-2 rotate-180" />
-          Back to Home
+          {t('backToHome')}
         </Button>
         <Card className="border-2">
           <CardHeader className="text-center">
@@ -74,39 +76,39 @@ function VerifyEmailContent() {
                 <Shield className="h-8 w-8 text-coral" />
               </div>
             </div>
-            <CardTitle className="text-2xl">Email Verification</CardTitle>
-            <CardDescription>Confirm your email address</CardDescription>
+            <CardTitle className="text-2xl">{t('title')}</CardTitle>
+            <CardDescription>{t('desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {status === 'verifying' && (
               <div className="flex flex-col items-center justify-center py-8 gap-3">
                 <Loader2 className="h-8 w-8 animate-spin text-coral" />
-                <p className="text-sm text-muted-foreground">Verifying your email...</p>
+                <p className="text-sm text-muted-foreground">{t('verifying')}</p>
               </div>
             )}
             {status === 'success' && (
               <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
                 <CheckCircle2 className="h-12 w-12 text-emerald-500" />
-                <p className="font-medium">Email verified!</p>
-                <p className="text-sm text-muted-foreground">Your account is fully activated.</p>
+                <p className="font-medium">{t('success')}</p>
+                <p className="text-sm text-muted-foreground">{t('successDesc')}</p>
                 <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={() => router.push('/auth/login')}>
-                  Go to Login
+                  {t('goToLogin')}
                 </Button>
               </div>
             )}
             {status === 'error' && (
               <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
                 <AlertCircle className="h-12 w-12 text-destructive" />
-                <p className="font-medium">Verification failed</p>
+                <p className="font-medium">{t('failed')}</p>
                 <p className="text-sm text-muted-foreground">
-                  This link is invalid or has expired. Resend a new verification email.
+                  {t('failedDesc')}
                 </p>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={handleResend} disabled={resending}>
-                    {resending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sending...</> : <><Mail className="h-4 w-4 mr-2" />Resend Email</>}
+                    {resending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('sending')}</> : <><Mail className="h-4 w-4 mr-2" />{t('resend')}</>}
                   </Button>
                   <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={() => router.push('/auth/login')}>
-                    Go to Login
+                    {t('goToLogin')}
                   </Button>
                 </div>
               </div>

@@ -1,55 +1,61 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { Check } from 'lucide-react';
 import Link from 'next/link';
 
-const plans = [
-  {
-    name: 'Starter',
-    price: '$49',
-    period: '/month',
-    desc: 'For small websites and freelancers',
-    features: ['1 website', 'Up to 500 pages/month', 'Weekly scans', 'Email reports', 'Community support'],
-    cta: 'Start Free Trial',
-    popular: false,
-  },
-  {
-    name: 'Growth',
-    price: '$149',
-    period: '/month',
-    desc: 'For growing teams and agencies',
-    features: ['5 websites', 'Up to 5,000 pages/month', 'Daily scans', 'AI remediation suggestions', 'GitHub auto-PR', 'Priority support'],
-    cta: 'Start Free Trial',
-    popular: true,
-  },
-  {
-    name: 'Agency',
-    price: '$399',
-    period: '/month',
-    desc: 'For digital agencies managing clients',
-    features: ['15 websites', 'Up to 25,000 pages/month', 'White-label reports', 'Team seats', 'GitHub auto-PR', 'Dedicated support'],
-    cta: 'Start Free Trial',
-    popular: false,
-  },
-  {
-    name: 'Enterprise',
-    price: 'Custom',
-    period: '',
-    desc: 'For large organizations',
-    features: ['Unlimited websites', 'Unlimited pages', 'SSO / SAML', 'Dedicated CSM', 'Custom integrations', 'SLA'],
-    cta: 'Contact Sales',
-    popular: false,
-  },
-];
-
 export default function PricingPage() {
+  const t = useTranslations('landing');
+  const plans = [
+    {
+      name: t('pStarter'),
+      price: '$49',
+      period: '/month',
+      desc: t('pStarterDesc'),
+      features: [t('pStarterF1'), t('pStarterF2'), t('pStarterF3'), t('pStarterF4'), t('pStarterF5')],
+      cta: t('startFreeTrial'),
+      popular: false,
+      enterprise: false,
+    },
+    {
+      name: t('pGrowth'),
+      price: '$149',
+      period: '/month',
+      desc: t('pGrowthDesc'),
+      features: [t('pGrowthF1'), t('pGrowthF2'), t('pGrowthF3'), t('pGrowthF4'), t('pGrowthF5'), t('pGrowthF6')],
+      cta: t('startFreeTrial'),
+      popular: true,
+      enterprise: false,
+    },
+    {
+      name: t('pAgency'),
+      price: '$399',
+      period: '/month',
+      desc: t('pAgencyDesc'),
+      features: [t('pAgencyF1'), t('pAgencyF2'), t('pAgencyF3'), t('pAgencyF4'), t('pAgencyF5'), t('pAgencyF6')],
+      cta: t('startFreeTrial'),
+      popular: false,
+      enterprise: false,
+    },
+    {
+      name: t('pEnterprise'),
+      price: 'Custom',
+      period: '',
+      desc: t('pEnterpriseDesc'),
+      features: [t('pEnterpriseF1'), t('pEnterpriseF2'), t('pEnterpriseF3'), t('pEnterpriseF4'), t('pEnterpriseF5'), t('pEnterpriseF6')],
+      cta: t('contactSales'),
+      popular: false,
+      enterprise: true,
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-background py-24 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-16">
-          <h1 className="text-4xl font-bold mb-4">Simple, Transparent Pricing</h1>
+          <h1 className="text-4xl font-bold mb-4">{t('pricingTitle')}</h1>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Start with a 14-day free trial. No credit card required.
+            {t('pricingSub')}
           </p>
         </div>
 
@@ -65,7 +71,7 @@ export default function PricingPage() {
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-coral text-coral-foreground px-4 py-1 rounded-full text-sm font-semibold">
-                  Most Popular
+                  {t('mostPopular')}
                 </div>
               )}
               <div className="mb-6">
@@ -77,7 +83,7 @@ export default function PricingPage() {
                 <span className="text-muted-foreground">{plan.period}</span>
               </div>
               <Link
-                href={plan.name === 'Enterprise' ? 'mailto:sales@accessguard.dev' : '/auth/register'}
+                href={plan.enterprise ? 'mailto:sales@accessguard.dev' : '/auth/register'}
                 className={`block text-center py-3 rounded-lg font-semibold mb-8 ${
                   plan.popular
                     ? 'bg-coral text-coral-foreground hover:bg-coral/90'
