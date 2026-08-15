@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { Target, AlertTriangle, AlertCircle, Globe, TrendingDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +14,7 @@ interface StatsGridProps {
 }
 
 export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps) {
+  const t = useTranslations('dash');
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card className="relative overflow-hidden">
@@ -20,7 +22,7 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
         <CardContent className="pt-6">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-muted-foreground">Avg Risk Score</p>
+              <p className="text-sm text-muted-foreground">{t('avgRiskScore')}</p>
               <p className={`text-3xl font-bold mt-1 ${getRiskColor(avgRiskScore)}`}>
                 {avgRiskScore}<span className="text-lg text-muted-foreground">/100</span>
               </p>
@@ -39,11 +41,11 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
         <CardContent className="pt-6">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-muted-foreground">Open Violations</p>
+              <p className="text-sm text-muted-foreground">{t('openViolations')}</p>
               <p className="text-3xl font-bold mt-1">{stats.total}</p>
               <div className="flex items-center gap-1 mt-2 text-xs text-emerald-500">
                 <TrendingDown className="h-3 w-3" />
-                <span>12% from last week</span>
+                <span>{t('fromLastWeek', { percent: 12 })}</span>
               </div>
             </div>
             <div className="p-3 rounded-xl bg-orange-500/10">
@@ -57,11 +59,11 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
         <CardContent className="pt-6">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-muted-foreground">Critical Issues</p>
+              <p className="text-sm text-muted-foreground">{t('criticalIssues')}</p>
               <p className="text-3xl font-bold mt-1 text-red-500">{stats.critical}</p>
               <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
                 <AlertCircle className="h-3 w-3" />
-                <span>Requires immediate attention</span>
+                <span>{t('requiresAttention')}</span>
               </div>
             </div>
             <div className="p-3 rounded-xl bg-red-500/10">
@@ -75,11 +77,11 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
         <CardContent className="pt-6">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm text-muted-foreground">Projects</p>
+              <p className="text-sm text-muted-foreground">{t('projects')}</p>
               <p className="text-3xl font-bold mt-1">{projectsCount}</p>
               <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
                 <Globe className="h-3 w-3" />
-                <span>Active monitoring</span>
+                <span>{t('activeMonitoring')}</span>
               </div>
             </div>
             <div className="p-3 rounded-xl bg-coral/10">

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { AlertTriangle, CheckCircle2, ChevronRight, Globe } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,17 +16,18 @@ interface RecentViolationsProps {
 }
 
 export function RecentViolations({ violations }: RecentViolationsProps) {
+  const t = useTranslations('dash');
   const router = useRouter();
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg">Recent Violations</CardTitle>
-            <CardDescription>Latest detected issues</CardDescription>
+            <CardTitle className="text-lg">{t('recentViolations')}</CardTitle>
+            <CardDescription>{t('recentViolationsDesc')}</CardDescription>
           </div>
           <Button variant="outline" size="sm" onClick={() => router.push('/violations')}>
-            View All
+            {t('viewAll')}
             <ChevronRight className="h-4 w-4 ml-1" />
           </Button>
         </div>
@@ -53,13 +55,13 @@ export function RecentViolations({ violations }: RecentViolationsProps) {
                   <span className="truncate">{v.url}</span>
                 </div>
               </div>
-                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); router.push('/violations'); }}>View</Button>
+                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); router.push('/violations'); }}>{t('view')}</Button>
             </div>
           ))}
           {(!Array.isArray(violations) || violations.length === 0) && (
             <div className="py-8 text-center text-muted-foreground">
               <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-emerald-500 opacity-50" />
-              <p>No violations found</p>
+              <p>{t('noViolations')}</p>
             </div>
           )}
         </div>

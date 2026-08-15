@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTranslations } from 'next-intl';
 import { Activity, CheckCircle2, Loader2, XCircle, Clock, ChevronRight, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,17 +15,18 @@ interface RecentScansProps {
 }
 
 export function RecentScans({ scans }: RecentScansProps) {
+  const t = useTranslations('dash');
   const { toast } = useToast();
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-lg">Recent Scans</CardTitle>
-            <CardDescription>Latest scan activity</CardDescription>
+            <CardTitle className="text-lg">{t('recentScans')}</CardTitle>
+            <CardDescription>{t('recentScansDesc')}</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={() => toast({ title: 'Coming soon', description: 'Full scan history view will be available soon' })}>
-            View All
+          <Button variant="outline" size="sm" onClick={() => toast({ title: t('comingSoon'), description: t('fullHistorySoon') })}>
+            {t('viewAll')}
             <ChevronRight className="h-4 w-4 ml-1" />
           </Button>
         </div>
@@ -53,7 +55,7 @@ export function RecentScans({ scans }: RecentScansProps) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-sm">{scan.project?.name || 'Unknown'}</span>
+                  <span className="font-medium text-sm">{scan.project?.name || t('unknown')}</span>
                   <Badge variant="outline" className={`text-xs ${
                     scan.status === 'completed' ? 'text-emerald-500' :
                     scan.status === 'running' ? 'text-blue-500' :
@@ -63,8 +65,8 @@ export function RecentScans({ scans }: RecentScansProps) {
                   </Badge>
                 </div>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>{scan.pagesScanned} pages</span>
-                  <span>{scan.violationsFound} violations</span>
+                  <span>{t('pages', { count: scan.pagesScanned })}</span>
+                  <span>{t('violations', { count: scan.violationsFound })}</span>
                   <span>{formatRelativeTime(scan.createdAt)}</span>
                 </div>
               </div>
@@ -73,7 +75,7 @@ export function RecentScans({ scans }: RecentScansProps) {
           {(!Array.isArray(scans) || scans.length === 0) && (
             <div className="py-8 text-center text-muted-foreground">
               <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No scans yet</p>
+              <p>{t('noScans')}</p>
             </div>
           )}
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Plus, Trash2, Loader2, Users, ShieldCheck, UserCog } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +32,7 @@ interface Member {
 const ALL_PERMISSIONS = Object.keys(PERMISSION_LABELS) as Permission[];
 
 export function RolesManager() {
+  const t = useTranslations('dash');
   const { toast } = useToast();
   const { user } = useAuth();
   const [roles, setRoles] = useState<CustomRole[]>([]);
@@ -74,7 +76,7 @@ export function RolesManager() {
 
   const handleCreate = async () => {
     if (!name.trim() || selected.length === 0) {
-      toast({ title: 'Incomplete', description: 'Enter a name and select at least one permission', variant: 'destructive' });
+      toast({ title: t('incomplete'), description: t('incompleteMsg'), variant: 'destructive' });
       return;
     }
     setCreating(true);
@@ -86,35 +88,35 @@ export function RolesManager() {
       });
       const data = await res.json();
       if (data.success) {
-        toast({ title: 'Role Created', description: `Role "${name.trim()}" is ready to assign` });
+        toast({ title: t('roleCreated'), description: t('roleCreatedMsg', { name: name.trim() }) });
         setName('');
         setDescription('');
         setSelected([]);
         loadRoles();
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to create role', variant: 'destructive' });
+        toast({ title: t('error'), description: data.error || t('createFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to create role', variant: 'destructive' });
+      toast({ title: t('error'), description: t('createFailed'), variant: 'destructive' });
     } finally {
       setCreating(false);
     }
   };
 
   const handleDelete = async (role: CustomRole) => {
-    const confirmed = window.confirm(`Delete role "${role.name}"? Members with this role keep base member permissions.`);
+    const confirmed = window.confirm(t('deleteConfirm', { name: role.name }));
     if (!confirmed) return;
     try {
       const res = await fetch(`/api/roles?id=${encodeURIComponent(role.id)}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setRoles((prev) => prev.filter((r) => r.id !== role.id));
-        toast({ title: 'Role Deleted', description: `${role.name} removed` });
+        toast({ title: t('roleDeleted'), description: t('roleDeletedMsg', { name: role.name }) });
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to delete role', variant: 'destructive' });
+        toast({ title: t('error'), description: data.error || t('deleteFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to delete role', variant: 'destructive' });
+      toast({ title: t('error'), description: t('deleteFailed'), variant: 'destructive' });
     }
   };
 
@@ -129,15 +131,15 @@ export function RolesManager() {
       });
       const data = await res.json();
       if (data.success) {
-        const roleName = roles.find((r) => r.id === customRoleId)?.name ?? 'no custom role';
-        toast({ title: 'Assignment Updated', description: `${member.email} now has ${roleName}` });
+        const roleName = roles.find((r) => r.id === customRoleId)?.name ?? t('noCustomRole');
+        toast({ title: t('assignmentUpdated'), description: t('assignmentMsg', { email: member.email, role: roleName }) });
         setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, customRoleId: customRoleId || null } : m)));
         loadRoles();
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to update assignment', variant: 'destructive' });
+        toast({ title: t('error'), description: data.error || t('updateFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to update assignment', variant: 'destructive' });
+      toast({ title: t('error'), description: t('updateFailed'), variant: 'destructive' });
     } finally {
       setAssigningId(null);
     }
@@ -148,10 +150,10 @@ export function RolesManager() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Users className="h-5 w-5 text-coral" />
-          Custom Roles
+          {t('customRoles')}
         </CardTitle>
         <CardDescription>
-          Create roles with specific permissions and assign them to members. Owners and admins always keep their full access.
+          {t('customRolesDesc')}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -162,7 +164,7 @@ export function RolesManager() {
         ) : (
           <div className="space-y-3">
             {roles.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No custom roles yet. Create your first role below.</p>
+              <p className="text-sm text-muted-foreground text-center py-4">{t('noCustomRoles')}</p>
             ) : (
               roles.map((role) => (
                 <div key={role.id} className="p-4 border border-border rounded-lg">
@@ -174,10 +176,10 @@ export function RolesManager() {
                     <div className="flex items-center gap-2">
                       {role.members.length > 0 && (
                         <Badge variant="outline" className="text-xs">
-                          {role.members.length} member{role.members.length > 1 ? 's' : ''}
+                          {t('memberCount', { count: role.members.length })}
                         </Badge>
                       )}
-                      <Button variant="ghost" size="icon" aria-label={`Delete role ${role.name}`} onClick={() => handleDelete(role)}>
+                      <Button variant="ghost" size="icon" aria-label={t('deleteRoleAria', { name: role.name })} onClick={() => handleDelete(role)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
@@ -207,11 +209,11 @@ export function RolesManager() {
 
         <div className="p-4 border border-border rounded-lg space-y-4">
           <div>
-            <p className="font-medium text-sm mb-1">Assign to members</p>
-            <p className="text-xs text-muted-foreground">Members keep base member permissions; the custom role adds extra ones</p>
+            <p className="font-medium text-sm mb-1">{t('assignToMembers')}</p>
+            <p className="text-xs text-muted-foreground">{t('assignDesc')}</p>
           </div>
           {members.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No members found in this organization.</p>
+            <p className="text-sm text-muted-foreground">{t('noMembers')}</p>
           ) : (
             <div className="space-y-2">
               {members
@@ -230,11 +232,11 @@ export function RolesManager() {
                       disabled={assigningId === member.id}
                       onValueChange={(value) => handleAssign(member, value)}
                     >
-                      <SelectTrigger className="w-[190px]" aria-label={`Custom role for ${member.name || member.email}`}>
-                        <SelectValue placeholder="No custom role" />
+                      <SelectTrigger className="w-[190px]" aria-label={t('customRoleForAria', { name: member.name || member.email })}>
+                        <SelectValue placeholder={t('noCustomRole')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">No custom role</SelectItem>
+                        <SelectItem value="">{t('noCustomRole')}</SelectItem>
                         {roles.map((role) => (
                           <SelectItem key={role.id} value={role.id}>
                             {role.name}
@@ -245,7 +247,7 @@ export function RolesManager() {
                   </div>
                 ))}
               {members.filter((m) => m.role === 'member').length === 0 && (
-                <p className="text-sm text-muted-foreground">No regular members to assign roles to.</p>
+                <p className="text-sm text-muted-foreground">{t('noRegularMembers')}</p>
               )}
             </div>
           )}
@@ -253,19 +255,19 @@ export function RolesManager() {
 
         <div className="p-4 border border-border rounded-lg space-y-4">
           <div>
-            <p className="font-medium text-sm mb-1">Create a role</p>
-            <p className="text-xs text-muted-foreground">Pick a name and the permissions to grant</p>
+            <p className="font-medium text-sm mb-1">{t('createRole')}</p>
+            <p className="text-xs text-muted-foreground">{t('createRoleDesc')}</p>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="role-name">Role name</Label>
-            <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Auditor" maxLength={50} />
+            <Label htmlFor="role-name">{t('roleName')}</Label>
+            <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('roleNamePlaceholder')} maxLength={50} />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="role-description">Description (optional)</Label>
-            <Input id="role-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What is this role for?" maxLength={200} />
+            <Label htmlFor="role-description">{t('descriptionOptional')}</Label>
+            <Input id="role-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('descriptionPlaceholder')} maxLength={200} />
           </div>
           <div className="grid gap-2">
-            <Label>Permissions</Label>
+            <Label>{t('permissions')}</Label>
             <div className="grid sm:grid-cols-2 gap-2">
               {ALL_PERMISSIONS.map((permission) => (
                 <label
@@ -292,7 +294,7 @@ export function RolesManager() {
           <div className="flex justify-end">
             <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" disabled={creating} onClick={handleCreate}>
               {creating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-              Create Role
+              {t('createRoleBtn')}
             </Button>
           </div>
         </div>

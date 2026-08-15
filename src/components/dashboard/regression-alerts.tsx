@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +17,7 @@ interface RegressionResult {
 }
 
 export function RegressionAlerts({ projects }: { projects: Project[] }) {
+  const t = useTranslations('dash');
   const [results, setResults] = useState<Record<string, RegressionResult | null>>({});
   const [loading, setLoading] = useState(true);
 
@@ -48,9 +50,9 @@ export function RegressionAlerts({ projects }: { projects: Project[] }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <TrendingUp className="h-5 w-5 text-coral" />
-            Regression Detection
+            {t('regressionDetection')}
           </CardTitle>
-          <CardDescription>Comparing latest scan against the previous one</CardDescription>
+          <CardDescription>{t('comparingScans')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-6">
@@ -71,13 +73,13 @@ export function RegressionAlerts({ projects }: { projects: Project[] }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <TrendingUp className="h-5 w-5 text-coral" />
-            Regression Detection
+            {t('regressionDetection')}
           </CardTitle>
-          <CardDescription>Automatically detect new issues between scans</CardDescription>
+          <CardDescription>{t('detectNewIssues')}</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Run at least two scans on a project to see regression analysis here.
+            {t('runTwoScans')}
           </p>
         </CardContent>
       </Card>
@@ -90,24 +92,24 @@ export function RegressionAlerts({ projects }: { projects: Project[] }) {
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <TrendingUp className="h-5 w-5 text-coral" />
-            Regression Detection
+            {t('regressionDetection')}
           </CardTitle>
           {totalRegressions > 0 ? (
             <Badge className="bg-red-500/10 text-red-500 border-red-500/20">
               <TrendingUp className="h-3 w-3 mr-1" />
-              {totalRegressions} new
+              {t('newBadge', { count: totalRegressions })}
             </Badge>
           ) : (
             <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
               <TrendingDown className="h-3 w-3 mr-1" />
-              No regressions
+              {t('noRegressions')}
             </Badge>
           )}
         </div>
         <CardDescription>
           {totalResolved > 0
-            ? `${totalResolved} issue(s) resolved since last scan.`
-            : 'New issues detected since the last scan.'}
+            ? t('resolvedSince', { count: totalResolved })
+            : t('newIssuesSince')}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -135,19 +137,19 @@ export function RegressionAlerts({ projects }: { projects: Project[] }) {
                     <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
                       <Minus className="h-3 w-3 mt-0.5 shrink-0 text-red-500" />
                       <span>
-                        <span className="text-red-500 capitalize">{v.severity}</span> — {v.ruleId} on {v.url}
+                        <span className="text-red-500 capitalize">{v.severity}</span> — {v.ruleId} {t('on')} {v.url}
                       </span>
                     </li>
                   ))}
                   {result.regressions > 4 && (
                     <li className="text-xs text-muted-foreground pl-5">
-                      ...and {result.regressions - 4} more
+                      {t('more', { count: result.regressions - 4 })}
                     </li>
                   )}
                 </ul>
               ) : (
                 <p className="text-xs text-emerald-500">
-                  {result.resolved > 0 ? `${result.resolved} issue(s) fixed since last scan.` : 'No new issues. All clear.'}
+                  {result.resolved > 0 ? t('fixedSince', { count: result.resolved }) : t('allClear')}
                 </p>
               )}
             </div>
