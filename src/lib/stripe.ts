@@ -3,6 +3,39 @@ import Stripe from 'stripe';
 
 export type PlanType = 'starter' | 'growth' | 'agency' | 'enterprise';
 
+export type CurrencyCode = 'usd' | 'eur' | 'gbp' | 'inr';
+
+// Billing currencies — monthly list price per plan (USD base, FX snapshot
+// reviewed quarterly; see docs/finops/REVENUE_FRAUD_BURN.md §Multi-currency).
+export const CURRENCIES: Record<CurrencyCode, { symbol: string; locale: string }> = {
+  usd: { symbol: '$', locale: 'en-US' },
+  eur: { symbol: '€', locale: 'de-DE' },
+  gbp: { symbol: '£', locale: 'en-GB' },
+  inr: { symbol: '₹', locale: 'en-IN' },
+};
+
+export const CURRENCY_RATES: Record<CurrencyCode, number> = {
+  usd: 1,
+  eur: 0.92,
+  gbp: 0.79,
+  inr: 83.5,
+};
+
+export function isCurrencyCode(value: string): value is CurrencyCode {
+  return value in CURRENCIES;
+}
+
+/** Format a USD amount (cents-free monthly price) in the org currency. */
+export function formatPrice(usdPrice: number, currency: CurrencyCode): string {
+  const rate = CURRENCY_RATES[currency];
+  const amount = usdPrice * rate;
+  return new Intl.NumberFormat(CURRENCIES[currency].locale, {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+    maximumFractionDigits: currency === 'inr' ? 0 : 2,
+  }).format(amount);
+}
+
 export interface PricingPlan {
   id: PlanType;
   name: string;

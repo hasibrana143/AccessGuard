@@ -1143,6 +1143,33 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/billing/currency': {
+    get: authed(op({
+      tags: ['Billing'],
+      summary: 'Read org billing currency + FX snapshot',
+      responses: {
+        '200': { description: 'Currency, symbol, rates, supported list' },
+        '401': { description: 'Unauthorized' },
+      },
+    })),
+    patch: authed(op({
+      tags: ['Billing'],
+      summary: 'Change org billing currency (admin/owner)',
+      description: 'Supports usd | eur | gbp | inr. Emits settings.updated audit event.',
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({
+          type: 'object',
+          properties: { currency: { type: 'string', enum: ['usd', 'eur', 'gbp', 'inr'] } },
+        }),
+      },
+      responses: {
+        '200': { description: 'Currency updated' },
+        '400': { description: 'Invalid currency' },
+        '403': { description: 'Requires admin/owner role' },
+      },
+    })),
+  },
   '/scim/v2/ServiceProviderConfig': {
     get: op({
       tags: ['SCIM'],

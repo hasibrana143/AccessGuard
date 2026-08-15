@@ -23,6 +23,7 @@ model Organization {
   ssoIssuer            String?
   ssoEntryPoint        String?
   ssoCertificate       String?
+  currency             String             @default("usd")
   settings             String             @default("{}")
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
