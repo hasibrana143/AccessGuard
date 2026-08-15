@@ -8,11 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslations } from 'next-intl';
+import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 
 function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const t = useTranslations('auth');
+  const tc = useTranslations('common');
   const [token, setToken] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -46,11 +50,11 @@ function ResetPasswordContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password.length < 6) {
-      toast({ title: 'Weak Password', description: 'Password must be at least 6 characters', variant: 'destructive' });
+      toast({ title: t('weakPassword'), description: t('weakPasswordDesc'), variant: 'destructive' });
       return;
     }
     if (password !== confirmPassword) {
-      toast({ title: 'Passwords Do Not Match', description: 'Please re-enter your new password', variant: 'destructive' });
+      toast({ title: t('passwordsDoNotMatch'), description: t('reenterPassword'), variant: 'destructive' });
       return;
     }
     setIsLoading(true);
@@ -63,12 +67,12 @@ function ResetPasswordContent() {
       const data = await res.json();
       if (data.success) {
         setDone(true);
-        toast({ title: 'Password Reset', description: 'Your password has been updated. Sign in with your new password.' });
+        toast({ title: t('passwordReset'), description: t('passwordResetDesc') });
       } else {
-        toast({ title: 'Reset Failed', description: data.error || 'Invalid or expired token', variant: 'destructive' });
+        toast({ title: t('resetFailed'), description: data.error || t('invalidOrExpired'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to connect to server', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('serverError'), variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -76,10 +80,13 @@ function ResetPasswordContent() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-coral/5 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Button variant="ghost" onClick={() => router.push('/')} className="mb-6">
+      <div className="relative w-full max-w-md">
+        <div className="absolute -top-4 right-0 z-10">
+          <LocaleSwitcher />
+        </div>
+        <Button variant="ghost" onClick={() => router.push('/')} className="mb-6 mt-8">
           <ArrowRight className="h-4 w-4 mr-2 rotate-180" />
-          Back to Home
+          {t('backToHome')}
         </Button>
         <Card className="border-2">
           <CardHeader className="text-center">
@@ -88,66 +95,66 @@ function ResetPasswordContent() {
                 <Shield className="h-8 w-8 text-coral" />
               </div>
             </div>
-            <CardTitle className="text-2xl">Reset Password</CardTitle>
-            <CardDescription>Choose a new password for your account</CardDescription>
+            <CardTitle className="text-2xl">{t('resetTitle')}</CardTitle>
+            <CardDescription>{t('resetSubtitle')}</CardDescription>
           </CardHeader>
           <CardContent>
             {isValidating ? (
               <div className="flex flex-col items-center justify-center py-8 gap-3">
                 <Loader2 className="h-8 w-8 animate-spin text-coral" />
-                <p className="text-sm text-muted-foreground">Validating reset link...</p>
+                <p className="text-sm text-muted-foreground">{t('validatingLink')}</p>
               </div>
             ) : !tokenValid ? (
               <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
                 <AlertCircle className="h-12 w-12 text-destructive" />
                 <p className="text-sm text-muted-foreground">
-                  This reset link is invalid or has expired. Request a new one.
+                  {t('invalidOrExpiredDesc')}
                 </p>
                 <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={() => router.push('/auth/forgot-password')}>
-                  Request New Link
+                  {t('requestNewLink')}
                 </Button>
               </div>
             ) : done ? (
               <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
                 <CheckCircle2 className="h-12 w-12 text-emerald-500" />
-                <p className="text-sm text-muted-foreground">Your password has been reset successfully.</p>
+                <p className="text-sm text-muted-foreground">{t('passwordResetSuccess')}</p>
                 <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={() => router.push('/auth/login')}>
-                  Sign In
+                  {t('signIn')}
                 </Button>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4" noValidate>
                 <div className="space-y-2">
-                  <Label htmlFor="password">New Password</Label>
+                  <Label htmlFor="password">{t('newPassword')}</Label>
                   <div className="relative">
                     <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="At least 6 characters"
+                      placeholder={t('newPasswordPlaceholder')}
                       required
                       autoComplete="new-password"
                     />
-                    <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                    <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? t('hidePassword') : t('showPassword')}>
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                  <Label htmlFor="confirmPassword">{t('confirmNewPassword')}</Label>
                   <Input
                     id="confirmPassword"
                     type={showPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Re-enter your new password"
+                    placeholder={t('confirmNewPasswordPlaceholder')}
                     required
                     autoComplete="new-password"
                   />
                 </div>
                 <Button type="submit" className="w-full bg-coral hover:bg-coral/90 text-coral-foreground h-11" disabled={isLoading}>
-                  {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Resetting...</> : 'Reset Password'}
+                  {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('resetting')}</> : t('resetPassword')}
                 </Button>
               </form>
             )}

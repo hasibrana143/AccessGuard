@@ -8,10 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslations } from 'next-intl';
+import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const t = useTranslations('auth');
+  const tc = useTranslations('common');
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -32,12 +36,12 @@ export default function ForgotPasswordPage() {
         if (data.demoToken) {
           setDemoToken(data.demoToken);
         }
-        toast({ title: 'Email Sent', description: 'If an account exists, a reset link has been sent.' });
+        toast({ title: t('emailSent'), description: t('resetSentDesc') });
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to send reset email', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('failedSendReset'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to connect to server', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('serverError'), variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -45,10 +49,13 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-coral/5 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Button variant="ghost" onClick={() => router.push('/')} className="mb-6">
+      <div className="relative w-full max-w-md">
+        <div className="absolute -top-4 right-0 z-10">
+          <LocaleSwitcher />
+        </div>
+        <Button variant="ghost" onClick={() => router.push('/')} className="mb-6 mt-8">
           <ArrowRight className="h-4 w-4 mr-2 rotate-180" />
-          Back to Home
+          {t('backToHome')}
         </Button>
         <Card className="border-2">
           <CardHeader className="text-center">
@@ -57,22 +64,22 @@ export default function ForgotPasswordPage() {
                 <Shield className="h-8 w-8 text-coral" />
               </div>
             </div>
-            <CardTitle className="text-2xl">Forgot Password</CardTitle>
-            <CardDescription>We&apos;ll email you a link to reset your password</CardDescription>
+            <CardTitle className="text-2xl">{t('forgotTitle')}</CardTitle>
+            <CardDescription>{t('forgotSubtitle')}</CardDescription>
           </CardHeader>
           <CardContent>
             {submitted ? (
               <div className="space-y-4 text-center py-4">
                 <CheckCircle2 className="h-12 w-12 mx-auto text-emerald-500" />
                 <p className="text-sm text-muted-foreground">
-                  If an account exists for <strong>{email}</strong>, a password reset link has been sent to your inbox.
+                  {t('resetLinkSentTo', { email })}
                 </p>
                 {demoToken && (
                   <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-xs text-muted-foreground mb-1">Demo mode — use this token:</p>
+                    <p className="text-xs text-muted-foreground mb-1">{t('demoTokenLabel')}</p>
                     <code className="text-sm font-mono break-all">{demoToken}</code>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Open <code className="font-mono">/reset-password?token={demoToken}</code> to reset.
+                      {t('openResetPath', { path: `/reset-password?token=${demoToken}` })}
                     </p>
                   </div>
                 )}
@@ -81,13 +88,13 @@ export default function ForgotPasswordPage() {
                   className="w-full"
                   onClick={() => router.push(`/reset-password${demoToken ? `?token=${demoToken}` : ''}`)}
                 >
-                  Go to Reset Page
+                  {t('goToResetPage')}
                 </Button>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4" noValidate>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{tc('email')}</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     <Input
@@ -103,7 +110,7 @@ export default function ForgotPasswordPage() {
                   </div>
                 </div>
                 <Button type="submit" className="w-full bg-coral hover:bg-coral/90 text-coral-foreground h-11" disabled={isLoading}>
-                  {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sending...</> : 'Send Reset Link'}
+                  {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('sending')}</> : t('sendResetLink')}
                 </Button>
               </form>
             )}
