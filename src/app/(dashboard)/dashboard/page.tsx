@@ -5,6 +5,7 @@ import { Download, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslations } from 'next-intl';
 import { useProjects, useViolationStats, useViolations, useScans, useTrendData } from '@/hooks/useApi';
 import { StatsGrid } from '@/components/dashboard/stats-grid';
 import { TrendChart } from '@/components/dashboard/trend-chart';
@@ -17,6 +18,8 @@ import { AIFixRate } from '@/components/dashboard/ai-fix-rate';
 export default function DashboardPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const t = useTranslations('dashboard');
+  const tc = useTranslations('common');
   const orgSlug = user?.orgSlug ?? undefined;
   const { data: projects, isLoading: projectsLoading } = useProjects(orgSlug);
   const { data: statsData } = useViolationStats(undefined, user?.orgSlug ?? undefined);
@@ -33,15 +36,15 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">Overview of your accessibility compliance</p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => {
             window.open('/api/violations/export', '_blank');
           }}>
             <Download className="h-4 w-4 mr-2" />
-            Export CSV
+            {t('exportCsv')}
           </Button>
           <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={async () => {
             try {
@@ -58,14 +61,14 @@ export default function DashboardPage() {
                   });
                   count++;
                 }
-                toast({ title: 'Scans Started', description: `Scanning ${count} project(s)` });
+                toast({ title: t('title'), description: t('scansStarted', { count }) });
               }
             } catch {
-              toast({ title: 'Error', description: 'Failed to start scans', variant: 'destructive' });
+              toast({ title: tc('error'), description: t('failedStartScans'), variant: 'destructive' });
             }
           }}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Scan All
+            {t('scanAll')}
           </Button>
         </div>
       </div>

@@ -163,7 +163,12 @@
     "recentActivity": "Recent activity",
     "noActivity": "No recent activity",
     "criticalViolations": "Critical violations",
-    "complianceStatus": "Compliance status"
+    "complianceStatus": "Compliance status",
+    "subtitle": "Overview of your accessibility compliance",
+    "exportCsv": "Export CSV",
+    "scanAll": "Scan All",
+    "scansStarted": "Scanning {count} project(s)",
+    "failedStartScans": "Failed to start scans"
   },
   "projects": {
     "title": "Projects",

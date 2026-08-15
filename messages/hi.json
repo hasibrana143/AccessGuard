@@ -163,7 +163,12 @@
     "recentActivity": "हाल की गतिविधि",
     "noActivity": "कोई हाल की गतिविधि नहीं",
     "criticalViolations": "गंभीर उल्लंघन",
-    "complianceStatus": "अनुपालन स्थिति"
+    "complianceStatus": "अनुपालन स्थिति",
+    "subtitle": "आपके एक्सेसिबिलिटी अनुपालन का अवलोकन",
+    "exportCsv": "CSV निर्यात करें",
+    "scanAll": "सभी स्कैन करें",
+    "scansStarted": "{count} प्रोजेक्ट स्कैन हो रहे हैं",
+    "failedStartScans": "स्कैन शुरू करने में विफल"
   },
   "projects": {
     "title": "प्रोजेक्ट",
