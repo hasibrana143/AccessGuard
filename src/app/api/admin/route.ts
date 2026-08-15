@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { logger } from '@/lib/error-logger';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
 function isAdmin(user: { role?: string | null } | undefined): boolean {
   return user?.role === 'admin' || user?.role === 'owner';
@@ -10,6 +11,12 @@ function isAdmin(user: { role?: string | null } | undefined): boolean {
 
 // GET /api/admin - Admin panel data (users, orgs, system health, usage)
 export async function GET(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`admin-get:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user || !isAdmin(session.user as { role?: string })) {
@@ -109,6 +116,12 @@ export async function GET(request: NextRequest) {
 
 // PATCH /api/admin - Toggle feature flags / update roles
 export async function PATCH(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`admin-patch:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user || !isAdmin(session.user as { role?: string })) {

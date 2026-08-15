@@ -5,9 +5,16 @@ import { logger } from '@/lib/error-logger';
 import { encryptSecret, decryptSecret, isEncrypted } from '@/lib/crypto';
 import { requirePermission } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
 // GET /api/settings/api-key - Get the org's masked API key (MANAGE_SETTINGS only)
 export async function GET(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`api-key-get:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
   try {
     const auth = await requirePermission(request, PERMISSIONS.MANAGE_SETTINGS);
     if (auth instanceof NextResponse) return auth;
@@ -64,6 +71,12 @@ export async function GET(request: NextRequest) {
 
 // POST /api/settings/api-key - Generate a new API key (admin or owner only)
 export async function POST(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`api-key-post:${clientId}`, { interval: 60 * 1000, limit: 5 });
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
   try {
     const auth = await requirePermission(request, PERMISSIONS.MANAGE_SETTINGS);
     if (auth instanceof NextResponse) return auth;

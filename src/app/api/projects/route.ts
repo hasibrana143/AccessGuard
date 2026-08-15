@@ -5,9 +5,16 @@ import { requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 import { enqueueScan } from '@/lib/queue';
 import { validateTargetUrl } from '@/lib/url-validation';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
 // GET /api/projects - List all projects for the authenticated user's org
 export async function GET(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`projects-list:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
   try {
     const { searchParams } = new URL(request.url);
     const orgParam = searchParams.get('orgId');
@@ -103,6 +110,12 @@ export async function GET(request: NextRequest) {
 
 // POST /api/projects - Create a new project in the authenticated user's org
 export async function POST(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`projects-create:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
   try {
     const body = await request.json();
     const { name, url, description, crawlConfig, orgSlug } = body;

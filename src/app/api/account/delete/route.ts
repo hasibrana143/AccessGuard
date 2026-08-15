@@ -3,10 +3,18 @@ import { db } from '@/lib/db';
 import { getToken } from 'next-auth/jwt';
 import { requireVerifiedEmail } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse } from '@/lib/rate-limit';
 
 const secret = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
 
 export async function POST(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`account-delete:${clientId}`, { interval: 60 * 1000, limit: 3 });
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   const token = await getToken({ req: request, secret });
   if (!token || !token.sub) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
