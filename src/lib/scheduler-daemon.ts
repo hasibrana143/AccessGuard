@@ -4,9 +4,12 @@ import { enqueueScan } from './queue';
 import { db } from './db';
 import { logger } from './error-logger';
 import { getNextRunForSchedule } from './cron';
+import { computeChurnScores } from './churn';
 
 const TICK_INTERVAL_MS = 60 * 1000;
 const TICK_JOB_ID = 'scheduler-tick';
+const CHURN_RUN_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+const CHURN_LAST_RUN_KEY = 'churn:last-run';
 
 let schedulerQueue: Queue | null = null;
 let schedulerWorker: Worker | null = null;
@@ -145,6 +148,20 @@ export async function pruneWebhookEvents(retentionDays = 30): Promise<number> {
   return count;
 }
 
+export async function computeChurnScoresWeekly(now = new Date()): Promise<number> {
+  const redis = getRedis();
+  if (!redis) return 0;
+
+  const lastRun = await redis.get(CHURN_LAST_RUN_KEY);
+  if (lastRun && now.getTime() - Number(lastRun) < CHURN_RUN_INTERVAL_MS) {
+    return 0;
+  }
+
+  const changed = await computeChurnScores(now);
+  await redis.set(CHURN_LAST_RUN_KEY, String(now.getTime()));
+  return changed;
+}
+
 export function startSchedulerDaemon() {
   const redis = getRedis();
   if (!redis) {
@@ -173,6 +190,7 @@ export function startSchedulerDaemon() {
     async () => {
       await processDueScheduledScans();
       await pruneWebhookEvents();
+      await computeChurnScoresWeekly();
     },
     {
       connection: { url: process.env.REDIS_URL || 'redis://localhost:6379' },
