@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { FileText, BarChart3, Shield, Download, Loader2, Share2, Copy, Check, Link as LinkIcon, ExternalLink } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,6 +16,8 @@ import { useProjects } from '@/hooks/useApi';
 type ShareType = 'report' | 'vpat' | 'summary';
 
 export default function ReportsPage() {
+  const t = useTranslations('reports');
+  const tc = useTranslations('common');
   const { toast } = useToast();
   const { user } = useAuth();
   const orgSlug = user?.orgSlug ?? undefined;
@@ -27,9 +30,11 @@ export default function ReportsPage() {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const typeName = (type: ShareType) => type === 'report' ? t('legalShield') : type === 'vpat' ? t('vpat') : t('execSummary');
+
   const generateReport = async (type: 'report' | 'vpat' | 'summary') => {
     if (!selectedProjectId) {
-      toast({ title: 'Select Project', description: 'Please select a project first', variant: 'destructive' });
+      toast({ title: t('title'), description: t('selectProjectFirst'), variant: 'destructive' });
       return;
     }
     setGenerating(type);
@@ -38,7 +43,7 @@ export default function ReportsPage() {
       const res = await fetch(`${endpoint}?projectId=${selectedProjectId}`);
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Failed to generate');
+        throw new Error(err.error || t('generateFailed'));
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -47,9 +52,9 @@ export default function ReportsPage() {
       a.download = type === 'report' ? `accessibility-report-${selectedProjectId}.pdf` : type === 'vpat' ? `vpat-${selectedProjectId}.pdf` : `executive-summary-${selectedProjectId}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: 'Generated', description: `${type === 'report' ? 'Report' : type === 'vpat' ? 'VPAT' : 'Executive Summary'} downloaded successfully` });
+      toast({ title: t('generated'), description: t('generatedMsg', { name: typeName(type) }) });
     } catch (error) {
-      toast({ title: 'Error', description: error instanceof Error ? error.message : 'Failed to generate', variant: 'destructive' });
+      toast({ title: tc('error'), description: error instanceof Error ? error.message : t('generateFailed'), variant: 'destructive' });
     } finally {
       setGenerating(null);
     }
@@ -64,7 +69,7 @@ export default function ReportsPage() {
 
   const handleShare = async () => {
     if (!selectedProjectId) {
-      toast({ title: 'Select Project', description: 'Please select a project first', variant: 'destructive' });
+      toast({ title: t('title'), description: t('selectProjectFirst'), variant: 'destructive' });
       return;
     }
     setSharing(true);
@@ -76,13 +81,13 @@ export default function ReportsPage() {
       });
       const data = await res.json();
       if (!data.success) {
-        toast({ title: 'Error', description: data.error || 'Failed to create share link', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('shareLinkFailed'), variant: 'destructive' });
         return;
       }
       setShareUrl(window.location.origin + data.data.shareUrl);
-      toast({ title: 'Share Link Created', description: 'Anyone with the link can view this report snapshot' });
+      toast({ title: t('shareLinkCreated'), description: t('shareLinkCreatedMsg') });
     } catch {
-      toast({ title: 'Error', description: 'Failed to create share link', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('shareLinkFailed'), variant: 'destructive' });
     } finally {
       setSharing(false);
     }
@@ -94,16 +99,16 @@ export default function ReportsPage() {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      toast({ title: 'Copied', description: 'Share link copied to clipboard' });
+      toast({ title: t('copied'), description: t('copyLink') });
     } catch {
-      toast({ title: 'Error', description: 'Failed to copy link', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('copyLinkFailed'), variant: 'destructive' });
     }
   };
 
   const shareButton = (type: ShareType) => (
     <Button variant="outline" onClick={() => openShareDialog(type)} disabled={generating !== null}>
       <Share2 className="h-4 w-4 mr-2" />
-      Share
+      {t('share')}
     </Button>
   );
 
@@ -111,8 +116,8 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Reports</h1>
-          <p className="text-muted-foreground">Generate compliance reports and VPAT documentation</p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
       </div>
 
@@ -120,10 +125,10 @@ export default function ReportsPage() {
         <CardContent className="py-4">
           <div className="flex items-center gap-4">
             <div className="grid gap-1.5">
-              <Label htmlFor="project-select">Project</Label>
+              <Label htmlFor="project-select">{t('project')}</Label>
               <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                 <SelectTrigger id="project-select" className="w-72">
-                  <SelectValue placeholder="Select a project..." />
+                  <SelectValue placeholder={t('selectProject')} />
                 </SelectTrigger>
                 <SelectContent>
                   {Array.isArray(projects) && projects.map(p => (
@@ -144,15 +149,14 @@ export default function ReportsPage() {
                 <FileText className="h-6 w-6 text-coral" />
               </div>
               <div>
-                <CardTitle className="text-lg">Legal Shield™ Report</CardTitle>
-                <CardDescription>Timestamped audit for legal defense</CardDescription>
+                <CardTitle className="text-lg">{t('legalShield')}</CardTitle>
+                <CardDescription>{t('legalShieldDesc')}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              Generate a comprehensive PDF report documenting your accessibility compliance efforts.
-              Includes timestamps, violation history, and remediation records.
+              {t('legalShieldBody')}
             </p>
             <div className="flex gap-2">
               <Button
@@ -161,9 +165,9 @@ export default function ReportsPage() {
                 disabled={generating !== null}
               >
                 {generating === 'report' ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('generating')}</>
                 ) : (
-                  <><Download className="h-4 w-4 mr-2" />Generate PDF Report</>
+                  <><Download className="h-4 w-4 mr-2" />{t('generatePdfReport')}</>
                 )}
               </Button>
               {shareButton('report')}
@@ -178,15 +182,14 @@ export default function ReportsPage() {
                 <Shield className="h-6 w-6 text-blue-500" />
               </div>
               <div>
-                <CardTitle className="text-lg">VPAT Report</CardTitle>
-                <CardDescription>WCAG 2.1 AA conformance documentation</CardDescription>
+                <CardTitle className="text-lg">{t('vpat')}</CardTitle>
+                <CardDescription>{t('vpatDesc')}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              Generate a Voluntary Product Accessibility Template (VPAT) that evaluates your
-              product against all WCAG 2.1 AA success criteria with conformance levels.
+              {t('vpatBody')}
             </p>
             <div className="flex gap-2">
               <Button
@@ -195,9 +198,9 @@ export default function ReportsPage() {
                 disabled={generating !== null}
               >
                 {generating === 'vpat' ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('generating')}</>
                 ) : (
-                  <><Download className="h-4 w-4 mr-2" />Generate VPAT</>
+                  <><Download className="h-4 w-4 mr-2" />{t('generateVpat')}</>
                 )}
               </Button>
               {shareButton('vpat')}
@@ -212,15 +215,14 @@ export default function ReportsPage() {
                 <BarChart3 className="h-6 w-6 text-emerald-500" />
               </div>
               <div>
-                <CardTitle className="text-lg">Executive Summary</CardTitle>
-                <CardDescription>High-level compliance overview</CardDescription>
+                <CardTitle className="text-lg">{t('execSummary')}</CardTitle>
+                <CardDescription>{t('execSummaryDesc')}</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              A summary report perfect for stakeholders. Includes risk scores, trend analysis,
-              and actionable recommendations.
+              {t('execSummaryBody')}
             </p>
             <div className="flex gap-2">
               <Button
@@ -229,9 +231,9 @@ export default function ReportsPage() {
                 disabled={generating !== null}
               >
                 {generating === 'summary' ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('generating')}</>
                 ) : (
-                  <><Download className="h-4 w-4 mr-2" />Generate Summary</>
+                  <><Download className="h-4 w-4 mr-2" />{t('generateSummary')}</>
                 )}
               </Button>
               {shareButton('summary')}
@@ -245,20 +247,20 @@ export default function ReportsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Share2 className="h-5 w-5 text-coral" />
-              Share {shareType === 'report' ? 'Report' : shareType === 'vpat' ? 'VPAT' : 'Executive Summary'}
+              {t('shareTitle', { name: typeName(shareType) })}
             </DialogTitle>
             <DialogDescription>
-              Create a public snapshot link for stakeholders. Anyone with the link can view the report without an account.
+              {t('shareDesc')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
             {!shareUrl ? (
               <div className="grid gap-2">
-                <Label htmlFor="share-project">Project</Label>
+                <Label htmlFor="share-project">{t('project')}</Label>
                 <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                   <SelectTrigger id="share-project" className="w-full">
-                    <SelectValue placeholder="Select a project..." />
+                    <SelectValue placeholder={t('selectProject')} />
                   </SelectTrigger>
                   <SelectContent>
                     {Array.isArray(projects) && projects.map(p => (
@@ -275,15 +277,15 @@ export default function ReportsPage() {
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1" onClick={copyShareUrl}>
-                    {copied ? <><Check className="h-4 w-4 mr-2 text-emerald-500" />Copied</> : <><Copy className="h-4 w-4 mr-2" />Copy Link</>}
+                    {copied ? <><Check className="h-4 w-4 mr-2 text-emerald-500" />{t('copied')}</> : <><Copy className="h-4 w-4 mr-2" />{t('copyLink')}</>}
                   </Button>
                   <Button variant="outline" className="flex-1" onClick={() => window.open(shareUrl, '_blank', 'noopener,noreferrer')}>
                     <ExternalLink className="h-4 w-4 mr-2" />
-                    Open
+                    {t('open')}
                   </Button>
                 </div>
                 <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => { setShareUrl(null); setCopied(false); }}>
-                  Create another link
+                  {t('createAnotherLink')}
                 </Button>
               </div>
             )}
@@ -296,9 +298,9 @@ export default function ReportsPage() {
               disabled={sharing || !!shareUrl}
             >
               {sharing ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</>
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('creating')}</>
               ) : (
-                <><Share2 className="h-4 w-4 mr-2" />Create Share Link</>
+                <><Share2 className="h-4 w-4 mr-2" />{t('createShareLink')}</>
               )}
             </Button>
           </DialogFooter>
