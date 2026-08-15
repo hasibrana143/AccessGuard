@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { Users, UserPlus, Mail, Loader2, ShieldCheck, Crown, CheckCircle2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,13 +31,9 @@ interface PendingInvite {
   createdAt: string;
 }
 
-const roleLabels: Record<string, string> = {
-  admin: 'Admin',
-  member: 'Member',
-  viewer: 'Viewer',
-};
-
 export default function TeamPage() {
+  const t = useTranslations('team');
+  const tc = useTranslations('common');
   const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const orgSlug = user?.orgSlug ?? null;
@@ -48,6 +45,11 @@ export default function TeamPage() {
   const [inviting, setInviting] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState<Member | null>(null);
   const [removing, setRemoving] = useState(false);
+  const roleLabels: Record<string, string> = {
+    admin: t('admin'),
+    member: t('member'),
+    viewer: t('viewer'),
+  };
 
   const fetchData = async () => {
     if (!orgSlug) return;
@@ -61,7 +63,7 @@ export default function TeamPage() {
       if (membersData.success) setMembers(membersData.data || []);
       if (invitesData.success) setInvites(invitesData.data || []);
     } catch {
-      toast({ title: 'Error', description: 'Failed to load team', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('loadFailed'), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -73,7 +75,7 @@ export default function TeamPage() {
 
   const handleInvite = async () => {
     if (!inviteEmail.trim()) {
-      toast({ title: 'Error', description: 'Email is required', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('emailRequired'), variant: 'destructive' });
       return;
     }
     setInviting(true);
@@ -85,14 +87,14 @@ export default function TeamPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast({ title: 'Invite Sent', description: `Invitation sent to ${inviteEmail}` });
+        toast({ title: t('inviteSent'), description: t('inviteSentMsg', { email: inviteEmail }) });
         setInviteEmail('');
         fetchData();
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to send invite', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('inviteSendFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to send invite', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('inviteSendFailed'), variant: 'destructive' });
     } finally {
       setInviting(false);
     }
@@ -107,13 +109,13 @@ export default function TeamPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast({ title: 'Role Updated', description: `${member.email} is now ${roleLabels[role]}` });
+        toast({ title: t('roleUpdated'), description: t('roleUpdatedMsg', { email: member.email, role: roleLabels[role] }) });
         fetchData();
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to update role', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('roleUpdateFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to update role', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('roleUpdateFailed'), variant: 'destructive' });
     }
   };
 
@@ -126,14 +128,14 @@ export default function TeamPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast({ title: 'Member Removed', description: `${memberToRemove.email} removed from team` });
+        toast({ title: t('memberRemoved'), description: t('memberRemovedMsg', { email: memberToRemove.email }) });
         setMemberToRemove(null);
         fetchData();
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to remove member', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('memberRemoveFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to remove member', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('memberRemoveFailed'), variant: 'destructive' });
     } finally {
       setRemoving(false);
     }
@@ -146,13 +148,13 @@ export default function TeamPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast({ title: 'Invite Canceled', description: 'Pending invitation revoked' });
+        toast({ title: t('inviteCanceled'), description: t('inviteCanceledMsg') });
         fetchData();
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to cancel invite', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('inviteCancelFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to cancel invite', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('inviteCancelFailed'), variant: 'destructive' });
     }
   };
 
@@ -165,12 +167,12 @@ export default function TeamPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        toast({ title: 'Invite Resent', description: `Invite link sent to ${invite.email}` });
+        toast({ title: t('inviteResent'), description: t('inviteResentMsg', { email: invite.email }) });
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to resend invite', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('resendFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to resend invite', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('resendFailed'), variant: 'destructive' });
     }
   };
 
@@ -185,13 +187,13 @@ export default function TeamPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Team</h1>
-        <p className="text-muted-foreground">Manage team members and invitations</p>
+        <h1 className="text-2xl font-bold">{t('title')}</h1>
+        <p className="text-muted-foreground">{t('subtitle')}</p>
       </div>
 
       {!isAdmin && (
         <div className="p-4 rounded-lg bg-muted/50 text-sm text-muted-foreground">
-          You have view access. Admins can invite members and manage roles.
+          {t('viewAccessNote')}
         </div>
       )}
 
@@ -200,14 +202,14 @@ export default function TeamPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5 text-coral" />
-              Invite Member
+              {t('inviteTitle')}
             </CardTitle>
-            <CardDescription>Send an email invitation to join your organization</CardDescription>
+            <CardDescription>{t('inviteDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="invite-email">Email</Label>
+                <Label htmlFor="invite-email">{t('email')}</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -215,27 +217,27 @@ export default function TeamPage() {
                     type="email"
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="teammate@company.com"
+                    placeholder={t('emailPlaceholder')}
                     className="pl-9"
                   />
                 </div>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="invite-role">Role</Label>
+                <Label htmlFor="invite-role">{t('role')}</Label>
                 <Select value={inviteRole} onValueChange={setInviteRole}>
                   <SelectTrigger id="invite-role">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">Admin — full access</SelectItem>
-                    <SelectItem value="member">Member — scan and manage</SelectItem>
-                    <SelectItem value="viewer">Viewer — read only</SelectItem>
+                    <SelectItem value="admin">{t('roleAdmin')}</SelectItem>
+                    <SelectItem value="member">{t('roleMember')}</SelectItem>
+                    <SelectItem value="viewer">{t('roleViewer')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={handleInvite} disabled={inviting}>
-              {inviting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sending...</> : <><UserPlus className="h-4 w-4 mr-2" />Send Invite</>}
+              {inviting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('sending')}</> : <><UserPlus className="h-4 w-4 mr-2" />{t('sendInvite')}</>}
             </Button>
           </CardContent>
         </Card>
@@ -245,13 +247,13 @@ export default function TeamPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5 text-coral" />
-            Team Members ({members.length})
+            {t('teamMembers', { count: members.length })}
           </CardTitle>
-          <CardDescription>People with access to your organization</CardDescription>
+          <CardDescription>{t('membersDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {members.length === 0 && (
-            <p className="text-sm text-muted-foreground">No members yet.</p>
+            <p className="text-sm text-muted-foreground">{t('noMembers')}</p>
           )}
           {members.map((member) => (
             <div key={member.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
@@ -264,9 +266,9 @@ export default function TeamPage() {
                 </Avatar>
                 <div>
                   <p className="font-medium flex items-center gap-2">
-                    {member.name || 'Unnamed'}
+                    {member.name || t('unnamed')}
                     {member.id === user?.id && (
-                      <Badge variant="outline" className="text-xs">You</Badge>
+                      <Badge variant="outline" className="text-xs">{t('you')}</Badge>
                     )}
                     {member.role === 'admin' && (
                       <Crown className="h-3.5 w-3.5 text-amber-500" />
@@ -282,9 +284,9 @@ export default function TeamPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="member">Member</SelectItem>
-                      <SelectItem value="viewer">Viewer</SelectItem>
+                      <SelectItem value="admin">{t('admin')}</SelectItem>
+                      <SelectItem value="member">{t('member')}</SelectItem>
+                      <SelectItem value="viewer">{t('viewer')}</SelectItem>
                     </SelectContent>
                   </Select>
                 ) : (
@@ -298,7 +300,7 @@ export default function TeamPage() {
                     size="icon"
                     className="h-8 w-8 text-destructive hover:text-destructive"
                     onClick={() => setMemberToRemove(member)}
-                    aria-label={`Remove ${member.email}`}
+                    aria-label={t('removeAria', { email: member.email })}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -314,9 +316,9 @@ export default function TeamPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Mail className="h-5 w-5 text-coral" />
-              Pending Invitations ({invites.length})
+              {t('pendingInvitesCount', { count: invites.length })}
             </CardTitle>
-            <CardDescription>Invitations awaiting acceptance</CardDescription>
+            <CardDescription>{t('pendingDesc')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {invites.map((invite) => (
@@ -328,17 +330,17 @@ export default function TeamPage() {
                   <div>
                     <p className="font-medium">{invite.email}</p>
                     <p className="text-sm text-muted-foreground capitalize">
-                      {roleLabels[invite.role] || invite.role} • Expires {new Date(invite.expiresAt).toLocaleDateString()}
+                      {roleLabels[invite.role] || invite.role} • {t('expires', { date: new Date(invite.expiresAt).toLocaleDateString() })}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button variant="ghost" size="sm" onClick={() => resendInvite(invite)}>
                     <Mail className="h-4 w-4 mr-1" />
-                    Resend
+                    {t('resend')}
                   </Button>
                   <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleCancelInvite(invite.id)}>
-                    Cancel
+                    {t('cancel')}
                   </Button>
                 </div>
               </div>
@@ -350,19 +352,19 @@ export default function TeamPage() {
       <AlertDialog open={!!memberToRemove} onOpenChange={(open) => !open && setMemberToRemove(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Member?</AlertDialogTitle>
+            <AlertDialogTitle>{t('removeDialogTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove {memberToRemove?.email} from your organization? They will lose access immediately.
+              {t('removeDialogMsg', { email: memberToRemove?.email ?? '' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleRemoveMember}
               disabled={removing}
             >
-              {removing ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Removing...</> : 'Remove Member'}
+              {removing ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('removing')}</> : t('removeMember')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
