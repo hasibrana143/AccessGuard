@@ -20,6 +20,7 @@ export const AUDIT_ACTIONS = [
   'custom_role_created', 'custom_role_updated', 'custom_role_deleted',
   'team_invite_cancelled',
   'sso.config_updated', 'sso.config_removed',
+  'scim.token_generated', 'scim.user_created', 'scim.user_deactivated',
 ] as const;
 
 interface AuditLogInput {

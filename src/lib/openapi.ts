@@ -1143,6 +1143,110 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/scim/v2/ServiceProviderConfig': {
+    get: op({
+      tags: ['SCIM'],
+      summary: 'SCIM 2.0 Service Provider Configuration',
+      description:
+        'RFC 7644 §4 discovery document. Protected by the per-org SCIM bearer token (Authorization: Bearer).',
+      security: [{ bearerAuth: [] }],
+      responses: {
+        '200': { description: 'Service provider config' },
+        '401': { description: 'Missing or invalid SCIM token' },
+      },
+    }),
+  },
+  '/scim/v2/Users': {
+    get: op({
+      tags: ['SCIM'],
+      summary: 'List users (SCIM 2.0)',
+      description:
+        'Lists org users. Supports filter=userName eq "…", startIndex, count (RFC 7644 §3.4.2).',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        { name: 'filter', in: 'query', required: false, schema: { type: 'string' } },
+        { name: 'startIndex', in: 'query', required: false, schema: { type: 'integer' } },
+        { name: 'count', in: 'query', required: false, schema: { type: 'integer', maximum: 100 } },
+      ],
+      responses: {
+        '200': { description: 'ListResponse with Resources' },
+        '401': { description: 'Missing or invalid SCIM token' },
+      },
+    }),
+    post: op({
+      tags: ['SCIM'],
+      summary: 'Provision a user (SCIM 2.0)',
+      description:
+        'Creates a member account by email (idempotent per RFC 7644 §3.2). Emits scim.user_created audit event.',
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({
+          type: 'object',
+          properties: {
+            schemas: { type: 'array', items: { type: 'string' } },
+            userName: { type: 'string', description: 'Email' },
+            emails: { type: 'array', items: { type: 'object' } },
+            name: {
+              type: 'object',
+              properties: { givenName: { type: 'string' }, familyName: { type: 'string' } },
+            },
+            active: { type: 'boolean' },
+          },
+        }),
+      },
+      responses: {
+        '201': { description: 'User created' },
+        '200': { description: 'User already existed (idempotent)' },
+        '400': { description: 'Invalid body' },
+        '401': { description: 'Missing or invalid SCIM token' },
+      },
+    }),
+  },
+  '/scim/v2/Users/{id}': {
+    get: op({
+      tags: ['SCIM'],
+      summary: 'Fetch one user (SCIM 2.0)',
+      security: [{ bearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': { description: 'User resource' },
+        '401': { description: 'Missing or invalid SCIM token' },
+        '404': { description: 'User not found' },
+      },
+    }),
+    patch: op({
+      tags: ['SCIM'],
+      summary: 'Deprovision a user (SCIM 2.0)',
+      description:
+        'Supports active=false (deprovision — removes the account). Emits scim.user_deactivated audit event.',
+      security: [{ bearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({
+          type: 'object',
+          properties: { active: { type: 'boolean' } },
+        }),
+      },
+      responses: {
+        '204': { description: 'Deprovisioned' },
+        '401': { description: 'Missing or invalid SCIM token' },
+        '404': { description: 'User not found' },
+      },
+    }),
+    delete: op({
+      tags: ['SCIM'],
+      summary: 'Delete a user (SCIM 2.0)',
+      security: [{ bearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '204': { description: 'Deleted' },
+        '401': { description: 'Missing or invalid SCIM token' },
+        '404': { description: 'User not found' },
+      },
+    }),
+  },
   '/settings/region': {
     get: authed(op({
       tags: ['Settings'],
@@ -1290,6 +1394,26 @@ const paths: Record<string, PathItem> = {
       summary: 'Admin mutation (role-gated)',
       responses: {
         '200': { description: 'Updated' },
+        '403': { description: 'Requires admin/owner role' },
+      },
+    })),
+  },
+  '/admin/scim': {
+    get: authed(op({
+      tags: ['Admin'],
+      summary: 'SCIM provisioning status (admin/owner)',
+      responses: {
+        '200': { description: 'SCIM status + endpoint' },
+        '403': { description: 'Requires admin/owner role' },
+      },
+    })),
+    post: authed(op({
+      tags: ['Admin'],
+      summary: 'Generate a SCIM bearer token (admin/owner)',
+      description:
+        'Rotates the org SCIM token (RFC 7644 provisioning). Returns the token exactly once; store it in your IdP (Okta/Azure AD). Emits scim.token_generated audit event.',
+      responses: {
+        '200': { description: 'New SCIM token (shown once)' },
         '403': { description: 'Requires admin/owner role' },
       },
     })),
