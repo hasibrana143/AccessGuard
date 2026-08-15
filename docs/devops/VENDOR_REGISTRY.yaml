@@ -1,0 +1,124 @@
+# Vendor Registry — AccessGuard
+
+YAML register of every third-party service the product depends on (runtime,
+infra, analytics, AI). The registry is the source of truth for procurement
+review, DPA tracking, and the `vendor_review` audit action.
+
+## Columns
+
+- `vendor` — short slug (matches `vendor` in audit metadata for `vendor_review`)
+- `category` — what the vendor does for us
+- `status` — `reviewed` (procurement/DPA complete) | `pending-review` | `renewal-due`
+- `dataStored` — what PII/security-relevant data flows to the vendor
+- `dataRegion` — default processing region
+- `dpa` — data processing agreement: `signed` | `needed` | `n/a`
+- `soc2` — SOC 2 Type II report on file: `available` | `requested` | `n/a`
+- `contractEnds` — renewal date (YYYY-MM) or `rolling`
+- `notes` — free text
+
+## Registry
+
+```yaml
+registry:
+  version: 1
+  updatedAt: "2026-08-16"
+  vendors:
+    - vendor: postgres
+      category: database
+      status: reviewed
+      dataStored: audit logs, user accounts, org settings, scan results (encrypted at rest)
+      dataRegion: us
+      dpa: n/a
+      soc2: n/a
+      contractEnds: rolling
+      notes: Self-hosted via Docker on our infra; backups in accessguard S3 bucket (SSE-KMS)
+
+    - vendor: redis
+      category: cache-queue
+      status: reviewed
+      dataStored: transient (rate limits, session locks, scheduler gates)
+      dataRegion: us
+      dpa: n/a
+      soc2: n/a
+      contractEnds: rolling
+      notes: Self-hosted; no PII persisted
+
+    - vendor: vercel
+      category: hosting
+      status: reviewed
+      dataStored: deployment artifacts, edge middleware, encrypted env vars
+      dataRegion: us
+      dpa: signed
+      soc2: available
+      contractEnds: 2026-12
+      notes: DPA v2026-03; subprocessors list reviewed (no AI training on our data)
+
+    - vendor: openai
+      category: ai-provider
+      status: reviewed
+      dataStored: prompt text sent for remediation guidance; zero-data-retention API
+      dataRegion: us
+      dpa: signed
+      soc2: available
+      contractEnds: rolling
+      notes: ZDR (30-day no-retention) enabled; never send PII — prompts are rule + violation context only
+
+    - vendor: nvidia-nim
+      category: ai-provider (self-hosted inference)
+      status: pending-review
+      dataStored: inference requests for LLM evaluation fallback
+      dataRegion: eu
+      dpa: needed
+      soc2: requested
+      contractEnds: rolling
+      notes: DPA under negotiation — blocks VENDOR_NIM_ENDPOINT usage in prod until signed (gate in AI config)
+
+    - vendor: postmark
+      category: transactional-email
+      status: reviewed
+      dataStored: recipient email + template refs (verify, invite, digest)
+      dataRegion: us
+      dpa: signed
+      soc2: available
+      contractEnds: rolling
+      notes: Suppression list maintained; no open tracking
+
+    - vendor: github
+      category: devops-ci
+      status: reviewed
+      dataStored: source, CI secrets (env-scoped), deploy artifacts
+      dataRegion: us
+      dpa: n/a
+      soc2: available
+      contractEnds: rolling
+      notes: Repo private; branch protection + required reviews enforced
+
+    - vendor: sentry
+      category: observability
+      status: reviewed
+      dataStored: error events (scrubbed — no PII; request bodies stripped)
+      dataRegion: us
+      dpa: signed
+      soc2: available
+      contractEnds: 2027-01
+      notes: beforeSend scrubs cookies/authorization headers
+
+    - vendor: cloudflare
+      category: cdn-dns-waf
+      status: reviewed
+      dataStored: DNS, edge cache (public assets only), WAF logs (IPs)
+      dataRegion: eu
+      dpa: signed
+      soc2: available
+      contractEnds: rolling
+      notes: WAF managed ruleset; logs retention 7d
+```
+
+## Review cadence
+
+- New vendor: create an entry, mark `pending-review`, emit `vendor_review`
+  audit event (action `vendor_review`, metadata `{vendor, status: pending-review}`)
+  in the org that enabled it.
+- Quarterly: re-check `renewal-due` entries; verify DPA/soc2 still current.
+- AI providers: any change in data-retention terms triggers immediate review
+  (see `docs/ai/AI_SAFETY_EU_AI_ACT.md` §Model governance).
