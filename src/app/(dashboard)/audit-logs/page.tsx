@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import { Loader2, ScrollText, Filter, RefreshCw, ShieldCheck, Globe, ScanLine, Bug, Settings as SettingsIcon, Github, FileText, LogIn, LogOut, UserPlus, UserX, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,46 +17,58 @@ interface AuditLogEntry {
   metadata: Record<string, unknown>;
 }
 
-const ACTION_META: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = {
-  'user.login': { label: 'User Logged In', icon: LogIn, color: 'text-emerald-500 bg-emerald-500/10' },
-  'user.logout': { label: 'User Logged Out', icon: LogOut, color: 'text-gray-500 bg-gray-500/10' },
-  'user.invited': { label: 'User Invited', icon: UserPlus, color: 'text-blue-500 bg-blue-500/10' },
-  'user.removed': { label: 'User Removed', icon: UserX, color: 'text-red-500 bg-red-500/10' },
-  'project.created': { label: 'Project Created', icon: Globe, color: 'text-coral bg-coral/10' },
-  'project.updated': { label: 'Project Updated', icon: Globe, color: 'text-coral bg-coral/10' },
-  'project.deleted': { label: 'Project Deleted', icon: Globe, color: 'text-red-500 bg-red-500/10' },
-  'scan.started': { label: 'Scan Started', icon: ScanLine, color: 'text-blue-500 bg-blue-500/10' },
-  'scan.completed': { label: 'Scan Completed', icon: ScanLine, color: 'text-emerald-500 bg-emerald-500/10' },
-  'scan.failed': { label: 'Scan Failed', icon: ScanLine, color: 'text-red-500 bg-red-500/10' },
-  'scan_scheduled': { label: 'Scan Scheduled', icon: ScanLine, color: 'text-blue-500 bg-blue-500/10' },
-  'scan_unscheduled': { label: 'Scan Unscheduled', icon: ScanLine, color: 'text-gray-500 bg-gray-500/10' },
-  'violation.status_changed': { label: 'Violation Updated', icon: Bug, color: 'text-orange-500 bg-orange-500/10' },
-  'violation.fixed': { label: 'Violation Fixed', icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-500/10' },
-  'settings.updated': { label: 'Settings Updated', icon: SettingsIcon, color: 'text-gray-500 bg-gray-500/10' },
-  'subscription.changed': { label: 'Subscription Changed', icon: SettingsIcon, color: 'text-purple-500 bg-purple-500/10' },
-  'subscription.created': { label: 'Subscription Created', icon: SettingsIcon, color: 'text-purple-500 bg-purple-500/10' },
-  'subscription.cancelled': { label: 'Subscription Cancelled', icon: SettingsIcon, color: 'text-red-500 bg-red-500/10' },
-  'github.connected': { label: 'GitHub Connected', icon: Github, color: 'text-gray-500 bg-gray-500/10' },
-  'github.disconnected': { label: 'GitHub Disconnected', icon: Github, color: 'text-red-500 bg-red-500/10' },
-  'report.generated': { label: 'Report Generated', icon: FileText, color: 'text-blue-500 bg-blue-500/10' },
-  'api_key_regenerated': { label: 'API Key Regenerated', icon: ShieldCheck, color: 'text-coral bg-coral/10' },
-  'email_verified': { label: 'Email Verified', icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-500/10' },
-  'mfa_enabled': { label: 'MFA Enabled', icon: ShieldCheck, color: 'text-emerald-500 bg-emerald-500/10' },
-  'mfa_disabled': { label: 'MFA Disabled', icon: ShieldCheck, color: 'text-red-500 bg-red-500/10' },
-  'executive_summary_generated': { label: 'Executive Summary Generated', icon: FileText, color: 'text-blue-500 bg-blue-500/10' },
-  'password_changed': { label: 'Password Changed', icon: ShieldCheck, color: 'text-coral bg-coral/10' },
-  'invite_sent': { label: 'Invite Sent', icon: UserPlus, color: 'text-blue-500 bg-blue-500/10' },
+const ACTION_META: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string }> = {
+  'user.login': { icon: LogIn, color: 'text-emerald-500 bg-emerald-500/10' },
+  'user.logout': { icon: LogOut, color: 'text-gray-500 bg-gray-500/10' },
+  'user.invited': { icon: UserPlus, color: 'text-blue-500 bg-blue-500/10' },
+  'user.removed': { icon: UserX, color: 'text-red-500 bg-red-500/10' },
+  'project.created': { icon: Globe, color: 'text-coral bg-coral/10' },
+  'project.updated': { icon: Globe, color: 'text-coral bg-coral/10' },
+  'project.deleted': { icon: Globe, color: 'text-red-500 bg-red-500/10' },
+  'scan.started': { icon: ScanLine, color: 'text-blue-500 bg-blue-500/10' },
+  'scan.completed': { icon: ScanLine, color: 'text-emerald-500 bg-emerald-500/10' },
+  'scan.failed': { icon: ScanLine, color: 'text-red-500 bg-red-500/10' },
+  'scan_scheduled': { icon: ScanLine, color: 'text-blue-500 bg-blue-500/10' },
+  'scan_unscheduled': { icon: ScanLine, color: 'text-gray-500 bg-gray-500/10' },
+  'violation.status_changed': { icon: Bug, color: 'text-orange-500 bg-orange-500/10' },
+  'violation.fixed': { icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-500/10' },
+  'settings.updated': { icon: SettingsIcon, color: 'text-gray-500 bg-gray-500/10' },
+  'subscription.changed': { icon: SettingsIcon, color: 'text-purple-500 bg-purple-500/10' },
+  'subscription.created': { icon: SettingsIcon, color: 'text-purple-500 bg-purple-500/10' },
+  'subscription.cancelled': { icon: SettingsIcon, color: 'text-red-500 bg-red-500/10' },
+  'github.connected': { icon: Github, color: 'text-gray-500 bg-gray-500/10' },
+  'github.disconnected': { icon: Github, color: 'text-red-500 bg-red-500/10' },
+  'report.generated': { icon: FileText, color: 'text-blue-500 bg-blue-500/10' },
+  'api_key_regenerated': { icon: ShieldCheck, color: 'text-coral bg-coral/10' },
+  'email_verified': { icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-500/10' },
+  'mfa_enabled': { icon: ShieldCheck, color: 'text-emerald-500 bg-emerald-500/10' },
+  'mfa_disabled': { icon: ShieldCheck, color: 'text-red-500 bg-red-500/10' },
+  'executive_summary_generated': { icon: FileText, color: 'text-blue-500 bg-blue-500/10' },
+  'password_changed': { icon: ShieldCheck, color: 'text-coral bg-coral/10' },
+  'invite_sent': { icon: UserPlus, color: 'text-blue-500 bg-blue-500/10' },
+  'sso.config_updated': { icon: ShieldCheck, color: 'text-blue-500 bg-blue-500/10' },
+  'sso.config_removed': { icon: ShieldCheck, color: 'text-red-500 bg-red-500/10' },
+  'scim.token_generated': { icon: ShieldCheck, color: 'text-coral bg-coral/10' },
+  'scim.user_created': { icon: UserPlus, color: 'text-blue-500 bg-blue-500/10' },
+  'scim.user_deactivated': { icon: UserX, color: 'text-gray-500 bg-gray-500/10' },
+  'vendor_review': { icon: FileText, color: 'text-orange-500 bg-orange-500/10' },
 };
 
 const PAGE_SIZE = 25;
 
 export default function AuditLogsPage() {
+  const t = useTranslations('audit');
   const { user } = useAuth();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [actionFilter, setActionFilter] = useState('all');
   const [page, setPage] = useState(1);
+
+  const actionLabel = (action: string) => {
+    const label = t(`actions.${action}`);
+    return label && !label.startsWith('actions.') ? label : action.replace(/_/g, ' ');
+  };
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -92,12 +105,12 @@ export default function AuditLogsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Audit Logs</h1>
-          <p className="text-muted-foreground">Track security and activity events across your organization</p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchLogs} disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
+          {t('refresh')}
         </Button>
       </div>
 
@@ -107,19 +120,19 @@ export default function AuditLogsPage() {
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <Select value={actionFilter} onValueChange={setActionFilter}>
-                <SelectTrigger className="w-56" aria-label="Filter by action">
-                  <SelectValue placeholder="All actions" />
+                <SelectTrigger className="w-56" aria-label={t('filterAria')}>
+                  <SelectValue placeholder={t('allActions')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All actions</SelectItem>
-                  {Object.entries(ACTION_META).map(([value, meta]) => (
-                    <SelectItem key={value} value={value}>{meta.label}</SelectItem>
+                  <SelectItem value="all">{t('allActions')}</SelectItem>
+                  {Object.entries(ACTION_META).map(([value]) => (
+                    <SelectItem key={value} value={value}>{actionLabel(value)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <Badge variant="secondary" className="px-3 py-1">
-              {total} events
+              {t('events', { count: total })}
             </Badge>
           </div>
         </CardContent>
@@ -134,13 +147,12 @@ export default function AuditLogsPage() {
           ) : logs.length === 0 ? (
             <div className="py-16 text-center text-muted-foreground">
               <ScrollText className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No audit events found</p>
+              <p>{t('noEvents')}</p>
             </div>
           ) : (
             <div className="divide-y divide-border">
               {logs.map((log) => {
                 const meta = ACTION_META[log.action] || {
-                  label: log.action.replace(/_/g, ' '),
                   icon: ScrollText,
                   color: 'text-gray-500 bg-gray-500/10',
                 };
@@ -156,7 +168,7 @@ export default function AuditLogsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">{meta.label}</span>
+                        <span className="font-medium text-sm">{actionLabel(log.action)}</span>
                         <Badge variant="outline" className="text-xs font-mono">{log.action}</Badge>
                       </div>
                       {details.length > 0 && (
@@ -182,14 +194,14 @@ export default function AuditLogsPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Page {Math.min(page, totalPages)} of {totalPages}
+            {t('pageInfo', { current: Math.min(page, totalPages), total: totalPages })}
           </p>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>
-              Previous
+              {t('previous')}
             </Button>
             <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>
-              Next
+              {t('next')}
             </Button>
           </div>
         </div>
