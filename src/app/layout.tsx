@@ -4,6 +4,9 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/components/providers";
 import CookieConsent from "@/components/CookieConsent";
+import { NextIntlClientProvider, hasLocale } from "next-intl";
+import { getMessages, getLocale } from "next-intl/server";
+import { routing } from "@/i18n/routing";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,13 +41,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <script
           type="application/ld+json"
@@ -110,9 +116,11 @@ export default function RootLayout({
           Skip to main content
         </a>
         <Providers>
-          <main id="main-content" tabIndex={-1}>
-            {children}
-          </main>
+          <NextIntlClientProvider messages={messages} locale={locale}>
+            <main id="main-content" tabIndex={-1}>
+              {children}
+            </main>
+          </NextIntlClientProvider>
         </Providers>
         <Toaster />
         <CookieConsent />

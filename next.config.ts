@@ -1,5 +1,8 @@
 // @ts-check
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 let config: NextConfig = {
   output: "standalone",
@@ -73,4 +76,4 @@ if (sentryDsn) {
   }
 }
 
-export default config;
+export default withNextIntl(config);
