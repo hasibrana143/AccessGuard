@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Activity, CheckCircle2, Loader2, XCircle, Clock, ExternalLink, CalendarClock, Trash2, RefreshCw } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,8 @@ interface ScheduledProject {
 }
 
 export default function ScansPage() {
+  const t = useTranslations('scans');
+  const tc = useTranslations('common');
   const { user } = useAuth();
   const { toast } = useToast();
   const orgSlug = user?.orgSlug ?? undefined;
@@ -35,12 +38,12 @@ export default function ScansPage() {
     try {
       const result = await createScan.mutateAsync(projectId);
       toast({
-        title: 'Scan Restarted',
-        description: `Found ${result?.scan?.violationsFound || 0} violations on "${projectName}".`,
+        title: t('scanRestarted'),
+        description: t('scanRestartedMsg', { count: result?.scan?.violationsFound || 0, name: projectName }),
       });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to retry scan';
-      toast({ title: 'Scan Failed', description: errorMsg, variant: 'destructive' });
+      const errorMsg = error instanceof Error ? error.message : t('retryFailed');
+      toast({ title: t('scanFailed'), description: errorMsg, variant: 'destructive' });
     } finally {
       setRetrying(null);
     }
@@ -73,13 +76,13 @@ export default function ScansPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast({ title: 'Schedule Removed', description: `${projectName} will no longer auto-scan` });
+        toast({ title: t('scheduleRemoved'), description: t('scheduleRemovedMsg', { name: projectName }) });
         fetchScheduled();
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to remove schedule', variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('scheduleRemoveFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to remove schedule', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('scheduleRemoveFailed'), variant: 'destructive' });
     }
   };
 
@@ -87,8 +90,8 @@ export default function ScansPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Scan History</h1>
-          <p className="text-muted-foreground">View all accessibility scan history</p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
       </div>
 
@@ -96,9 +99,9 @@ export default function ScansPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <CalendarClock className="h-5 w-5 text-coral" />
-            Scheduled Scans ({scheduled.length})
+            {t('scheduledScans', { count: scheduled.length })}
           </CardTitle>
-          <CardDescription>Projects with automatic recurring scans</CardDescription>
+          <CardDescription>{t('scheduledDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           {scheduledLoading ? (
@@ -107,7 +110,7 @@ export default function ScansPage() {
             </div>
           ) : scheduled.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
-              No scheduled scans. Set a scan frequency when creating a project to enable automatic monitoring.
+              {t('noScheduled')}
             </p>
           ) : (
             <div className="divide-y divide-border">
@@ -120,15 +123,15 @@ export default function ScansPage() {
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="font-medium">{project.name}</span>
                       <Badge variant="outline" className="text-xs border-coral/20 text-coral">
-                        Auto-scan
+                        {t('autoScan')}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        Next: {new Date(project.nextScheduledScan).toLocaleDateString()} {new Date(project.nextScheduledScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {t('next')} {new Date(project.nextScheduledScan).toLocaleDateString()} {new Date(project.nextScheduledScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
-                      {project.lastScanAt && <span>Last: {formatRelativeTime(project.lastScanAt)}</span>}
+                      {project.lastScanAt && <span>{t('last')} {formatRelativeTime(project.lastScanAt)}</span>}
                     </div>
                   </div>
                   <Button
@@ -138,7 +141,7 @@ export default function ScansPage() {
                     onClick={() => handleUnschedule(project.id, project.name)}
                   >
                     <Trash2 className="h-4 w-4 mr-1" />
-                    Remove
+                    {t('remove')}
                   </Button>
                 </div>
               ))}
@@ -174,7 +177,7 @@ export default function ScansPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium">{scan.project?.name || 'Unknown Project'}</span>
+                      <span className="font-medium">{scan.project?.name || t('unknownProject')}</span>
                       <Badge variant="outline" className={`text-xs ${
                         scan.status === 'completed' ? 'border-emerald-500/20 text-emerald-500' :
                         scan.status === 'running' ? 'border-blue-500/20 text-blue-500' :
@@ -184,8 +187,8 @@ export default function ScansPage() {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>{scan.pagesScanned} pages scanned</span>
-                      <span>{scan.violationsFound} violations found</span>
+                      <span>{t('pagesScanned', { count: scan.pagesScanned })}</span>
+                      <span>{t('violationsFound', { count: scan.violationsFound })}</span>
                       <span>{formatRelativeTime(scan.createdAt)}</span>
                     </div>
                     {scan.status === 'failed' && scan.errorMessage && (
@@ -201,12 +204,12 @@ export default function ScansPage() {
                             <>
                               {summary.critical > 0 && (
                                 <Badge className="bg-red-500/10 text-red-500 border-red-500/20">
-                                  {summary.critical} critical
+                                  {t('criticalCount', { count: summary.critical })}
                                 </Badge>
                               )}
                               {summary.serious > 0 && (
                                 <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20">
-                                  {summary.serious} serious
+                                  {t('seriousCount', { count: summary.serious })}
                                 </Badge>
                               )}
                             </>
@@ -221,7 +224,7 @@ export default function ScansPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleRetry(scan.projectId, scan.project?.name || 'project')}
+                      onClick={() => handleRetry(scan.projectId, scan.project?.name || t('unknownProject'))}
                       disabled={retrying === scan.projectId}
                     >
                       {retrying === scan.projectId ? (
@@ -229,10 +232,10 @@ export default function ScansPage() {
                       ) : (
                         <RefreshCw className="h-4 w-4 mr-1" />
                       )}
-                      Retry
+                      {t('retry')}
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" aria-label="Open project website" onClick={() => scan.project?.url && window.open(scan.project.url, '_blank', 'noopener,noreferrer')}>
+                  <Button variant="ghost" size="sm" aria-label={t('openProject')} onClick={() => scan.project?.url && window.open(scan.project.url, '_blank', 'noopener,noreferrer')}>
                     <ExternalLink className="h-4 w-4" />
                   </Button>
                 </div>
@@ -240,7 +243,7 @@ export default function ScansPage() {
               {(!scans || scans.length === 0) && (
                 <div className="py-16 text-center text-muted-foreground">
                   <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No scans yet</p>
+                  <p>{t('noScans')}</p>
                 </div>
               )}
             </div>
