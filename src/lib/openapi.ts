@@ -1200,6 +1200,18 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/org/data-export': {
+    get: authed(op({
+      tags: ['Organization'],
+      summary: 'GDPR Art. 20 data portability export (admin/owner)',
+      description:
+        'Structured JSON of everything the org controls: user profile, organization, projects, violations, scans, audit logs (90d), team invites, custom roles. Sensitive fields (password hashes, tokens, MFA secrets) excluded.',
+      responses: {
+        '200': { description: 'Portable data payload' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
   '/audit': {
     get: authed(op({
       tags: ['Audit'],
