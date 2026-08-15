@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ThemeToggle } from '@/components/dashboard/theme-toggle';
+import { useTranslations } from 'next-intl';
 import type { View, User } from '@/types';
 
 interface SidebarProps {
@@ -19,20 +20,21 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeView, onNavigate, isMobile, onClose, user, onLogout }: SidebarProps) {
+  const t = useTranslations('nav');
   const navItems = [
-    { id: 'dashboard' as View, label: 'Dashboard', icon: BarChart3 },
-    { id: 'projects' as View, label: 'Projects', icon: Globe },
-    { id: 'violations' as View, label: 'Violations', icon: AlertTriangle },
-    { id: 'scans' as View, label: 'Scan History', icon: Activity },
-    { id: 'reports' as View, label: 'Reports', icon: FileText },
-    { id: 'audit-logs' as View, label: 'Audit Logs', icon: ShieldCheck },
-    { id: 'team' as View, label: 'Team', icon: Users },
-    ...(user?.role === 'admin' || user?.role === 'owner' ? [{ id: 'admin' as View, label: 'Admin', icon: Settings }] : []),
-    { id: 'settings' as View, label: 'Settings', icon: Settings },
+    { id: 'dashboard' as View, label: t('dashboard'), icon: BarChart3 },
+    { id: 'projects' as View, label: t('projects'), icon: Globe },
+    { id: 'violations' as View, label: t('violations'), icon: AlertTriangle },
+    { id: 'scans' as View, label: t('scans'), icon: Activity },
+    { id: 'reports' as View, label: t('reports'), icon: FileText },
+    { id: 'audit-logs' as View, label: t('auditLogs'), icon: ShieldCheck },
+    { id: 'team' as View, label: t('team'), icon: Users },
+    ...(user?.role === 'admin' || user?.role === 'owner' ? [{ id: 'admin' as View, label: t('admin'), icon: Settings }] : []),
+    { id: 'settings' as View, label: t('settings'), icon: Settings },
   ];
 
   const bottomItems = [
-    { id: 'pricing', label: 'Plans & Billing', icon: CreditCard },
+    { id: 'pricing', label: t('plansBilling'), icon: CreditCard },
   ];
 
   return (
@@ -109,12 +111,12 @@ export function Sidebar({ activeView, onNavigate, isMobile, onClose, user, onLog
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onNavigate('settings')}>
                 <Settings className="h-4 w-4 mr-2" />
-                Settings
+                {t('settings')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive" onClick={onLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
+                {t('signOut')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
