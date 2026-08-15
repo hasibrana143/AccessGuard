@@ -31,6 +31,11 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V6 | Webhook review pass: consume events for deleted/missing orgs (no Webhook 500 retry loop), stale-subscription guard, P2002 dedupe race, checkout mode guard, org read inside tx | `75e81c6` |
 | V6 | Webhook nits closed: 30d WebhookEvent retention prune (scheduler tick), price-derived plan in subscription.updated, subscription.created/cancelled audit naming sync (whitelist + UI) | `027ecf7` |
 | V8/V2 | Pixel-contrast audit (V11 deferral closed): dedicated light+dark WCAG AA color-contrast guard (13 routes x2 themes). Token fixes — dark --coral/--primary 0.65→0.7, --destructive→0.55, 500-shade overrides (red/orange/blue/emerald) both themes, chart-2/3 darkened. Components — bg-coral text-white→text-coral-foreground (onboarding/pricing/invite), reports buttons→700/800, status/settings emerald-600→500 | `3356ef0` |
+| V13 | Rate-limit guard chain on sensitive endpoints (violations, team/members, github/oauth, stripe/subscription, stats/usage, audit-logs, projects/import, account/delete, api-key, projects, admin) · `enforceVerificationOnWrite` export · audit-logs route 401-before-429 contract preserved | `ecf3e92` `bf790b9` |
+| V13 | Legal volume: ENTITY_FORMATION (Delaware C-Corp, 83(b), insurance), IP_ASSIGNMENT (PIIA, USPTO/Madrid, OSS audit, SBOM), CAP_TABLE (10M shares, 20% pool, 409A, SAFE), CONTRACTS (MSA/ToS/DPA/AUP, Schrems II, SLA tiers) | `70f8e1c` |
+| V13 | Enterprise spec: SSO_SCIM_AUDIT_EXPORT (SAML 2.0 WorkOS→passport-saml, SCIM 2.0 RFC 7644, audit webhook export) · THREAT_MODEL (STRIDE, 3 critical flows, P0: SSRF/CSV-injection/prompt-injection — verified already mitigated in code) | `c10913d` |
+| V13 | Compliance: CERTIFICATION_PROGRAM (SOC 2 Type II via Vanta/Drata, ISO 27001 ISMS+SoA, HIPAA gate, FedRAMP phasing) · FinOps: REVENUE_FRAUD_BURN (ASC 606, Stripe Radar, velocity checks, 13-wk cash, runway) · AI safety: AI_SAFETY_EU_AI_ACT (Limited Risk, Art. 50 transparency, prompt-injection defense, model cards, per-org token cap) | `89a35ff` |
+| V13 | Enterprise code: GET /api/audit-logs/export — SIEM-ready JSON/CSV/CEF export, formula-injection sanitized, guard chain (rate→auth→org→admin→window→10k cap) · OpenAPI parity + 8 contract tests | `db21ff9` |
 
 ## Process (per volume)
 
@@ -58,6 +63,7 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | 10 | Business — Sales, Marketing, SEO, Pricing, Product Hunt, Investor Deck | `docs/business/*` (6 docs) | ✅ Done (commit 689424d) |
 | 11 | Operations — Support, Incident Response, SLA, Feature Flags, Analytics, KPI Dashboard | `docs/ops/*` (6 docs) | ✅ Done (commit 979ff05) |
 | 12 | Launch — Beta Plan, Production Checklist, Rollback, Roadmap, Versioning, Future | `docs/launch/*` (6 docs) | ✅ Done (commit ff7aaab) |
+| 13 | Global SaaS Hardening — Legal, Enterprise (SSO/SCIM/audit export), Compliance, FinOps, AI safety, i18n, data residency, customer success | `docs/legal/*`, `docs/enterprise/*`, `docs/compliance/*`, `docs/finops/*`, `docs/ai/AI_SAFETY_EU_AI_ACT.md` + code (audit export API) | 🚧 In progress (see upgrade log rows V13) |
 
 **Scale anchor (per user directive):** ~80–120 docs, 300–500 diagrams, 100–200 API specs,
 100+ tables, 150–300 screens. Every volume docks target numbers to **verified build facts**
