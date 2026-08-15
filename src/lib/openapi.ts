@@ -1197,6 +1197,26 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/audit-logs/export': {
+    get: authed(op({
+      tags: ['Audit'],
+      summary: 'Export audit logs (JSON / CSV / CEF for SIEM)',
+      description:
+        'Enterprise export of organization audit activity. Formats: json (default), csv (formula-injection sanitized), cef (Common Event Format for Splunk/ArcSight/QRadar). Admin/owner role required.',
+      parameters: [
+        { name: 'since', in: 'query', schema: { type: 'string', description: 'ISO date, default 30 days ago' } },
+        { name: 'until', in: 'query', schema: { type: 'string', description: 'ISO date, default now' } },
+        { name: 'format', in: 'query', schema: { type: 'string', enum: ['json', 'csv', 'cef'] } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', maximum: 10000 } },
+      ],
+      responses: {
+        '200': { description: 'Exported audit events (body depends on format)' },
+        '400': { description: 'Invalid format' },
+        '403': { description: 'Requires admin/owner role' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
   '/flags': {
     get: authed(op({
       tags: ['Admin'],
