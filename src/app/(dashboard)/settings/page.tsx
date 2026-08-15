@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { ThemeToggle } from '@/components/dashboard/theme-toggle';
@@ -59,6 +60,11 @@ export default function SettingsPage() {
   const [pushPermission, setPushPermission] = useState<string>('unsupported');
   const [branding, setBranding] = useState<{ displayName: string; primaryColor: string }>({ displayName: '', primaryColor: '#d94545' });
   const [brandingSaving, setBrandingSaving] = useState(false);
+  const [currency, setCurrency] = useState('usd');
+  const [currencySaving, setCurrencySaving] = useState(false);
+  const [dataRegion, setDataRegion] = useState('us');
+  const [regionSaving, setRegionSaving] = useState(false);
+  const [orgExporting, setOrgExporting] = useState(false);
 
   useEffect(() => {
     setPushEnabledState(getPushState().effective);
@@ -203,6 +209,28 @@ export default function SettingsPage() {
       .then((data) => {
         if (data.success && data.data) {
           setActiveCoupon(data.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/billing/currency')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data?.currency) {
+          setCurrency(data.data.currency);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/settings/region')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.dataRegion) {
+          setDataRegion(data.dataRegion);
         }
       })
       .catch(() => {});
@@ -667,9 +695,66 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Payment Method</CardTitle>
+              <CardTitle>Billing Currency</CardTitle>
+              <CardDescription>Display currency for pricing and invoices (admin only)</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <div className="flex items-end gap-3">
+                <div className="grid gap-2 flex-1">
+                  <Label htmlFor="billing-currency">Currency</Label>
+                  <Select
+                    value={currency}
+                    onValueChange={setCurrency}
+                    disabled={currencySaving}
+                  >
+                    <SelectTrigger id="billing-currency" className="w-full">
+                      <SelectValue placeholder="Select currency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="usd">USD ($) — United States Dollar</SelectItem>
+                      <SelectItem value="eur">EUR (€) — Euro</SelectItem>
+                      <SelectItem value="gbp">GBP (£) — British Pound</SelectItem>
+                      <SelectItem value="inr">INR (₹) — Indian Rupee</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  variant="outline"
+                  disabled={currencySaving}
+                  onClick={async () => {
+                    setCurrencySaving(true);
+                    try {
+                      const res = await fetch('/api/billing/currency', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ currency }),
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        toast({ title: 'Currency Updated', description: `Billing currency set to ${data.data.currency.toUpperCase()}` });
+                      } else {
+                        toast({ title: 'Error', description: data.error || 'Failed to update currency', variant: 'destructive' });
+                      }
+                    } catch {
+                      toast({ title: 'Error', description: 'Failed to update currency', variant: 'destructive' });
+                    } finally {
+                      setCurrencySaving(false);
+                    }
+                  }}
+                >
+                  {currencySaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Currency'}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                FX rates are a quarterly snapshot; invoices from Stripe are always billed in USD and converted for display.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Method</CardTitle>
+            </CardHeader>            <CardContent>
               <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                 <div className="flex items-center gap-3">
                   <CreditCard className="h-8 w-8 text-muted-foreground" />
@@ -887,8 +972,97 @@ export default function SettingsPage() {
                   }).catch(() => toast({ title: 'Export failed', description: 'Please try again later', variant: 'destructive' }));
                 }}>
                   <Download className="h-4 w-4 mr-2" />
-                  Export Data
+                  Export My Data
                 </Button>
+              </div>
+
+              <div>
+                <h3 className="font-medium mb-2">Organization Data Export (GDPR Art. 20)</h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Portable JSON snapshot of the organization: users, projects, violations (90 days), scans, audit log, roles and invites. Admins only.
+                </p>
+                <Button variant="outline" disabled={orgExporting} onClick={async () => {
+                  setOrgExporting(true);
+                  try {
+                    const res = await fetch('/api/org/data-export');
+                    const data = await res.json();
+                    if (data.success) {
+                      const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `accessguard-org-export-${new Date().toISOString().split('T')[0]}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      toast({ title: 'Export complete', description: 'Organization data downloaded' });
+                    } else {
+                      toast({ title: 'Export failed', description: data.error || 'You need admin or owner role', variant: 'destructive' });
+                    }
+                  } catch {
+                    toast({ title: 'Error', description: 'Failed to export organization data', variant: 'destructive' });
+                  } finally {
+                    setOrgExporting(false);
+                  }
+                }}>
+                  {orgExporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Exporting...</> : <><Download className="h-4 w-4 mr-2" />Export Organization Data</>}
+                </Button>
+              </div>
+
+              <div className="border-t border-border pt-6">
+                <h3 className="font-medium mb-2 flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-coral" />
+                  Data Residency Region
+                </h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Choose where your organization's data is processed. Selecting the EU applies GDPR-compliant processing
+                  and raises a procurement review for the hosting vendor. Admin or owner required.
+                </p>
+                <div className="flex items-end gap-3">
+                  <div className="grid gap-2 flex-1">
+                    <Label htmlFor="data-region">Region</Label>
+                    <Select value={dataRegion} onValueChange={setDataRegion} disabled={regionSaving}>
+                      <SelectTrigger id="data-region" className="w-full">
+                        <SelectValue placeholder="Select region" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="us">US — United States</SelectItem>
+                        <SelectItem value="eu">EU — European Union (GDPR processing)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    variant="outline"
+                    disabled={regionSaving}
+                    onClick={async () => {
+                      if (dataRegion === 'eu') {
+                        const consent = window.confirm(
+                          'Switching to EU region means your data is processed under GDPR in the EU. New audit events (vendor review) will be recorded. Continue?'
+                        );
+                        if (!consent) return;
+                      }
+                      setRegionSaving(true);
+                      try {
+                        const res = await fetch('/api/settings/region', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ dataRegion }),
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                          toast({ title: 'Region Updated', description: `Data residency set to ${data.dataRegion.toUpperCase()}` });
+                        } else {
+                          toast({ title: 'Error', description: data.error || 'Failed to update region', variant: 'destructive' });
+                        }
+                      } catch {
+                        toast({ title: 'Error', description: 'Failed to update region', variant: 'destructive' });
+                      } finally {
+                        setRegionSaving(false);
+                      }
+                    }}
+                  >
+                    {regionSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : 'Save Region'}
+                  </Button>
+                </div>
               </div>
 
               <div className="border-t border-border pt-6">
