@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { signIn } from 'next-auth/react';
+import { useTranslations } from 'next-intl';
 
 interface LoginFormProps {
   onBack: () => void;
@@ -27,6 +28,8 @@ function GoogleIcon({ className }: { className?: string }) {
 export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
   const router = useRouter();
   const { toast } = useToast();
+  const t = useTranslations('auth');
+  const tc = useTranslations('common');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -51,11 +54,11 @@ export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
       if (result?.url) {
         window.location.href = result.url;
       } else if (!result?.ok) {
-        toast({ title: `${provider} sign-in failed`, description: result?.error || 'Could not reach the provider', variant: 'destructive' });
+        toast({ title: t('providerSignInFailed', { provider }), description: result?.error || t('couldNotReachProvider'), variant: 'destructive' });
         setOauthProvider(null);
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to connect to server', variant: 'destructive' });
+      toast({ title: t('serverError'), variant: 'destructive' });
       setOauthProvider(null);
     }
   };
@@ -71,18 +74,18 @@ export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
         redirect: false,
       });
       if (result?.ok) {
-        toast({ title: 'Welcome back!', description: 'Signed in successfully' });
+        toast({ title: t('loginTitle'), description: t('signInSuccess') });
         router.push('/dashboard');
       } else {
         if (result?.error === 'MFA_REQUIRED') {
           setMfaRequired(true);
-          toast({ title: 'Two-Factor Required', description: 'Enter your authenticator app code to continue' });
+          toast({ title: t('mfaTitle'), description: t('mfaRequiredToast') });
         } else {
-          toast({ title: 'Login Failed', description: result?.error || 'Invalid credentials', variant: 'destructive' });
+          toast({ title: t('loginFailed'), description: result?.error || t('invalidCredentials'), variant: 'destructive' });
         }
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to connect to server', variant: 'destructive' });
+      toast({ title: t('serverError'), variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -93,7 +96,7 @@ export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
       <div className="w-full max-w-md">
         <Button variant="ghost" onClick={onBack} className="mb-6">
           <ArrowRight className="h-4 w-4 mr-2 rotate-180" />
-          Back to Home
+          {t('backToHome')}
         </Button>
         <Card className="border-2">
           <CardHeader className="text-center">
@@ -102,27 +105,27 @@ export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
                 <Shield className="h-8 w-8 text-coral" />
               </div>
             </div>
-            <h1 className="font-semibold leading-none tracking-tight text-2xl">Welcome Back</h1>
-            <CardDescription>Sign in to your AccessGuard account</CardDescription>
+            <h1 className="font-semibold leading-none tracking-tight text-2xl">{t('loginTitle')}</h1>
+            <CardDescription>{t('loginSubtitle')}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4" noValidate>
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{tc('email')}</Label>
                 <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" required autoComplete="email" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{tc('password')}</Label>
                 <div className="relative">
-                  <Input id="password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required autoComplete="current-password" />
-                  <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                  <Input id="password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t('enterPassword')} required autoComplete="current-password" />
+                  <Button type="button" variant="ghost" size="sm" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? t('hidePassword') : t('showPassword')}>
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>
               {mfaRequired && (
                 <div className="space-y-2">
-                  <Label htmlFor="mfa-code">Authenticator Code</Label>
+                  <Label htmlFor="mfa-code">{t('authenticatorCode')}</Label>
                   <Input
                     id="mfa-code"
                     type="text"
@@ -138,7 +141,7 @@ export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
                 </div>
               )}
               <Button type="submit" className="w-full bg-coral hover:bg-coral/90 text-coral-foreground h-11" disabled={isLoading}>
-                {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Signing in...</> : mfaRequired ? 'Verify & Sign In' : 'Sign In'}
+                {isLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('signingIn')}</> : mfaRequired ? t('verifyAndSignIn') : t('signIn')}
               </Button>
             </form>
           </CardContent>
@@ -149,7 +152,7 @@ export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
                   <span className="w-full border-t" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">or continue with</span>
+                  <span className="bg-card px-2 text-muted-foreground">{t('orContinueWith')}</span>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 mt-4">
@@ -170,11 +173,11 @@ export function LoginForm({ onBack, onSwitchToRegister }: LoginFormProps) {
           ) : null}
           <CardFooter className="flex flex-col gap-4">
             <Button variant="link" className="text-sm text-muted-foreground" onClick={() => router.push('/auth/forgot-password')}>
-              Forgot your password?
+              {t('forgotPassword')}
             </Button>
             <div className="text-sm text-muted-foreground">
-              Don&apos;t have an account?{' '}
-              <Button variant="link" className="p-0 h-auto text-coral" onClick={onSwitchToRegister}>Sign up</Button>
+              {t('noAccount')}{' '}
+              <Button variant="link" className="p-0 h-auto text-coral" onClick={onSwitchToRegister}>{t('signUp')}</Button>
             </div>
           </CardFooter>
         </Card>

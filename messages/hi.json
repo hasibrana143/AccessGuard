@@ -83,7 +83,21 @@
     "mfaCode": "6-अंकीय कोड",
     "verify": "सत्यापित करें",
     "mfaError": "अमान्य कोड",
-    "signInWithGithub": "GitHub से जारी रखें"
+    "signInWithGithub": "GitHub से जारी रखें",
+    "backToHome": "होम पर वापस",
+    "signingIn": "साइन इन हो रहा है…",
+    "verifyAndSignIn": "सत्यापित करें और साइन इन करें",
+    "authenticatorCode": "ऑथेंटिकेटर कोड",
+    "hidePassword": "पासवर्ड छिपाएँ",
+    "showPassword": "पासवर्ड दिखाएँ",
+    "enterPassword": "अपना पासवर्ड दर्ज करें",
+    "signInSuccess": "साइन इन सफल हुआ",
+    "mfaRequiredToast": "जारी रखने के लिए अपने ऑथेंटिकेटर ऐप का कोड दर्ज करें",
+    "providerSignInFailed": "{provider} साइन इन विफल",
+    "couldNotReachProvider": "प्रदाता तक नहीं पहुँच सके",
+    "serverError": "सर्वर से कनेक्ट नहीं हो सका",
+    "loginFailed": "लॉगिन विफल",
+    "invalidCredentials": "अमान्य क्रेडेंशियल्स"
   },
   "dashboard": {
     "title": "डैशबोर्ड",

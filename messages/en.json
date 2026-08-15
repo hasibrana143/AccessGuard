@@ -83,7 +83,21 @@
     "mfaCode": "6-digit code",
     "verify": "Verify",
     "mfaError": "Invalid code",
-    "signInWithGithub": "Continue with GitHub"
+    "signInWithGithub": "Continue with GitHub",
+    "backToHome": "Back to Home",
+    "signingIn": "Signing in…",
+    "verifyAndSignIn": "Verify & Sign In",
+    "authenticatorCode": "Authenticator Code",
+    "hidePassword": "Hide password",
+    "showPassword": "Show password",
+    "enterPassword": "Enter your password",
+    "signInSuccess": "Signed in successfully",
+    "mfaRequiredToast": "Enter your authenticator app code to continue",
+    "providerSignInFailed": "{provider} sign-in failed",
+    "couldNotReachProvider": "Could not reach the provider",
+    "serverError": "Failed to connect to server",
+    "loginFailed": "Login Failed",
+    "invalidCredentials": "Invalid credentials"
   },
   "dashboard": {
     "title": "Dashboard",
