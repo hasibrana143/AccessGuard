@@ -44,3 +44,14 @@ npx tsc -p tsconfig.check.json
 - Open deferrals (documented in volume docs): semantic-release, deploy/preview jobs, PostHog, PagerDuty, status page, pixel contrast analysis, i18n, soak test.
 - Typecheck: `npx tsc -p tsconfig.check.json` (source-only; never `tsc` on `.next-types`).
 - Tests: vitest 251 ✓ · coverage gate 55/50/58/57 · Playwright baseline ~12 specs · lint 0 ✓.
+
+## Local environment (Aug 2026)
+- DB + Redis run via Docker: `docker compose up -d postgres redis` (accessguard-postgres-1 + accessguard-redis-1).
+- Postgres: `postgresql://accessguard:accessguard@localhost:5432/accessguard` (from `.env`).
+- Redis: `redis://localhost:6379`.
+- Prisma: `npx prisma db push` done; seed done (test user `test@accessguard.dev` / `testpass123`, org default).
+- Dev server: `npm run dev` (Next 16.2.12, port 3000). Health check: `GET http://localhost:3000/api/health`.
+- bun NOT installed on this machine — use `npm`/`node` for everything (do not run `bun`).
+- psql/redis-cli not on PATH — use Docker exec or MCP tools instead.
+- MCPs configured in `opencode.json`: postgres-mcp, server-redis, @playwright/mcp, server-memory.
+- `.env` contains real secrets — never print values, never commit.

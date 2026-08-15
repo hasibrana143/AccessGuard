@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireOrgAccess, requirePermission } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
+import { enforceVerificationOnWrite } from '@/lib/rbac';
 
 // GET /api/team/members?orgSlug=... - List team members (own org only)
 export async function GET(request: NextRequest) {
@@ -29,9 +31,20 @@ export async function GET(request: NextRequest) {
 
 // PATCH /api/team/members - Update member role or custom role (manage_team)
 export async function PATCH(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`team-members-patch:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   try {
     const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
+
+    // Enforce email verification on write operations
+    const verify = await enforceVerificationOnWrite(request, auth.user.id);
+    if (verify instanceof NextResponse) return verify;
 
     const { userId, role, customRoleId } = await request.json();
 
@@ -90,9 +103,20 @@ export async function PATCH(request: NextRequest) {
 
 // DELETE /api/team/members - Remove member (admin or owner only)
 export async function DELETE(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`team-members-delete:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   try {
     const auth = await requirePermission(request, PERMISSIONS.MANAGE_TEAM);
     if (auth instanceof NextResponse) return auth;
+
+    // Enforce email verification on write operations
+    const verify = await enforceVerificationOnWrite(request, auth.user.id);
+    if (verify instanceof NextResponse) return verify;
 
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');

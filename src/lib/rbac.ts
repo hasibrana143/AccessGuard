@@ -61,7 +61,7 @@ async function isEmailVerified(userId: string): Promise<boolean> {
 }
 
 // Shared guard: verify the email when the request mutates state.
-async function enforceVerificationOnWrite(
+export async function enforceVerificationOnWrite(
   request: NextRequest,
   userId: string
 ): Promise<true | NextResponse> {

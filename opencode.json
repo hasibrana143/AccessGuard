@@ -1,0 +1,41 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "postgres": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-postgres@0.6.2", "postgresql://accessguard:accessguard@localhost:5432/accessguard"]
+    },
+    "redis": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-redis@2025.4.25"],
+      "environment": {
+        "REDIS_URL": "redis://localhost:6379"
+      }
+    },
+    "playwright": {
+      "type": "local",
+      "command": ["npx", "-y", "@playwright/mcp@0.0.79"],
+      "enabled": true
+    },
+    "memory": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-memory@2026.7.4"],
+      "enabled": true
+    },
+    "codebase-memory": {
+      "type": "local",
+      "command": ["codebase-memory-mcp"],
+      "enabled": true
+    },
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true
+    },
+    "gbrain": {
+      "type": "local",
+      "command": ["C:\\Users\\Hasib Rana\\.bun\\bin\\gbrain.exe", "serve"],
+      "enabled": true
+    }
+  }
+}

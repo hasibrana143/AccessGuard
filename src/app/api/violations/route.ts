@@ -3,9 +3,17 @@ import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { requireAuth, requireVerifiedEmail, requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
 // GET /api/violations - List violations with filters (scoped to the user's org)
 export async function GET(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`violations-list:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
@@ -72,6 +80,13 @@ export async function GET(request: NextRequest) {
 
 // PUT /api/violations - Update violation status (scoped to the user's org)
 export async function PUT(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`violations-update:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   try {
     const body = await request.json();
     const { id, status, fixedAt } = body;

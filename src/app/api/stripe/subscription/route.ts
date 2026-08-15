@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { logger } from '@/lib/error-logger';
 import { requireAuth, requireVerifiedEmail } from '@/lib/rbac';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { PERMISSIONS } from '@/lib/permissions';
 import { PRICING_PLANS, getPlanFromPriceId, type PlanType } from '@/lib/stripe';
 
 // GET /api/stripe/subscription - Get the CALLER's org subscription + usage.
-// Guard chain: auth first. (Previously anonymous + hardcoded demo-org lookup —
-// a tenant-isolation leak, same class as the github/status fix.)
+// Guard chain: auth first.
 export async function GET(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`stripe-subscribe:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
   try {
     const auth = await requireAuth(request);
     if (auth instanceof NextResponse) return auth;

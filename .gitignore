@@ -68,3 +68,4 @@ keepalive.*
 
 # DB backups (contain sensitive data)
 backups/
+.gstack/

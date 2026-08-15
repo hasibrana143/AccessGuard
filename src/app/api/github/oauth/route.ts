@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { requireOrgAccess, requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { signOAuthState, verifyOAuthState } from '@/lib/oauth-state';
 
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
@@ -10,6 +11,13 @@ const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
 
 // GET - Start OAuth flow
 export async function GET(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`github-oauth:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
+
   const { searchParams } = new URL(request.url);
   const orgId = searchParams.get('orgId');
   const redirect = searchParams.get('redirect') || '/dashboard';

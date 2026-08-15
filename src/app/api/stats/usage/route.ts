@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { requireOrgAccess } from '@/lib/rbac';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
 // GET /api/stats/usage?orgId=... - Real usage metrics for the organization
 export async function GET(request: NextRequest) {
+  const clientId = getClientIdentifier(request);
+  const rateResult = await checkRateLimit(`stats-usage:${clientId}`, rateLimits.default);
+
+  if (!rateResult.success) {
+    return createRateLimitResponse(rateResult);
+  }
   try {
     const { searchParams } = new URL(request.url);
     const orgParam = searchParams.get('orgId');
