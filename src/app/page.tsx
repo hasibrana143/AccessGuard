@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +20,7 @@ import { FooterSection } from '@/components/landing/footer-section';
 import { DemoModal } from '@/components/landing/demo-modal';
 
 export default function LandingPage() {
+  const t = useTranslations('landing');
   const [showDemo, setShowDemo] = useState(false);
   const router = useRouter();
   const { isAuthenticated } = useAuth();
@@ -40,19 +42,19 @@ export default function LandingPage() {
               <Shield className="h-8 w-8 text-coral" />
               <span className="text-xl font-bold">AccessGuard</span>
               <Badge variant="outline" className="ml-2 border-emerald-500/20 text-emerald-500 text-xs">
-                Lawsuit Defense Ready&trade;
+                {t('lawsuitBadge')}
               </Badge>
             </div>
             <div className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
-              <a href="#comparison" className="text-muted-foreground hover:text-foreground transition-colors">Comparison</a>
-              <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
-              <a href="#faq" className="text-muted-foreground hover:text-foreground transition-colors">FAQ</a>
+              <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">{t('navFeatures')}</a>
+              <a href="#comparison" className="text-muted-foreground hover:text-foreground transition-colors">{t('navComparison')}</a>
+              <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors">{t('navPricing')}</a>
+              <a href="#faq" className="text-muted-foreground hover:text-foreground transition-colors">{t('navFaq')}</a>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="ghost" onClick={handleGetStarted}>Sign In</Button>
+              <Button variant="ghost" onClick={handleGetStarted}>{t('signIn')}</Button>
               <Button onClick={handleGetStarted} className="bg-coral hover:bg-coral/90 text-coral-foreground">
-                Start Free Trial
+                {t('startFreeTrial')}
               </Button>
             </div>
           </div>

@@ -1,57 +1,59 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 import { Shield, Zap, Sparkles, Check, Globe, Cpu, Gauge, Workflow } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
-const features = [
-  {
-    title: 'Real WCAG Scanning',
-    icon: Globe,
-    description: 'Our engine scans your actual rendered DOM, not just HTML snapshots. We detect violations other tools miss.',
-    details: ['axe-core integration', 'Custom rule detection', 'SPA & dynamic content support', 'Screenshot evidence capture'],
-    color: 'coral',
-  },
-  {
-    title: 'AI-Powered Remediation',
-    icon: Sparkles,
-    description: 'Get AI-generated fix code for each violation. Our models are trained on WCAG patterns and real-world fixes.',
-    details: ['Automated fix generation', 'Code explanations', 'Confidence scoring', 'Batch fix application'],
-    color: 'emerald',
-  },
-  {
-    title: 'CI/CD Integration',
-    icon: Cpu,
-    description: 'Prevent accessibility regressions before they reach production. Integrate scanning into your pipeline.',
-    details: ['GitHub Actions integration', 'PR status checks', 'Automated blocking', 'Deploy gate enforcement'],
-    color: 'coral',
-  },
-  {
-    title: 'Legal Shield™ Reports',
-    icon: Shield,
-    description: 'Generate court-admissible PDF reports with cryptographic timestamps showing your good-faith remediation efforts.',
-    details: ['Court-admissible format', 'Cryptographic timestamps', 'Remediation audit trail', 'Executive summaries'],
-    color: 'emerald',
-  },
-  {
-    title: 'Performance Monitoring',
-    icon: Gauge,
-    description: 'Track your accessibility score over time. Get alerted when new violations appear on your pages.',
-    details: ['Historical trend tracking', 'Real-time alerts', 'Custom score targets', 'Team notifications'],
-    color: 'coral',
-  },
-  {
-    title: 'Team Collaboration',
-    icon: Workflow,
-    description: 'Assign violations, track fixes, and generate PRs directly from our platform. Built for dev teams.',
-    details: ['Violation assignments', 'GitHub PR creation', 'Comment & review', 'Audit logging'],
-    color: 'emerald',
-  },
-];
-
 export function Features() {
+  const t = useTranslations('landing');
   const [activeFeature, setActiveFeature] = useState<number | null>(null);
+
+  const features = [
+    {
+      title: t('f1Title'),
+      icon: Globe,
+      description: t('f1Desc'),
+      details: [t('f1d1'), t('f1d2'), t('f1d3'), t('f1d4')],
+      color: 'coral',
+    },
+    {
+      title: t('f2Title'),
+      icon: Sparkles,
+      description: t('f2Desc'),
+      details: [t('f2d1'), t('f2d2'), t('f2d3'), t('f2d4')],
+      color: 'emerald',
+    },
+    {
+      title: t('f3Title'),
+      icon: Cpu,
+      description: t('f3Desc'),
+      details: [t('f3d1'), t('f3d2'), t('f3d3'), t('f3d4')],
+      color: 'coral',
+    },
+    {
+      title: t('f4Title'),
+      icon: Shield,
+      description: t('f4Desc'),
+      details: [t('f4d1'), t('f4d2'), t('f4d3'), t('f4d4')],
+      color: 'emerald',
+    },
+    {
+      title: t('f5Title'),
+      icon: Gauge,
+      description: t('f5Desc'),
+      details: [t('f5d1'), t('f5d2'), t('f5d3'), t('f5d4')],
+      color: 'coral',
+    },
+    {
+      title: t('f6Title'),
+      icon: Workflow,
+      description: t('f6Desc'),
+      details: [t('f6d1'), t('f6d2'), t('f6d3'), t('f6d4')],
+      color: 'emerald',
+    },
+  ];
 
   return (
     <section id="features" className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
@@ -59,13 +61,13 @@ export function Features() {
         <div className="text-center mb-16">
           <Badge variant="outline" className="border-coral/20 text-coral px-3 py-1 mb-4">
             <Zap className="h-3 w-3 mr-1" />
-            Features
+            {t('featuresBadge')}
           </Badge>
           <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-            Why AccessGuard Beats Overlay Widgets
+            {t('whyAccessGuard')}
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Overlay widgets are being challenged in court. Real code fixes are the only defensible approach.
+            {t('featuresSub')}
           </p>
         </div>
 

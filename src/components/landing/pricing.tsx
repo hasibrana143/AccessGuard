@@ -1,71 +1,74 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { Check, Sparkles, Shield, Users, GitPullRequest, ScrollText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
-const plans = [
-  {
-    name: 'Starter',
-    description: 'For small websites and freelancers',
-    price: '$49',
-    period: '/month',
-    popular: false,
-    features: ['1 website', '500 pages/month', 'Weekly scans', 'Email reports', 'Community support'],
-    cta: 'Start Free Trial',
-    color: 'default',
-  },
-  {
-    name: 'Growth',
-    description: 'For growing teams and agencies',
-    price: '$149',
-    period: '/month',
-    popular: true,
-    features: ['5 websites', '5,000 pages/month', 'Daily scans', 'AI remediation', 'GitHub auto-PR', 'Priority support'],
-    cta: 'Start Free Trial',
-    color: 'coral',
-  },
-  {
-    name: 'Agency',
-    description: 'For digital agencies managing multiple clients',
-    price: '$399',
-    period: '/month',
-    popular: false,
-    features: ['15 websites', '25,000 pages/month', 'White-label reports', 'Team seats', 'GitHub auto-PR', 'Dedicated support'],
-    cta: 'Start Free Trial',
-    color: 'default',
-  },
-  {
-    name: 'Enterprise',
-    description: 'For large organizations',
-    price: 'Custom',
-    period: '',
-    popular: false,
-    features: ['Unlimited websites', 'Custom page limits', 'SSO/SAML', 'Dedicated CSM', 'Custom integrations', 'SLA'],
-    cta: 'Contact Sales',
-    color: 'default',
-  },
-];
-
-const allPlanFeatures = [
-  { icon: Shield, text: 'WCAG 2.1 AA Compliance' },
-  { icon: GitPullRequest, text: 'GitHub PR Integration' },
-  { icon: ScrollText, text: 'AI-Powered Remediation' },
-  { icon: Users, text: 'Team Collaboration' },
-];
-
 export function Pricing({ onGetStarted = () => {} }: { onGetStarted?: () => void }) {
+  const t = useTranslations('landing');
+
+  const plans = [
+    {
+      name: t('pStarter'),
+      description: t('pStarterDesc'),
+      price: '$49',
+      period: '/month',
+      popular: false,
+      features: [t('pStarterF1'), t('pStarterF2'), t('pStarterF3'), t('pStarterF4'), t('pStarterF5')],
+      cta: t('startFreeTrial'),
+      color: 'default',
+    },
+    {
+      name: t('pGrowth'),
+      description: t('pGrowthDesc'),
+      price: '$149',
+      period: '/month',
+      popular: true,
+      features: [t('pGrowthF1'), t('pGrowthF2'), t('pGrowthF3'), t('pGrowthF4'), t('pGrowthF5'), t('pGrowthF6')],
+      cta: t('startFreeTrial'),
+      color: 'coral',
+    },
+    {
+      name: t('pAgency'),
+      description: t('pAgencyDesc'),
+      price: '$399',
+      period: '/month',
+      popular: false,
+      features: [t('pAgencyF1'), t('pAgencyF2'), t('pAgencyF3'), t('pAgencyF4'), t('pAgencyF5'), t('pAgencyF6')],
+      cta: t('startFreeTrial'),
+      color: 'default',
+    },
+    {
+      name: t('pEnterprise'),
+      description: t('pEnterpriseDesc'),
+      price: 'Custom',
+      period: '',
+      popular: false,
+      features: [t('pEnterpriseF1'), t('pEnterpriseF2'), t('pEnterpriseF3'), t('pEnterpriseF4'), t('pEnterpriseF5'), t('pEnterpriseF6')],
+      cta: t('contactSales'),
+      color: 'default',
+    },
+  ];
+
+  const allPlanFeatures = [
+    { icon: Shield, text: t('allF1') },
+    { icon: GitPullRequest, text: t('allF2') },
+    { icon: ScrollText, text: t('allF3') },
+    { icon: Users, text: t('allF4') },
+  ];
+
   return (
     <section id="pricing" className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-16">
           <Badge variant="outline" className="border-coral/20 text-coral px-3 py-1 mb-4">
             <Sparkles className="h-3 w-3 mr-1" />
-            Pricing
+            {t('pricingBadge')}
           </Badge>
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">Simple, Transparent Pricing</h2>
-          <p className="text-xl text-muted-foreground">Start free, scale as you grow. No hidden fees.</p>
+          <h2 className="text-3xl sm:text-4xl font-bold mb-4">{t('pricingTitle')}</h2>
+          <p className="text-xl text-muted-foreground">{t('pricingSub')}</p>
         </div>
 
         <div className="grid md:grid-cols-4 gap-8 max-w-6xl mx-auto mb-16">
@@ -73,7 +76,7 @@ export function Pricing({ onGetStarted = () => {} }: { onGetStarted?: () => void
             <Card key={plan.name} className={`relative ${plan.popular ? 'border-coral border-2 shadow-lg shadow-coral/10' : ''}`}>
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <Badge className="bg-coral text-coral-foreground px-4 py-1">Most Popular</Badge>
+                  <Badge className="bg-coral text-coral-foreground px-4 py-1">{t('mostPopular')}</Badge>
                 </div>
               )}
               <CardHeader className="text-center pb-2">
@@ -109,7 +112,7 @@ export function Pricing({ onGetStarted = () => {} }: { onGetStarted?: () => void
 
         {/* All plans include */}
         <div className="text-center">
-          <h3 className="text-lg font-semibold mb-6">All plans include</h3>
+          <h3 className="text-lg font-semibold mb-6">{t('allPlansInclude')}</h3>
           <div className="flex flex-wrap justify-center gap-8">
             {allPlanFeatures.map((feature) => (
               <div key={feature.text} className="flex items-center gap-2 text-sm text-muted-foreground">

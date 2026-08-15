@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { motion } from 'framer-motion';
 import {
   Shield, Sparkles, Check, ArrowRight, Play, Target, AlertCircle,
@@ -16,19 +17,6 @@ const statColors: Record<string, string> = {
   coral: 'text-coral',
 };
 
-const stats = [
-  { label: 'Risk Score', value: '78', icon: Target, trend: '+5', color: 'emerald' },
-  { label: 'Critical', value: '12', icon: AlertCircle, trend: '-3', color: 'red' },
-  { label: 'Serious', value: '45', icon: AlertTriangle, trend: '-8', color: 'orange' },
-  { label: 'Scans', value: '156', icon: Activity, trend: '+12', color: 'coral' },
-];
-
-const violations = [
-  { severity: 'critical', title: 'Missing form labels', page: '/checkout' },
-  { severity: 'serious', title: 'Low color contrast', page: '/products' },
-  { severity: 'moderate', title: 'Missing alt text', page: '/about' },
-];
-
 export function Hero({
   onGetStarted = () => {},
   onWatchDemo = () => {},
@@ -36,7 +24,21 @@ export function Hero({
   onGetStarted?: () => void;
   onWatchDemo?: () => void;
 }) {
+  const t = useTranslations('landing');
   const [showDemoModal, setShowDemoModal] = useState(false);
+
+  const stats = [
+    { label: t('statRisk'), value: '78', icon: Target, trend: '+5', color: 'emerald' },
+    { label: t('statCritical'), value: '12', icon: AlertCircle, trend: '-3', color: 'red' },
+    { label: t('statSerious'), value: '45', icon: AlertTriangle, trend: '-8', color: 'orange' },
+    { label: t('statScans'), value: '156', icon: Activity, trend: '+12', color: 'coral' },
+  ];
+
+  const violations = [
+    { severity: 'critical', title: t('mockVio1'), page: '/checkout' },
+    { severity: 'serious', title: t('mockVio2'), page: '/products' },
+    { severity: 'moderate', title: t('mockVio3'), page: '/about' },
+  ];
 
   return (
     <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
@@ -50,50 +52,49 @@ export function Hero({
             <div className="flex items-center gap-2 mb-6">
               <Badge variant="outline" className="border-coral/20 text-coral px-3 py-1">
                 <Sparkles aria-hidden="true" className="h-3 w-3 mr-1" />
-                Developer-First Solution
+                {t('devFirst')}
               </Badge>
               <Badge variant="outline" className="border-emerald-500/20 text-emerald-500 px-3 py-1">
                 <Shield aria-hidden="true" className="h-3 w-3 mr-1" />
-                WCAG 2.1 AA Compliant
+                {t('wcagBadge')}
               </Badge>
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 leading-tight">
-              Prevent <span className="text-coral">$50k+ ADA Lawsuits</span>
+              {t('headlineA')} <span className="text-coral">{t('headlineHighlight')}</span>
               <br />
-              <span className="text-muted-foreground">Before They Cost You</span>
+              <span className="text-muted-foreground">{t('headlineB')}</span>
             </h1>
 
             <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
-              Unlike overlay widgets that lawsuits allege don&apos;t work, AccessGuard scans your{' '}
-              <strong className="text-foreground">actual code</strong>,
-              generates <strong className="text-foreground">AI-powered fixes</strong>, and integrates into your{' '}
-              <strong className="text-foreground">CI/CD pipeline</strong>.
+              {t.rich('heroParagraph', {
+                strong: (chunks) => <strong className="text-foreground">{chunks}</strong>,
+              })}
             </p>
 
             <div className="flex flex-col sm:flex-row items-start gap-4 mb-8">
               <Button size="lg" onClick={onGetStarted} className="bg-coral hover:bg-coral/90 text-coral-foreground h-14 px-8 text-lg">
-                Start Free Trial
+                {t('startFreeTrial')}
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
               <Button size="lg" variant="outline" className="h-14 px-8 text-lg" onClick={() => { setShowDemoModal(true); onWatchDemo(); }}>
                 <Play className="mr-2 h-5 w-5" />
-                Watch Demo
+                {t('watchDemo')}
               </Button>
             </div>
 
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <Check aria-hidden="true" className="h-4 w-4 text-emerald-500" />
-                No credit card required
+                {t('noCreditCard')}
               </div>
               <div className="flex items-center gap-2">
                 <Check aria-hidden="true" className="h-4 w-4 text-emerald-500" />
-                14-day free trial
+                {t('trial14')}
               </div>
               <div className="flex items-center gap-2">
                 <Check aria-hidden="true" className="h-4 w-4 text-emerald-500" />
-                Cancel anytime
+                {t('cancelAnytime')}
               </div>
             </div>
           </motion.div>
@@ -130,7 +131,7 @@ export function Hero({
                       </div>
                       <div className="text-2xl font-bold">{stat.value}</div>
                       <div className={`text-xs ${stat.trend.startsWith('+') ? 'text-emerald-500' : 'text-red-500'} mt-1`}>
-                        {stat.trend} this week
+                        {t('trendWeek', { trend: stat.trend })}
                       </div>
                     </div>
                   ))}
@@ -140,7 +141,7 @@ export function Hero({
                 <div className="bg-muted/30 rounded-xl p-4 h-40 flex items-center justify-center">
                   <div className="text-center text-muted-foreground">
                     <TrendingUp aria-hidden="true" className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <span className="text-sm">Violation Trends</span>
+                    <span className="text-sm">{t('trendsLabel')}</span>
                   </div>
                 </div>
 
@@ -151,7 +152,7 @@ export function Hero({
                       <div className={`w-2 h-2 rounded-full ${v.severity === 'critical' ? 'bg-red-500' : v.severity === 'serious' ? 'bg-orange-500' : 'bg-yellow-500'}`} />
                       <span className="text-sm flex-1">{v.title}</span>
                       <span className="text-xs text-muted-foreground">{v.page}</span>
-                      <Button variant="ghost" size="sm" className="h-7" tabIndex={-1} aria-hidden="true">Fix</Button>
+                      <Button variant="ghost" size="sm" className="h-7" tabIndex={-1} aria-hidden="true">{t('fixBtn')}</Button>
                     </div>
                   ))}
                 </div>
@@ -166,7 +167,7 @@ export function Hero({
               className="absolute -right-4 top-20 bg-emerald-700 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium"
             >
               <Check aria-hidden="true" className="inline h-4 w-4 mr-1" />
-              WCAG 2.1 AA Compliant
+              {t('wcagBadge')}
             </motion.div>
 
             <motion.div
@@ -177,7 +178,7 @@ export function Hero({
             >
               <div className="flex items-center gap-2">
                 <Github aria-hidden="true" className="h-5 w-5" />
-                <span className="text-sm font-medium">PR Created</span>
+                <span className="text-sm font-medium">{t('prCreated')}</span>
                 <CheckCircle2 aria-hidden="true" className="h-4 w-4 text-emerald-500" />
               </div>
             </motion.div>
