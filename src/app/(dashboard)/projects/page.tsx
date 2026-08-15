@@ -5,6 +5,7 @@ import {
   Plus, Globe, Clock, Loader2, RefreshCw, Code, MoreHorizontal,
   Settings, Edit, Download, Trash2, CheckCircle2, AlertCircle, Upload
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +25,8 @@ import { useRouter } from 'next/navigation';
 import type { CreateProjectInput } from '@/types';
 
 export default function ProjectsPage() {
+  const t = useTranslations('projects');
+  const tc = useTranslations('common');
   const { toast } = useToast();
   const { user } = useAuth();
   const orgSlug = user?.orgSlug ?? undefined;
@@ -81,20 +84,20 @@ export default function ProjectsPage() {
 
   const handleCreateProject = async () => {
     if (!newProject.name || !newProject.url) {
-      toast({ title: 'Error', description: 'Name and URL are required', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('nameAndUrlRequired'), variant: 'destructive' });
       return;
     }
 
     if (!orgSlug) {
-      toast({ title: 'Error', description: 'Organization not found. Please log in again.', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('orgNotFound'), variant: 'destructive' });
       return;
     }
 
     try {
       const result = await createProject.mutateAsync({ ...newProject, orgSlug });
       toast({
-        title: 'Project Created',
-        description: `"${newProject.name}" has been added and scanning has started.`
+        title: t('projectCreated'),
+        description: t('projectCreatedMsg', { name: newProject.name })
       });
       if (scanFrequency && scanFrequency !== 'none' && result?.project?.id) {
         try {
@@ -103,22 +106,22 @@ export default function ProjectsPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectId: result.project.id, schedule: scanFrequency }),
           });
-          toast({ title: 'Scan Scheduled', description: `Automatic ${scanFrequency} scans enabled.` });
+          toast({ title: t('scanScheduled'), description: t('scanScheduledMsg', { frequency: scanFrequency }) });
         } catch {
-          toast({ title: 'Warning', description: 'Project created but scheduling failed', variant: 'destructive' });
+          toast({ title: tc('error'), description: t('scheduleFailed'), variant: 'destructive' });
         }
       }
       setIsAddOpen(false);
       setNewProject({ name: '', url: '', description: '' });
       setScanFrequency('none');
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to create project', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('createFailed'), variant: 'destructive' });
     }
   };
 
   const handleImport = async () => {
     if (!orgSlug) {
-      toast({ title: 'Error', description: 'Organization not found. Please log in again.', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('orgNotFound'), variant: 'destructive' });
       return;
     }
 
@@ -137,7 +140,7 @@ export default function ProjectsPage() {
     }
 
     if (rows.length === 0) {
-      toast({ title: 'Error', description: 'No valid rows found in CSV', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('noValidRows'), variant: 'destructive' });
       return;
     }
 
@@ -151,7 +154,7 @@ export default function ProjectsPage() {
       });
       const data = await res.json();
       if (!data.success) {
-        toast({ title: 'Import Failed', description: data.error || 'Failed to import projects', variant: 'destructive' });
+        toast({ title: t('importFailed'), description: data.error || t('importFailed'), variant: 'destructive' });
       } else {
         setImportResult({
           created: data.data.totalCreated,
@@ -160,13 +163,17 @@ export default function ProjectsPage() {
           failedDetails: [...data.data.failed, ...data.data.skipped],
         });
         toast({
-          title: 'Import Complete',
-          description: `${data.data.totalCreated} project(s) imported, ${data.data.totalFailed} failed, ${data.data.totalSkipped} skipped`,
+          title: t('importComplete'),
+          description: t('importCompleteMsg', {
+            created: data.data.totalCreated,
+            failed: data.data.totalFailed,
+            skipped: data.data.totalSkipped,
+          }),
         });
         refetchProjects();
       }
     } catch {
-      toast({ title: 'Import Failed', description: 'Failed to import projects', variant: 'destructive' });
+      toast({ title: t('importFailed'), description: t('importFailed'), variant: 'destructive' });
     } finally {
       setImporting(false);
     }
@@ -176,18 +183,18 @@ export default function ProjectsPage() {
     try {
       const result = await createScan.mutateAsync(projectId);
       toast({
-        title: 'Scan Completed',
-        description: `Found ${result?.scan?.violationsFound || 0} violations on "${projectName}".`
+        title: t('scanCompleted'),
+        description: t('scanCompletedMsg', { count: result?.scan?.violationsFound || 0, name: projectName })
       });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to start scan';
-      toast({ title: 'Scan Failed', description: errorMsg, variant: 'destructive' });
+      const errorMsg = error instanceof Error ? error.message : t('scanFailedStart');
+      toast({ title: t('scanFailed'), description: errorMsg, variant: 'destructive' });
     }
   };
 
   const handleManualScan = async () => {
     if (!htmlUploadProject || !manualHtml.trim()) {
-      toast({ title: 'Error', description: 'Please paste HTML content to scan', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('pasteHtml'), variant: 'destructive' });
       return;
     }
 
@@ -204,17 +211,17 @@ export default function ProjectsPage() {
 
       if (result.success) {
         toast({
-          title: 'Manual Scan Completed',
-          description: `Found ${result.data?.scan?.violationsFound || 0} violations.`
+          title: t('manualScanCompleted'),
+          description: t('manualScanCompletedMsg', { count: result.data?.scan?.violationsFound || 0 })
         });
         setIsHtmlUploadOpen(false);
         setManualHtml('');
         setHtmlUploadProject(null);
       } else {
-        toast({ title: 'Scan Failed', description: result.error, variant: 'destructive' });
+        toast({ title: t('scanFailed'), description: result.error, variant: 'destructive' });
       }
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to submit manual scan', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('failedSubmitManual'), variant: 'destructive' });
     }
   };
 
@@ -246,7 +253,7 @@ export default function ProjectsPage() {
 
   const handleSaveEdit = async () => {
     if (!editingProject?.name || !editingProject?.url) {
-      toast({ title: 'Error', description: 'Name and URL are required', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('nameAndUrlRequired'), variant: 'destructive' });
       return;
     }
     try {
@@ -261,15 +268,15 @@ export default function ProjectsPage() {
         })
       });
       if (response.ok) {
-        toast({ title: 'Project Updated', description: `"${editingProject.name}" has been updated.` });
+        toast({ title: t('projectUpdated'), description: t('projectUpdatedMsg', { name: editingProject.name }) });
         setIsEditOpen(false);
         setEditingProject(null);
         await refetchProjects();
       } else {
-        toast({ title: 'Error', description: 'Failed to update project', variant: 'destructive' });
+        toast({ title: tc('error'), description: t('updateFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to update project', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('updateFailed'), variant: 'destructive' });
     }
   };
 
@@ -281,15 +288,15 @@ export default function ProjectsPage() {
         method: 'DELETE'
       });
       if (response.ok) {
-        toast({ title: 'Project Deleted', description: `"${deleteProject.name}" has been deleted.` });
+        toast({ title: t('projectDeleted'), description: t('projectDeletedMsg', { name: deleteProject.name }) });
         setIsDeleteOpen(false);
         setDeleteProject(null);
         await refetchProjects();
       } else {
-        toast({ title: 'Error', description: 'Failed to delete project', variant: 'destructive' });
+        toast({ title: tc('error'), description: t('deleteFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to delete project', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('deleteFailed'), variant: 'destructive' });
     } finally {
       setIsDeleting(false);
     }
@@ -301,7 +308,7 @@ export default function ProjectsPage() {
       setVerificationData(result as typeof verificationData);
       setShowVerificationDialog(true);
     } catch {
-      toast({ title: 'Error', description: 'Failed to generate verification token', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('verifyTokenFailed'), variant: 'destructive' });
     }
   };
 
@@ -309,16 +316,16 @@ export default function ProjectsPage() {
     try {
       const result = await verifyProject.checkStatus.mutateAsync(projectId);
       if (result?.verified) {
-        toast({ title: 'Verified!', description: 'Domain verification successful' });
+        toast({ title: t('verifiedTitle'), description: t('verifiedMsg') });
         if (settingsProject) {
           setSettingsProject({ ...settingsProject, isVerified: true });
         }
         setShowVerificationDialog(false);
       } else {
-        toast({ title: 'Not Verified', description: result?.message || 'Verification token not found on website', variant: 'destructive' });
+        toast({ title: t('notVerifiedTitle'), description: result?.message || t('notVerifiedMsg'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to check verification status', variant: 'destructive' });
+      toast({ title: tc('error'), description: t('checkVerificationFailed'), variant: 'destructive' });
     }
   };
 
@@ -326,27 +333,27 @@ export default function ProjectsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Projects</h1>
-          <p className="text-muted-foreground">Manage your monitored websites</p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
                 <Upload className="h-4 w-4 mr-2" />
-                Import CSV
+                {t('importCsv')}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
-                <DialogTitle>Bulk Import Projects</DialogTitle>
+                <DialogTitle>{t('bulkImportTitle')}</DialogTitle>
                 <DialogDescription>
-                  Upload a CSV file or paste rows. Format: <code className="text-xs bg-muted px-1.5 py-0.5 rounded">name,url,description,scanFrequency</code> — one project per row. scanFrequency is optional (none|daily|weekly|monthly).
+                  {t('bulkImportDesc', { format: 'name,url,description,scanFrequency' })}
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="import-csv">CSV File</Label>
+                  <Label htmlFor="import-csv">{t('csvFile')}</Label>
                   <Input
                     id="import-csv"
                     type="file"
@@ -363,12 +370,12 @@ export default function ProjectsPage() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="import-paste">Or paste rows directly</Label>
+                  <Label htmlFor="import-paste">{t('pasteRows')}</Label>
                   <Textarea
                     id="import-paste"
                     value={importCsvText}
                     onChange={(e) => setImportCsvText(e.target.value)}
-                    placeholder={"Acme Site,https://acme.com,Main marketing site,daily\nDocs,https://docs.acme.com,Documentation portal,weekly"}
+                    placeholder={t('csvPlaceholder')}
                     rows={6}
                     autoComplete="off"
                   />
@@ -376,7 +383,7 @@ export default function ProjectsPage() {
                 {importResult && (
                   <div className={`p-3 rounded-lg border text-sm ${importResult.failed > 0 ? 'border-orange-500/30 bg-orange-500/5' : 'border-emerald-500/30 bg-emerald-500/5'}`}>
                     <div className="font-medium mb-1">
-                      {importResult.created} imported, {importResult.failed} failed, {importResult.skipped} skipped
+                      {t('importResult', { created: importResult.created, failed: importResult.failed, skipped: importResult.skipped })}
                     </div>
                     {importResult.failedDetails.slice(0, 5).map((f, i) => (
                       <p key={i} className="text-xs text-muted-foreground">- {f.url || f.name || '?'}: {f.error}</p>
@@ -386,16 +393,16 @@ export default function ProjectsPage() {
               </div>
               <DialogFooter className="gap-2">
                 <Button variant="outline" onClick={() => setIsImportOpen(false)} disabled={importing}>
-                  Close
+                  {tc('close')}
                 </Button>
                 <Button
                   onClick={handleImport}
                   disabled={importing || !importCsvText.trim()}
                 >
                   {importing ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</>
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('importing')}</>
                   ) : (
-                    <><Upload className="h-4 w-4 mr-2" />Import Projects</>
+                    <><Upload className="h-4 w-4 mr-2" />{t('importProjects')}</>
                   )}
                 </Button>
               </DialogFooter>
@@ -405,67 +412,67 @@ export default function ProjectsPage() {
             <DialogTrigger asChild>
               <Button className="bg-coral hover:bg-coral/90 text-coral-foreground">
                 <Plus className="h-4 w-4 mr-2" />
-                Add Project
+                {t('addProject')}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle>Add New Project</DialogTitle>
+              <DialogTitle>{t('addProjectTitle')}</DialogTitle>
               <DialogDescription>
-                Enter the URL of the website you want to monitor for accessibility compliance.
+                {t('addProjectDesc')}
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="name">Project Name *</Label>
+                <Label htmlFor="name">{t('nameRequired')}</Label>
                 <Input
                   id="name"
                   value={newProject.name}
                   onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                  placeholder="My Website"
+                  placeholder={t('namePlaceholder')}
                   autoComplete="organization"
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="url">Website URL *</Label>
+                <Label htmlFor="url">{t('urlRequired')}</Label>
                 <Input
                   id="url"
                   type="url"
                   value={newProject.url}
                   onChange={(e) => setNewProject({ ...newProject, url: e.target.value })}
-                  placeholder="https://example.com"
+                  placeholder={t('urlPlaceholder')}
                   autoComplete="url"
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">{t('description')}</Label>
                 <Textarea
                   id="description"
                   value={newProject.description}
                   onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-                  placeholder="Brief description of the project"
+                  placeholder={t('descPlaceholder')}
                   rows={3}
                   autoComplete="off"
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="scan-frequency">Scan Frequency</Label>
+                <Label htmlFor="scan-frequency">{t('scanFrequency')}</Label>
                 <Select value={scanFrequency} onValueChange={setScanFrequency}>
                   <SelectTrigger id="scan-frequency">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No automatic scans</SelectItem>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="none">{t('noneFrequency')}</SelectItem>
+                    <SelectItem value="daily">{t('daily')}</SelectItem>
+                    <SelectItem value="weekly">{t('weekly')}</SelectItem>
+                    <SelectItem value="monthly">{t('monthly')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsAddOpen(false)}>
-                Cancel
+                {tc('cancel')}
               </Button>
               <Button
                 className="bg-coral hover:bg-coral/90 text-coral-foreground"
@@ -473,9 +480,9 @@ export default function ProjectsPage() {
                 disabled={createProject.isPending}
               >
                 {createProject.isPending ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('creating')}</>
                 ) : (
-                  'Create & Scan'
+                  t('addProject')
                 )}
               </Button>
             </DialogFooter>
@@ -499,7 +506,7 @@ export default function ProjectsPage() {
                       {project.name}
                       {project.riskScore != null && project.riskScore < 50 && (
                         <Badge variant="outline" className="text-xs border-red-500/20 text-red-500">
-                          High Risk
+                          {t('highRisk')}
                         </Badge>
                       )}
                     </CardTitle>
@@ -517,37 +524,37 @@ export default function ProjectsPage() {
                     {project.nextScheduledScan && (
                       <CardDescription className="flex items-center gap-1 mt-0.5">
                         <Clock className="h-3 w-3" />
-                        Next scan: {new Date(project.nextScheduledScan).toLocaleDateString()} {new Date(project.nextScheduledScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {t('nextScan')} {new Date(project.nextScheduledScan).toLocaleDateString()} {new Date(project.nextScheduledScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </CardDescription>
                     )}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" aria-label={`Actions for ${project.name}`}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" aria-label={t('actionsFor', { name: project.name })}>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => handleScan(project.id, project.name)}>
                         <RefreshCw className="h-4 w-4 mr-2" />
-                        Scan Now
+                        {t('scanNow')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openHtmlUpload(project.id, project.name)}>
                         <Code className="h-4 w-4 mr-2" />
-                        Manual HTML Scan
+                        {t('manualHtmlScan')}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => openSettings(project)}>
                         <Settings className="h-4 w-4 mr-2" />
-                        Scan Settings
+                        {t('scanSettings')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openEdit(project)}>
                         <Edit className="h-4 w-4 mr-2" />
-                        Edit Project
+                        {t('editProject')}
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <Download className="h-4 w-4 mr-2" />
-                        Export Report
+                        {t('exportReport')}
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -558,7 +565,7 @@ export default function ProjectsPage() {
                         }}
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
+                        {tc('delete')}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -567,7 +574,7 @@ export default function ProjectsPage() {
               <CardContent className="space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted-foreground">Risk Score</span>
+                    <span className="text-sm text-muted-foreground">{t('riskScore')}</span>
                     <span className={`text-lg font-bold ${getRiskColor(project.riskScore || 0)}`}>
                       {project.riskScore ?? '—'}
                       {project.riskScore !== null && <span className="text-sm text-muted-foreground">/100</span>}
@@ -576,26 +583,26 @@ export default function ProjectsPage() {
                   <Progress
                     value={project.riskScore || 0}
                     className="h-2"
-                    aria-label={`Risk score: ${project.riskScore ?? 0} out of 100`}
+                    aria-label={t('riskScoreAria', { score: project.riskScore ?? 0 })}
                   />
                 </div>
 
                 <div className="grid grid-cols-4 gap-2 text-center">
                   <div className="p-2 rounded-lg bg-red-500/10">
                     <div className="text-lg font-bold text-red-500">{project.violations?.critical || 0}</div>
-                    <div className="text-xs text-muted-foreground">Crit</div>
+                    <div className="text-xs text-muted-foreground">{t('crit')}</div>
                   </div>
                   <div className="p-2 rounded-lg bg-orange-500/10">
                     <div className="text-lg font-bold text-orange-500">{project.violations?.serious || 0}</div>
-                    <div className="text-xs text-muted-foreground">Ser</div>
+                    <div className="text-xs text-muted-foreground">{t('ser')}</div>
                   </div>
                   <div className="p-2 rounded-lg bg-yellow-500/10">
                     <div className="text-lg font-bold text-yellow-500">{project.violations?.moderate || 0}</div>
-                    <div className="text-xs text-muted-foreground">Mod</div>
+                    <div className="text-xs text-muted-foreground">{t('mod')}</div>
                   </div>
                   <div className="p-2 rounded-lg bg-blue-500/10">
                     <div className="text-lg font-bold text-blue-500">{project.violations?.minor || 0}</div>
-                    <div className="text-xs text-muted-foreground">Min</div>
+                    <div className="text-xs text-muted-foreground">{t('min')}</div>
                   </div>
                 </div>
 
@@ -623,19 +630,19 @@ export default function ProjectsPage() {
                   disabled={createScan.isPending}
                 >
                   {createScan.isPending ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Scanning...</>
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('scanning')}</>
                   ) : (
-                    <><RefreshCw className="h-4 w-4 mr-2" />Scan</>
+                    <><RefreshCw className="h-4 w-4 mr-2" />{t('scan')}</>
                   )}
                 </Button>
                 <Button
                   variant="outline"
                   className="flex-1"
                   onClick={() => openHtmlUpload(project.id, project.name)}
-                  title="Paste HTML for manual scan (useful for protected sites)"
+                  title={t('manualTitle')}
                 >
                   <Code className="h-4 w-4 mr-2" />
-                  Manual
+                  {t('manual')}
                 </Button>
               </CardFooter>
             </Card>
@@ -645,11 +652,11 @@ export default function ProjectsPage() {
             <Card className="col-span-full">
               <CardContent className="py-16 text-center">
                 <Globe className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
-                <h3 className="text-lg font-semibold mb-2">No projects yet</h3>
-                <p className="text-muted-foreground mb-4">Add your first website to start monitoring for accessibility issues.</p>
+                <h3 className="text-lg font-semibold mb-2">{t('noProjectsTitle')}</h3>
+                <p className="text-muted-foreground mb-4">{t('noProjectsDesc')}</p>
                 <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={() => setIsAddOpen(true)}>
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Your First Project
+                  {t('addFirstProject')}
                 </Button>
               </CardContent>
             </Card>
@@ -660,15 +667,14 @@ export default function ProjectsPage() {
       <Dialog open={isHtmlUploadOpen} onOpenChange={setIsHtmlUploadOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Manual HTML Scan</DialogTitle>
+            <DialogTitle>{t('manualScanTitle')}</DialogTitle>
             <DialogDescription>
-              Paste the HTML source code of "{htmlUploadProject?.name}" to scan for accessibility issues.
-              This is useful when the website has bot protection.
+              {t('manualScanDesc', { name: htmlUploadProject?.name || '' })}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="manual-html">HTML Source Code</Label>
+              <Label htmlFor="manual-html">{t('htmlSource')}</Label>
               <Textarea
                 id="manual-html"
                 placeholder="<!DOCTYPE html>&#10;<html>&#10;  <head>...</head>&#10;  <body>...</body>&#10;</html>"
@@ -677,20 +683,20 @@ export default function ProjectsPage() {
                 className="min-h-64 font-mono text-sm"
               />
               <p className="text-xs text-muted-foreground">
-                Tip: Right-click on the webpage, select "View Page Source", copy all, and paste here.
+                {t('htmlTip')}
               </p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsHtmlUploadOpen(false)}>
-              Cancel
+              {tc('cancel')}
             </Button>
             <Button
               className="bg-coral hover:bg-coral/90 text-coral-foreground"
               onClick={handleManualScan}
               disabled={!manualHtml.trim()}
             >
-              Scan HTML
+              {t('scanHtml')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -699,27 +705,27 @@ export default function ProjectsPage() {
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Scan Settings - {settingsProject?.name}</DialogTitle>
+            <DialogTitle>{t('settingsTitle', { name: settingsProject?.name || '' })}</DialogTitle>
             <DialogDescription>
-              Configure scan options to handle bot protection and rate limiting.
+              {t('settingsDesc')}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             {settingsProject && (
               <div className="p-4 rounded-lg bg-muted/50">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium">Domain Verification</span>
+                  <span className="font-medium">{t('domainVerification')}</span>
                   <div className="flex items-center gap-2">
                     {settingsProject.isVerified ? (
                       <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
-                        Verified
+                        {t('verified')}
                       </Badge>
                     ) : (
                       <>
                         <Badge variant="outline" className="text-orange-500 border-orange-500/20">
                           <AlertCircle className="h-3 w-3 mr-1" />
-                          Not Verified
+                          {t('unverified')}
                         </Badge>
                         <Button
                           variant="outline"
@@ -732,7 +738,7 @@ export default function ProjectsPage() {
                           ) : (
                             <CheckCircle2 className="h-3 w-3 mr-1" />
                           )}
-                          Verify Now
+                          {t('verifyNow')}
                         </Button>
                       </>
                     )}
@@ -740,15 +746,15 @@ export default function ProjectsPage() {
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {settingsProject.isVerified
-                    ? 'Your domain is verified. Scans will use enhanced access mode.'
-                    : 'Verify your domain to bypass some bot protection measures.'}
+                    ? t('verifiedDesc')
+                    : t('unverifiedDesc')}
                 </p>
               </div>
             )}
 
             <div className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="userAgent">User-Agent</Label>
+                <Label htmlFor="userAgent">{t('userAgent')}</Label>
                 <Select
                   value={scanSettings.userAgent}
                   onValueChange={(v) => setScanSettings({ ...scanSettings, userAgent: v })}
@@ -757,20 +763,20 @@ export default function ProjectsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="default">AccessGuard Scanner (Default)</SelectItem>
-                    <SelectItem value="chrome">Chrome Browser</SelectItem>
-                    <SelectItem value="firefox">Firefox Browser</SelectItem>
-                    <SelectItem value="safari">Safari Browser</SelectItem>
-                    <SelectItem value="googlebot">Googlebot (for verified sites)</SelectItem>
+                    <SelectItem value="default">{t('agDefault')}</SelectItem>
+                    <SelectItem value="chrome">{t('chrome')}</SelectItem>
+                    <SelectItem value="firefox">{t('firefox')}</SelectItem>
+                    <SelectItem value="safari">{t('safari')}</SelectItem>
+                    <SelectItem value="googlebot">{t('googlebot')}</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Some sites block specific user agents. Try Chrome or Firefox if scans are blocked.
+                  {t('userAgentHint')}
                 </p>
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="requestDelay">Request Delay (ms)</Label>
+                <Label htmlFor="requestDelay">{t('requestDelay')}</Label>
                 <Input
                   id="requestDelay"
                   type="number"
@@ -780,12 +786,12 @@ export default function ProjectsPage() {
                   max={10000}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Delay between requests to avoid rate limiting. Increase if getting 429 errors.
+                  {t('requestDelayHint')}
                 </p>
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="retryCount">Retry Attempts</Label>
+                <Label htmlFor="retryCount">{t('retryAttempts')}</Label>
                 <Input
                   id="retryCount"
                   type="number"
@@ -795,7 +801,7 @@ export default function ProjectsPage() {
                   max={10}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Number of retry attempts if the scan fails.
+                  {t('retryAttemptsHint')}
                 </p>
               </div>
             </div>
@@ -804,10 +810,9 @@ export default function ProjectsPage() {
               <div className="flex items-start gap-3">
                 <Code className="h-5 w-5 text-coral mt-0.5" />
                 <div>
-                  <h4 className="font-medium text-sm">Can&apos;t scan automatically?</h4>
+                  <h4 className="font-medium text-sm">{t('cantScanAuto')}</h4>
                   <p className="text-xs text-muted-foreground mt-1">
-                    If your site has strict bot protection, use Manual HTML Upload instead.
-                    Right-click on your webpage, select &quot;View Page Source&quot;, copy all, and paste in the manual scan dialog.
+                    {t('cantScanAutoDesc')}
                   </p>
                 </div>
               </div>
@@ -815,7 +820,7 @@ export default function ProjectsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>
-              Cancel
+              {tc('cancel')}
             </Button>
             <Button
               className="bg-coral hover:bg-coral/90 text-coral-foreground"
@@ -830,15 +835,15 @@ export default function ProjectsPage() {
                     })
                   });
                   if (response.ok) {
-                    toast({ title: 'Settings Saved', description: 'Scan settings have been updated.' });
+                    toast({ title: t('settingsSaved'), description: t('settingsSavedMsg') });
                     setIsSettingsOpen(false);
                   }
                 } catch (e) {
-                  toast({ title: 'Error', description: 'Failed to save settings', variant: 'destructive' });
+                  toast({ title: tc('error'), description: t('settingsSaveFailed'), variant: 'destructive' });
                 }
               }}
             >
-              Save Settings
+              {t('saveSettings')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -847,52 +852,52 @@ export default function ProjectsPage() {
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Edit Project</DialogTitle>
+            <DialogTitle>{t('editTitle')}</DialogTitle>
             <DialogDescription>
-              Update the details of this project.
+              {t('editDesc')}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="edit-name">Project Name *</Label>
+              <Label htmlFor="edit-name">{t('nameRequired')}</Label>
               <Input
                 id="edit-name"
                 value={editingProject?.name ?? ''}
                 onChange={(e) => setEditingProject(editingProject ? { ...editingProject, name: e.target.value } : null)}
-                placeholder="My Website"
+                placeholder={t('namePlaceholder')}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="edit-url">Website URL *</Label>
+              <Label htmlFor="edit-url">{t('urlRequired')}</Label>
               <Input
                 id="edit-url"
                 type="url"
                 value={editingProject?.url ?? ''}
                 onChange={(e) => setEditingProject(editingProject ? { ...editingProject, url: e.target.value } : null)}
-                placeholder="https://example.com"
+                placeholder={t('urlPlaceholder')}
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="edit-description">Description</Label>
+              <Label htmlFor="edit-description">{t('description')}</Label>
               <Textarea
                 id="edit-description"
                 value={editingProject?.description ?? ''}
                 onChange={(e) => setEditingProject(editingProject ? { ...editingProject, description: e.target.value } : null)}
-                placeholder="Brief description of the project"
+                placeholder={t('descPlaceholder')}
                 rows={3}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditOpen(false)}>
-              Cancel
+              {tc('cancel')}
             </Button>
             <Button
               className="bg-coral hover:bg-coral/90 text-coral-foreground"
               onClick={handleSaveEdit}
               disabled={isDeleting}
             >
-              Save Changes
+              {t('saveChanges')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -901,20 +906,19 @@ export default function ProjectsPage() {
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Project?</AlertDialogTitle>
+            <AlertDialogTitle>{t('deleteTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &quot;{deleteProject?.name}&quot;? This will stop monitoring and
-              remove it from your project list. Existing scan history is archived.
+              {t('deleteDesc', { name: deleteProject?.name || '' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={handleDeleteProject}
               disabled={isDeleting}
             >
-              {isDeleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deleting...</> : 'Delete Project'}
+              {isDeleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('deleting')}</> : t('projectDeleted')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -925,27 +929,27 @@ export default function ProjectsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-coral" />
-              Verify Domain Ownership
+              {t('verifyDomainTitle')}
             </DialogTitle>
             <DialogDescription>
-              Add the following meta tag to your website&apos;s homepage to prove you own it.
+              {t('verifyDomainDesc')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {verificationData && (
               <>
                 <div className="p-4 bg-muted rounded-lg">
-                  <Label className="text-xs font-medium mb-2 block">Meta Tag</Label>
+                  <Label className="text-xs font-medium mb-2 block">{t('metaTag')}</Label>
                   <code className="block p-3 bg-background rounded border text-sm font-mono break-all">
                     {verificationData.instructions.html}
                   </code>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Add this to the <strong>{'<head>'}</strong> section of your homepage ({verificationData.instructions.domain})
+                    {t('addToHead')} <strong>{'<head>'}</strong> {t('headSection', { domain: verificationData.instructions.domain })}
                   </p>
                 </div>
                 <details className="text-sm">
                   <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                    Alternative verification methods
+                    {t('altMethods')}
                   </summary>
                   <div className="mt-2 space-y-2 pl-4">
                     {verificationData.alternativeMethods.map((alt, i) => (
@@ -961,7 +965,7 @@ export default function ProjectsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowVerificationDialog(false)}>
-              Close
+              {tc('close')}
             </Button>
             <Button
               className="bg-coral hover:bg-coral/90 text-coral-foreground"
@@ -969,9 +973,9 @@ export default function ProjectsPage() {
               disabled={verifyProject.checkStatus.isPending}
             >
               {verifyProject.checkStatus.isPending ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Checking...</>
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('checking')}</>
               ) : (
-                <><CheckCircle2 className="h-4 w-4 mr-2" />Verify Now</>
+                <><CheckCircle2 className="h-4 w-4 mr-2" />{t('verifyNow')}</>
               )}
             </Button>
           </DialogFooter>
