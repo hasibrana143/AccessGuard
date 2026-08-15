@@ -1143,6 +1143,33 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/settings/region': {
+    get: authed(op({
+      tags: ['Settings'],
+      summary: 'Get data residency region',
+      description: 'Returns the org dataRegion (us | eu) used for regional routing and AI endpoint pinning.',
+      responses: {
+        '200': { description: 'Current data region' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+    patch: authed(op({
+      tags: ['Settings'],
+      summary: 'Set data residency region (admin/owner)',
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({
+          type: 'object',
+          properties: { dataRegion: { type: 'string', enum: ['us', 'eu'] } },
+          required: ['dataRegion'],
+        }),
+      },
+      responses: {
+        '200': { description: 'Region updated' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
   '/stats/trends': {
     get: authed(op({
       tags: ['Stats'],
@@ -1211,8 +1238,6 @@ const paths: Record<string, PathItem> = {
       ],
       responses: {
         '200': { description: 'Exported audit events (body depends on format)' },
-        '400': { description: 'Invalid format' },
-        '403': { description: 'Requires admin/owner role' },
         ...COMMON_RESPONSES,
       },
     })),

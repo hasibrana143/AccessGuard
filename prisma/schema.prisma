@@ -15,6 +15,7 @@ model Organization {
   subscriptionStatus   String             @default("active")
   stripeCustomerId     String?
   stripeSubscriptionId String?
+  dataRegion           String             @default("us")
   settings             String             @default("{}")
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
