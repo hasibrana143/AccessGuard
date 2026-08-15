@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { logger } from '@/lib/error-logger';
+import { createAuditLog } from '@/lib/audit';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
 const ALLOWED_REGIONS = ['us', 'eu'] as const;
@@ -71,10 +72,32 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    const current = await db.organization.findUnique({
+      where: { id: orgId },
+      select: { dataRegion: true },
+    });
+
     await db.organization.update({
       where: { id: orgId },
       data: { dataRegion },
     });
+
+    // Region switch = data now processed in a different subprocessor
+    // jurisdiction — flag for procurement review (docs/devops/VENDOR_MANAGEMENT.md).
+    if (current && current.dataRegion !== dataRegion) {
+      await createAuditLog({
+        orgId,
+        action: 'vendor_review',
+        metadata: {
+          vendor: 'hosting-region',
+          reason: 'data-residency-change',
+          from: current.dataRegion,
+          to: dataRegion,
+          actorId: (session.user as { id?: string }).id,
+        },
+        userId: (session.user as { id?: string }).id,
+      });
+    }
 
     return NextResponse.json({ success: true, dataRegion });
   } catch (error) {

@@ -21,6 +21,7 @@ export const AUDIT_ACTIONS = [
   'team_invite_cancelled',
   'sso.config_updated', 'sso.config_removed',
   'scim.token_generated', 'scim.user_created', 'scim.user_deactivated',
+  'vendor_review',
 ] as const;
 
 interface AuditLogInput {

@@ -38,7 +38,11 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V13 | Enterprise code: GET /api/audit-logs/export — SIEM-ready JSON/CSV/CEF export, formula-injection sanitized, guard chain (rate→auth→org→admin→window→10k cap) · OpenAPI parity + 8 contract tests | `db21ff9` |
 | V13 | i18n infrastructure: next-intl 4.13 (en + hi), localePrefix never (URLs unchanged, middleware/e2e untouched), cookie→Accept-Language→en resolution, LocaleSwitcher, login page fully translated, root layout async + provider | `3ffa181` `19727bf` |
 | V13 | Data residency: Organization.dataRegion + add_org_data_region migration · GET/PATCH /api/settings/region (admin-gated) · GET /api/org/data-export GDPR Art. 20 portability (sensitive fields excluded) · prisma.seed config so reset auto-seeds | `05496c3` `237c656` |
-| V13 | Customer success: Organization.churnScore + lastChurnCalcAt · src/lib/churn.ts (S1 +3 no scan 30d, S2 +2 no activity, S3 +4 billing trouble; bands 5 at-risk / 8 high-risk) · weekly cron via scheduler daemon tick with 7d Redis gate · admin API exposes churn/region | `e4d9109` |
+| V13 | Customer success: Organization.churnScore + lastChurnCalcAt · src/lib/churn.ts (S1 +3 no scan 30d, S2 +2 no activity, S3 +4 billing trouble; bands 5 at-risk / 8 high-risk) · weekly cron via scheduler daemon tick with 7d Redis gate · admin API exposes churn/region | `e4d9109` `1fda974` |
+| V13 | Enterprise SSO: Organization sso fields (provider/issuer/entryPoint/cert) · GET/PATCH /api/admin/sso (validation: provider enum, https entry point, PEM cert; enable requires full set; cert never exposed on GET) · sso.config_updated/removed audit | `9b09504` |
+| V13 | Enterprise SCIM 2.0 (RFC 7644): per-org encrypted bearer token · /api/scim/v2/Users (list with filter/startIndex/count, idempotent provision) + /Users/{id} (get/deprovision/delete) + ServiceProviderConfig discovery · token rotation via /api/admin/scim · scim.* audit events · org-scoped rate limit | `42d7bb4` |
+| V13 | Operations docs + registry: DATA_RESIDENCY (region + GDPR portability), VENDOR_MANAGEMENT (procurement/DPA, vendor_review audit), CUSTOMER_SUCCESS (churn bands + admin widget), VENDOR_REGISTRY.yaml (9 vendors, DPA/SOC2/regions) · vendor_review emitted on region switch | `36388e7` |
+| V13 | Multi-currency billing: Organization.currency (usd/eur/gbp/inr) · CURRENCIES/CURRENCY_RATES/formatPrice (Intl, INR zero-decimal) in src/lib/stripe.ts · GET/PATCH /api/billing/currency (admin-gated, audit, rate-limited) | `786b222` |
 
 ## Process (per volume)
 
