@@ -11,6 +11,7 @@ import { DashboardHeader } from '@/components/dashboard/header';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useRouter, usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import { PushNotificationCenter } from '@/components/dashboard/push-notification-center';
 import type { View } from '@/types';
@@ -34,6 +35,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTranslations('dashboardLayout');
+  const tv = useTranslations('verifyEmail');
   const currentView: View = viewMap[pathname] || 'dashboard';
 
   const handleResendVerification = async () => {
@@ -47,14 +50,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       const data = await res.json();
       if (data.success) {
         toast({
-          title: 'Verification Email Sent',
-          description: data.demoToken ? `Demo token: ${data.demoToken}` : 'Check your inbox.',
+          title: tv('toastSentTitle'),
+          description: data.demoToken ? tv('toastDemoToken', { token: data.demoToken }) : tv('toastCheckInbox'),
         });
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to resend', variant: 'destructive' });
+        toast({ title: tv('toastErrorTitle'), description: data.error || tv('toastFailedDesc'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to send verification email', variant: 'destructive' });
+      toast({ title: tv('toastErrorTitle'), description: tv('toastFailedResend'), variant: 'destructive' });
     }
   };
 
@@ -78,8 +81,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
         <SheetContent side="left" className="p-0 w-64">
           <SheetHeader className="sr-only">
-            <SheetTitle>Navigation Menu</SheetTitle>
-            <SheetDescription>Access main navigation options</SheetDescription>
+            <SheetTitle>{t('navTitle')}</SheetTitle>
+            <SheetDescription>{t('navDesc')}</SheetDescription>
           </SheetHeader>
           <Sidebar activeView={currentView} onNavigate={(v) => { router.push(`/${v}`); setIsSidebarOpen(false); }} isMobile onClose={() => setIsSidebarOpen(false)} user={user} onLogout={logout} />
         </SheetContent>
@@ -91,7 +94,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex items-center gap-3 min-w-0">
               <Mail className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
               <p className="text-sm text-amber-800 dark:text-amber-200 truncate">
-                Your email <strong>{user.email}</strong> is not verified yet.
+                {t.rich('emailNotVerified', { email: user.email, strong: (chunks) => <strong>{chunks}</strong> })}
               </p>
               <Button
                 variant="outline"
@@ -100,11 +103,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 onClick={handleResendVerification}
               >
                 <Mail className="h-3 w-3 mr-1" />
-                Resend Verification
+                {t('resendVerification')}
               </Button>
             </div>
             <button
-              aria-label="Dismiss"
+              aria-label={t('dismissAria')}
               onClick={() => setBannerDismissed(true)}
               className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 shrink-0"
             >
@@ -121,11 +124,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-coral" />
-              <span>AccessGuard © {new Date().getFullYear()}</span>
+              <span>{t('footerRights', { year: new Date().getFullYear() })}</span>
             </div>
             <Badge variant="outline" className="border-emerald-500/20 text-emerald-500 text-xs">
               <Shield className="h-3 w-3 mr-1" />
-              Lawsuit Defense Ready™
+              {t('lawsuitDefense')}
             </Badge>
           </div>
         </footer>

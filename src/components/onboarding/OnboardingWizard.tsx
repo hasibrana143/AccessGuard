@@ -2,44 +2,46 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Globe, Github, Search, ArrowRight, Sparkles, LayoutDashboard, Bell, FileText } from 'lucide-react';
 
-const steps = [
-  {
-    title: 'Welcome to AccessGuard',
-    description: 'We\'ll help you find and fix accessibility violations before they become lawsuits.',
-    icon: Sparkles,
-    action: 'Get Started',
-  },
-  {
-    title: 'Add Your Website',
-    description: 'Enter your website URL to start scanning. We support public URLs and password-protected staging sites.',
-    icon: Globe,
-    action: 'Add Project',
-  },
-  {
-    title: 'Connect GitHub (Optional)',
-    description: 'Link your repositories for automated fix PRs when we detect violations.',
-    icon: Github,
-    action: 'Connect Later',
-  },
-  {
-    title: 'Run Your First Scan',
-    description: 'We\'ll analyze your site against WCAG 2.1 AA standards and show you exactly what to fix.',
-    icon: Search,
-    action: 'Start Scanning',
-  },
-];
-
-const tutorialPoints = [
-  { icon: LayoutDashboard, text: 'Dashboard shows risk scores, violation trends, and regression alerts at a glance.' },
-  { icon: Search, text: 'Violations are grouped by severity — critical issues are surfaced first.' },
-  { icon: Sparkles, text: 'AI generates remediation code with explanations for every violation.' },
-  { icon: Bell, text: 'Set up alerts, scheduled scans, and Slack/Teams webhooks in Settings.' },
-  { icon: FileText, text: 'Export executive summaries and VPAT reports from the Reports page.' },
-];
-
 export default function OnboardingWizard() {
+  const t = useTranslations('onboarding');
+  const steps = [
+    {
+      title: t('step1Title'),
+      description: t('step1Desc'),
+      icon: Sparkles,
+      action: t('step1Action'),
+    },
+    {
+      title: t('step2Title'),
+      description: t('step2Desc'),
+      icon: Globe,
+      action: t('step2Action'),
+    },
+    {
+      title: t('step3Title'),
+      description: t('step3Desc'),
+      icon: Github,
+      action: t('step3Action'),
+    },
+    {
+      title: t('step4Title'),
+      description: t('step4Desc'),
+      icon: Search,
+      action: t('step4Action'),
+    },
+  ];
+
+  const tutorialPoints = [
+    { icon: LayoutDashboard, text: t('tour1') },
+    { icon: Search, text: t('tour2') },
+    { icon: Sparkles, text: t('tour3') },
+    { icon: Bell, text: t('tour4') },
+    { icon: FileText, text: t('tour5') },
+  ];
+
   const [step, setStep] = useState(0);
   const [dismissed, setDismissed] = useState(true);
   const router = useRouter();
@@ -86,7 +88,7 @@ export default function OnboardingWizard() {
             ))}
           </div>
           <button onClick={skip} className="text-sm text-muted-foreground hover:text-foreground">
-            Skip
+            {t('skip')}
           </button>
         </div>
 
@@ -105,8 +107,8 @@ export default function OnboardingWizard() {
                 <LayoutDashboard className="h-6 w-6 text-coral" />
               </div>
               <div>
-                <h2 className="text-xl font-bold">Quick Tour</h2>
-                <p className="text-sm text-muted-foreground">Here&apos;s what you can do</p>
+                <h2 className="text-xl font-bold">{t('quickTour')}</h2>
+                <p className="text-sm text-muted-foreground">{t('quickTourSub')}</p>
               </div>
             </div>
             <ul className="space-y-3">
@@ -127,13 +129,13 @@ export default function OnboardingWizard() {
             onClick={skip}
             className="flex-1 py-3 rounded-lg border border-border text-sm font-medium hover:bg-secondary"
           >
-            {step === steps.length ? 'Dashboard' : 'Skip Tour'}
+            {step === steps.length ? t('dashboard') : t('skipTour')}
           </button>
           <button
             onClick={next}
             className="flex-1 py-3 rounded-lg bg-coral text-coral-foreground text-sm font-semibold hover:bg-coral/90 flex items-center justify-center gap-2"
           >
-            {isTutorial ? 'Start Scanning' : current.action}
+            {isTutorial ? t('startScanning') : current.action}
             <ArrowRight className="h-4 w-4" />
           </button>
         </div>

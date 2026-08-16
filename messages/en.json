@@ -27,6 +27,7 @@
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Confirm password",
+    "skipToContent": "Skip to main content",
     "name": "Name",
     "role": "Role",
     "actions": "Actions",
@@ -592,6 +593,7 @@
     "expires": "Expires 12/2025",
     "update": "Update",
     "stripeConnectFailed": "Failed to connect to Stripe",
+    "stripePortalFailed": "Failed to open the Stripe portal. Please try again.",
     "coupons": "Coupons",
     "couponsDesc": "Apply a discount coupon to your subscription",
     "percentOff": "{percent}% off",
@@ -1264,5 +1266,47 @@
     "lastChecked": "Last checked: {time} — reload the page for a fresh snapshot.",
     "ok": "ok",
     "unreachable": "unreachable"
+  },
+  "metadata": {
+    "metaTitle": "AccessGuard - ADA Compliance SaaS Platform",
+    "metaDescription": "Prevent $50k+ ADA lawsuits by catching accessibility violations before they cost you. AccessGuard monitors websites for WCAG 2.1 AA compliance and generates AI-powered remediation code.",
+    "ogTitle": "AccessGuard - ADA Compliance Platform",
+    "ogDescription": "Continuous WCAG monitoring with AI-powered remediation. Prevent lawsuits, not just detect issues.",
+    "twTitle": "AccessGuard - ADA Compliance Platform",
+    "twDescription": "Continuous WCAG monitoring with AI-powered remediation"
+  },
+  "dashboardLayout": {
+    "navTitle": "Navigation Menu",
+    "navDesc": "Access main navigation options",
+    "emailNotVerified": "Your email <strong>{email}</strong> is not verified yet.",
+    "resendVerification": "Resend Verification",
+    "dismissAria": "Dismiss",
+    "footerRights": "AccessGuard © {year}",
+    "lawsuitDefense": "Lawsuit Defense Ready™"
+  },
+  "onboarding": {
+    "step1Title": "Welcome to AccessGuard",
+    "step1Desc": "We'll help you find and fix accessibility violations before they become lawsuits.",
+    "step1Action": "Get Started",
+    "step2Title": "Add Your Website",
+    "step2Desc": "Enter your website URL to start scanning. We support public URLs and password-protected staging sites.",
+    "step2Action": "Add Project",
+    "step3Title": "Connect GitHub (Optional)",
+    "step3Desc": "Link your repositories for automated fix PRs when we detect violations.",
+    "step3Action": "Connect Later",
+    "step4Title": "Run Your First Scan",
+    "step4Desc": "We'll analyze your site against WCAG 2.1 AA standards and show you exactly what to fix.",
+    "step4Action": "Start Scanning",
+    "skip": "Skip",
+    "quickTour": "Quick Tour",
+    "quickTourSub": "Here's what you can do",
+    "tour1": "Dashboard shows risk scores, violation trends, and regression alerts at a glance.",
+    "tour2": "Violations are grouped by severity — critical issues are surfaced first.",
+    "tour3": "AI generates remediation code with explanations for every violation.",
+    "tour4": "Set up alerts, scheduled scans, and Slack/Teams webhooks in Settings.",
+    "tour5": "Export executive summaries and VPAT reports from the Reports page.",
+    "dashboard": "Dashboard",
+    "skipTour": "Skip Tour",
+    "startScanning": "Start Scanning"
   }
 }

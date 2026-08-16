@@ -777,7 +777,7 @@ export default function SettingsPage() {
                     if (data.success && data.data?.url) {
                       window.location.href = data.data.url;
                     } else {
-                      toast({ title: tc('error'), description: 'Update payment from Stripe portal', variant: 'destructive' });
+                      toast({ title: tc('error'), description: t('stripePortalFailed'), variant: 'destructive' });
                     }
                   } catch {
                     toast({ title: tc('error'), description: t('stripeConnectFailed'), variant: 'destructive' });
