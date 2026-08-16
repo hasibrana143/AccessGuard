@@ -45,6 +45,12 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V13 | Multi-currency billing: Organization.currency (usd/eur/gbp/inr) · CURRENCIES/CURRENCY_RATES/formatPrice (Intl, INR zero-decimal) in src/lib/stripe.ts · GET/PATCH /api/billing/currency (admin-gated, audit, rate-limited) | `786b222` |
 | V13 | Settings UI (enterprise/privacy): billing currency selector, Data Residency Region with EU consent confirm, GDPR Art. 20 org data export button — all wired to the new endpoints | `0a80744` |
 | V13 | i18n phase 2: register page (form+toasts+terms), sidebar navigation (nav.* keys), forgot-password + reset-password pages, dashboard page (title/subtitle/actions) — all en+hi with LocaleSwitcher | `d5b889c` `89a07a3` `171acbe` `cc1b27b` |
+| V13 | i18n phase 3: projects, violations, reports, scans pages (each with dedicated keyset, en+hi) | `f073e39` `9cb5468` `e0e06bd` `de081ac` |
+| V13 | i18n phase 4: settings page (~150 settings.* keys), team page (team.*), audit logs page (audit.* + 35 action labels), admin panel (admin.*, HealthBadge restored) — en+hi | `c4aa05c` `89bda21` `781f4fc` `4064709` |
+| V13 | i18n phase 5: dashboard header (header.*) + 9 dashboard widgets (dash.* ~90 keys: stats-grid, trend-chart, severity-pie, recent-scans, recent-violations, regression-alerts, ai-fix-rate, roles-manager, push-notification-center) — en+hi | `1586ee2` `58cb69a` |
+| V13 | i18n phase 6: landing page (landing.* ~150 keys: hero, features, testimonials, comparison, pricing, FAQ, CTA, privacy, footer, demo modal; trust-indicators now async server component via getTranslations) — en+hi | `162b25e` |
+| V13 | i18n phase 7: public pages — /pricing (reuses landing.*), verify-email (verifyEmail.*), invite (invite.*, rich text accountExists), share/[token] (sharedReport.*, server component), status (statusPage.* + generateMetadata) — en+hi | `adf088b` |
+| V13 | i18n phase 8: root layout metadata (metadata.* via generateMetadata, skip link common.*), dashboard layout (dashboardLayout.* banner/toasts/footer), onboarding wizard (onboarding.* 4 steps + tour), settings Stripe portal toast — en+hi | `23be0c7` |
 
 ## Process (per volume)
 
