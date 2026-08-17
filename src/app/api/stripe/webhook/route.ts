@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { PRICING_PLANS, type PlanType } from '@/lib/stripe';
+import { sendDunningEmail } from '@/lib/email';
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -306,30 +307,55 @@ export async function POST(request: NextRequest) {
           const orgId = subscription.metadata?.orgId;
 
           if (orgId) {
-            await db.$transaction(async (tx) => {
-              if (!(await claimEvent(tx, event))) return;
-              const org = await tx.organization.findUnique({
-                where: { id: orgId },
-                select: { id: true },
-              });
-              if (!org) {
-                logger.warn(`Payment failed for missing org ${orgId}`);
-                return;
-              }
-              await tx.auditLog.create({
-                data: {
-                  orgId,
-                  action: 'payment_failed',
-                  metadata: JSON.stringify({
-                    invoiceId: invoice.id,
-                    attemptCount: invoice.attempt_count,
-                    eventId: event.id,
-                  }),
-                },
-              });
+            const org = await db.organization.findUnique({
+              where: { id: orgId },
+              select: { id: true, name: true, settings: true },
             });
+            if (org) {
+              await db.$transaction(async (tx) => {
+                if (!(await claimEvent(tx, event))) return;
+                const orgInTx = await tx.organization.findUnique({
+                  where: { id: orgId },
+                  select: { id: true },
+                });
+                if (!orgInTx) {
+                  logger.warn(`Payment failed for missing org ${orgId}`);
+                  return;
+                }
+                await tx.auditLog.create({
+                  data: {
+                    orgId,
+                    action: 'payment_failed',
+                    metadata: JSON.stringify({
+                      invoiceId: invoice.id,
+                      attemptCount: invoice.attempt_count,
+                      eventId: event.id,
+                    }),
+                  },
+                });
+              });
 
-            logger.info(`Payment failed for org ${orgId}`);
+              // Send dunning email to org users
+              try {
+                const settings = org.settings ? JSON.parse(org.settings) : {};
+                const invoiceUrl = invoice.hosted_invoice_url || `${process.env.NEXT_PUBLIC_APP_URL}/settings/billing`;
+                const nextRetryDate = invoice.next_payment_attempt
+                  ? new Date(invoice.next_payment_attempt * 1000).toLocaleDateString()
+                  : undefined;
+                const users = await db.user.findMany({
+                  where: { orgId },
+                  select: { email: true, name: true },
+                });
+                const emails = [...new Set(users.map(u => u.email))].slice(0, 5);
+                for (const email of emails) {
+                  await sendDunningEmail(email, org.name, invoiceUrl, invoice.attempt_count, nextRetryDate);
+                }
+              } catch (emailErr) {
+                logger.error({ err: emailErr, orgId }, 'Failed to send dunning email');
+              }
+
+              logger.info(`Payment failed for org ${orgId}`);
+            }
           }
         }
         break;

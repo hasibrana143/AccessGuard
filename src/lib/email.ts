@@ -142,3 +142,23 @@ export async function sendVerificationEmail(email: string, name: string, verifyU
     `,
   });
 }
+
+// Payment dunning email
+export async function sendDunningEmail(email: string, orgName: string, invoiceUrl: string, attemptCount: number, nextRetryDate?: string): Promise<void> {
+  await sendEmail({
+    to: email,
+    subject: 'Payment failed — Action required to keep your AccessGuard subscription active',
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #ef4444;">Payment Failed</h1>
+        <p>Hi there,</p>
+        <p>We tried to charge your payment method for <strong>${escapeHtml(orgName)}</strong> but the payment failed (attempt ${attemptCount}).</p>
+        <p>To avoid service interruption, please update your payment method:</p>
+        <a href="${invoiceUrl}" style="display: inline-block; background: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">Update Payment Method</a>
+        ${nextRetryDate ? `<p style="margin-top: 16px; color: #666;">Next retry: ${nextRetryDate}. If payment continues to fail, your subscription may be paused.</p>` : ''}
+        <p style="margin-top: 24px; color: #666; font-size: 14px;">If you have questions, reply to this email or contact support.</p>
+        <p>Best,<br>The AccessGuard Team</p>
+      </div>
+    `,
+  });
+}
