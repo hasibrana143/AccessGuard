@@ -51,6 +51,11 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V13 | i18n phase 6: landing page (landing.* ~150 keys: hero, features, testimonials, comparison, pricing, FAQ, CTA, privacy, footer, demo modal; trust-indicators now async server component via getTranslations) — en+hi | `162b25e` |
 | V13 | i18n phase 7: public pages — /pricing (reuses landing.*), verify-email (verifyEmail.*), invite (invite.*, rich text accountExists), share/[token] (sharedReport.*, server component), status (statusPage.* + generateMetadata) — en+hi | `adf088b` |
 | V13 | i18n phase 8: root layout metadata (metadata.* via generateMetadata, skip link common.*), dashboard layout (dashboardLayout.* banner/toasts/footer), onboarding wizard (onboarding.* 4 steps + tour), settings Stripe portal toast — en+hi | `23be0c7` |
+| V13 | Payments: dunning emails on `invoice.payment_failed` — `sendDunningEmail` template + Stripe webhook integration | `0e6d497` |
+| V13 | Scan: unified scheduled-scan daemon and HTTP paths via shared `executeScan` in `src/lib/scan-executor.ts` (plan limits, notifications, audit) | `834c572` |
+| V13 | SCIM 2.0 Groups: `ScimGroup` model + `/api/scim/v2/Groups` (list/create) + `/Groups/{id}` (get/replace/delete) + `scim.group_*` audit events | `7ba4875` |
+| V13 | Consent: EU cookie consent persistence — `CookieConsent` model + `/api/consent` GET/POST + GDPR-compliant UI (i18n) | `73bc835` |
+| V13 | Compliance: Transfer Impact Assessment (`docs/legal/TRANSFER_IMPACT_ASSESSMENT.md`) + DATA_RESIDENCY DoDs updated (dataRegion field, data-export, TIA completed) | `9c22a9b` |
 
 ## Process (per volume)
 
