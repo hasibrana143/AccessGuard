@@ -75,7 +75,7 @@ Implementation (v1):
 |----------|-------|--------|
 | DPA (Data Processing Agreement) | docs/legal/CONTRACTS.md (DPA section) | Drafted |
 | SCCs (EU Standard Contractual Clauses, 2021/914) | Signed at org setup (electronic signature) | Spec |
-| Transfer Impact Assessment (TIA) | docs/legal/TRANSFER_IMPACT_ASSESSMENT.md | New |
+| Transfer Impact Assessment (TIA) | docs/legal/TRANSFER_IMPACT_ASSESSMENT.md | **Completed** |
 | Sub-processor list (Google, Stripe, OpenAI/NVIDIA, Vercel, Sentry) | Privacy policy + DPA annex | Spec |
 
 ### Sub-processor TIA (example)
@@ -133,11 +133,11 @@ Implementation (v1):
 - If EU region fails: failover to US with notice (except for EU legal orgs — those get isolated failover)
 
 ## Definition of Done
-- [ ] `Organization.dataRegion` field + migration
-- [ ] EU selection consent screen at org setup
-- [ ] Regional DATABASE_URL routing (Prisma client factory)
-- [ ] `GET /api/org/data-export` (GDPR Art. 20 portability)
-- [ ] `DELETE /api/org/data` (erasure, admin only)
-- [ ] TIA + sub-processor annex in docs/legal
-- [ ] Regional AI endpoint pinning for EU orgs
-- [ ] Backup policy per region (no PII cross-region unless opted in)
+- [x] `Organization.dataRegion` field + migration (completed — `dataRegion` enum `us`/`eu` on Organization model)
+- [ ] EU selection consent screen at org setup (UI pending — infrastructure)
+- [ ] Regional DATABASE_URL routing (Prisma client factory) — infrastructure pending
+- [x] `GET /api/org/data-export` (GDPR Art. 20 portability) — implemented
+- [ ] `DELETE /api/org/data` (erasure, admin only) — API endpoint pending
+- [x] TIA + sub-processor annex in docs/legal — **completed** (`docs/legal/TRANSFER_IMPACT_ASSESSMENT.md`)
+- [ ] Regional AI endpoint pinning for EU orgs — infrastructure pending (Vercel EU + NVIDIA EU endpoints)
+- [ ] Backup policy per region (no PII cross-region unless opted in) — infrastructure pending
