@@ -1308,5 +1308,10 @@
     "dashboard": "डैशबोर्ड",
     "skipTour": "टूर छोड़ें",
     "startScanning": "स्कैनिंग शुरू करें"
+  },
+  "cookieConsent": {
+    "description": "हम प्रमाणीकरण और सत्र प्रबंधन के लिए आवश्यक कुकीज़ का उपयोग करते हैं। विश्लेषण कुकीज़ का उपयोग केवल आपकी सहमति से किया जाता है। <a href=\"/api/legal/privacy\" target=\"blank\" class=\"underline\">गोपनीयता नीति</a>",
+    "accept": "सभी स्वीकार करें",
+    "decline": "केवल आवश्यक"
   }
 }

@@ -56,6 +56,7 @@ model User {
   updatedAt            DateTime     @updatedAt
   organization         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   customRole           CustomRole?  @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  cookieConsent        CookieConsent?
 
   @@index([orgId])
 }
@@ -269,6 +270,21 @@ model ScimGroup {
 
   @@unique([orgId, displayName])
   @@index([orgId])
+}
+
+// User cookie consent (GDPR)
+model CookieConsent {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  consent      String   // 'accepted' | 'declined' | 'pending'
+  version      String   @default("1.0")
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([consent])
 }
 
 // Stripe at-least-once delivery — dedupe key so webhook replays are a no-op

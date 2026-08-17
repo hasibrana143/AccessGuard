@@ -1308,5 +1308,10 @@
     "dashboard": "Dashboard",
     "skipTour": "Skip Tour",
     "startScanning": "Start Scanning"
+  },
+  "cookieConsent": {
+    "description": "We use essential cookies for authentication and session management. Analytics cookies are used only with your consent. <a href=\"/api/legal/privacy\" target=\"blank\" class=\"underline\">Privacy Policy</a>",
+    "accept": "Accept All",
+    "decline": "Essential Only"
   }
 }

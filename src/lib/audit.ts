@@ -22,6 +22,7 @@ export const AUDIT_ACTIONS = [
   'sso.config_updated', 'sso.config_removed',
   'scim.token_generated', 'scim.user_created', 'scim.user_deactivated',
   'scim.group_created', 'scim.group_updated', 'scim.group_deleted',
+  'cookie_consent_updated',
   'vendor_review',
 ] as const;
 

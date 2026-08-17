@@ -1611,6 +1611,36 @@ const paths: Record<string, PathItem> = {
       },
     }),
   },
+  '/consent': {
+    get: authed(op({
+      tags: ['Settings'],
+      summary: 'Get cookie consent status',
+      responses: {
+        '200': { description: 'Consent status (accepted|declined|pending)' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+    post: authed(op({
+      tags: ['Settings'],
+      summary: 'Update cookie consent (GDPR)',
+      description:
+        'Records user consent for analytics cookies. Emits cookie_consent_updated audit event.',
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({
+          type: 'object',
+          properties: {
+            consent: { type: 'string', enum: ['accepted', 'declined'] },
+            version: { type: 'string' },
+          },
+        }),
+      },
+      responses: {
+        '200': { description: 'Consent recorded' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
 };
 
 const schemas = {
