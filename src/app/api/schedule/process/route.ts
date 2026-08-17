@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { scanUrlServer, type ScannerViolation } from '@/services/scanner';
 import { getSchedulerApiKey } from '@/lib/scheduler';
+import { executeScan } from '@/lib/scan-executor';
 import { logger } from '@/lib/error-logger';
 
 /**
@@ -40,9 +40,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify project exists
+    // Find a user in the org to attribute the scan to
     const project = await db.project.findUnique({
       where: { id: projectId },
+      select: { id: true, url: true, orgId: true, isActive: true, name: true },
     });
 
     if (!project) {
@@ -69,128 +70,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Find a user in the org (fallback to first user, or use a system user)
+    const user = await db.user.findFirst({
+      where: { orgId: project.orgId },
+      select: { id: true },
+    });
+    const userId = user?.id ?? 'scheduler';
+
     logger.info(`[Scheduler] Starting scan for project: ${project.name} (${project.url})`);
 
-    // Create a new scan
-    const scan = await db.scan.create({
-      data: {
-        projectId,
-        status: 'running',
-      },
+    // Execute scan using shared logic (enforces plan limits, sends notifications)
+    const result = await executeScan({
+      projectId: project.id,
+      url: project.url,
+      userId,
+      useBrowser: true,
+      enforcePlanLimits: true,
+      sendNotifications: true,
     });
 
-    try {
-      // Run the actual accessibility scan
-      const scanResult = await scanUrlServer(project.url);
-
-      if (scanResult.error) {
-        throw new Error(scanResult.error);
-      }
-
-      // Create violations from scan results
-      const violationsToCreate = scanResult.violations.map((v: ScannerViolation) => ({
-        scanId: scan.id,
-        projectId,
-        ruleId: v.ruleId,
-        wcagCriteria: v.wcagCriteria,
-        severity: v.severity,
-        url: v.url,
-        elementSelector: v.elementSelector,
-        elementHtml: v.elementHtml,
-        description: v.description,
-        remediationCode: v.remediationCode,
-        aiExplanation: v.aiExplanation,
-        aiConfidenceScore: v.aiConfidenceScore,
-        status: 'open' as const,
-      }));
-
-      // Insert violations in batches
-      if (violationsToCreate.length > 0) {
-        const batchSize = 10;
-        for (let i = 0; i < violationsToCreate.length; i += batchSize) {
-          const batch = violationsToCreate.slice(i, i + batchSize);
-          await db.violation.createMany({ data: batch });
-        }
-      }
-
-      // Calculate summary
-      const severityCounts = {
-        critical: scanResult.violations.filter((v: ScannerViolation) => v.severity === 'critical').length,
-        serious: scanResult.violations.filter((v: ScannerViolation) => v.severity === 'serious').length,
-        moderate: scanResult.violations.filter((v: ScannerViolation) => v.severity === 'moderate').length,
-        minor: scanResult.violations.filter((v: ScannerViolation) => v.severity === 'minor').length,
-      };
-
-      // Calculate risk score
-      let riskScore = 100;
-      riskScore -= severityCounts.critical * 10;
-      riskScore -= severityCounts.serious * 5;
-      riskScore -= severityCounts.moderate * 2;
-      riskScore -= severityCounts.minor * 1;
-      riskScore = Math.max(0, Math.min(100, riskScore));
-
-      // Update scan as completed
-      await db.scan.update({
-        where: { id: scan.id },
-        data: {
-          status: 'completed',
-          completedAt: new Date(),
-          pagesScanned: scanResult.pagesScanned,
-          violationsFound: scanResult.violations.length,
-          summary: JSON.stringify(severityCounts),
-        },
-      });
-
-      // Update project's risk score and last scan time
-      await db.project.update({
-        where: { id: projectId },
-        data: {
-          lastScanAt: new Date(),
-          riskScore,
-        },
-      });
-
-      logger.info(`[Scheduler] Scan ${scan.id} completed with ${scanResult.violations.length} violations`);
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          scanId: scan.id,
-          status: 'completed',
-          violationsFound: scanResult.violations.length,
-          pagesScanned: scanResult.pagesScanned,
-          severityCounts,
-          riskScore,
-        },
-      });
-    } catch (scanError) {
-      logger.error({ err: scanError, scanId: scan.id }, '[Scheduler] Scan failed');
-
-      // Sanitize error message
-      let errorMessage = 'An unexpected error occurred';
-      if (scanError instanceof Error) {
-        if (scanError.message.includes('ECONNREFUSED') || scanError.message.includes('ENOTFOUND')) {
-          errorMessage = 'Unable to connect to the target URL';
-        } else if (scanError.message.includes('timeout')) {
-          errorMessage = 'Request timed out';
-        }
-      }
-
-      // Update scan as failed
-      await db.scan.update({
-        where: { id: scan.id },
-        data: {
-          status: 'failed',
-          errorMessage,
-          completedAt: new Date(),
-        },
-      });
-
-      return NextResponse.json({
-        success: false,
-        error: `Scan failed: ${errorMessage}`,
-      }, { status: 500 });
+    if (!result.success) {
+      return NextResponse.json(
+        { success: false, error: result.errorMessage ?? 'Scan failed' },
+        { status: 500 }
+      );
     }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        scanId: result.scanId,
+        status: 'completed',
+        violationsFound: result.violationsFound,
+        pagesScanned: result.pagesScanned,
+        severityCounts: result.severityCounts,
+        riskScore: result.riskScore,
+      },
+    });
   } catch (error) {
     logger.error({ err: error }, '');
     return NextResponse.json(

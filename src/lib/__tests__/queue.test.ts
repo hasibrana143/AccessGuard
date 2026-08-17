@@ -42,7 +42,7 @@ vi.mock('@/lib/error-logger', () => ({
 vi.mock('@/lib/db', () => ({
   db: {
     project: {
-      findUnique: vi.fn(async () => ({ id: 'project-1', orgId: 'org-1', name: 'Acme', url: 'https://acme.dev' })),
+      findUnique: vi.fn(async () => ({ id: 'project-1', orgId: 'org-1', name: 'Acme', url: 'https://acme.dev', isActive: true })),
       update: vi.fn(async () => ({})),
     },
     organization: {
@@ -107,10 +107,12 @@ describe('queue', () => {
     it('marks the scan failed and records audit log when the page limit is reached', async () => {
       mocked(checkPagesLimit).mockResolvedValue({ allowed: false, current: 100, limit: 100 });
       startScanWorker();
-      await processorRef.current!({
-        id: 'job-1',
-        data: { projectId: 'project-1', url: 'https://acme.dev', useBrowser: false, html: '<div></div>' },
-      });
+      await expect(
+        processorRef.current!({
+          id: 'job-1',
+          data: { projectId: 'project-1', url: 'https://acme.dev', useBrowser: false, html: '<div></div>' },
+        })
+      ).rejects.toThrow('Monthly scan limit reached');
 
       expect(db.scan.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'failed' }) })
