@@ -1274,6 +1274,108 @@ const paths: Record<string, PathItem> = {
       },
     }),
   },
+  '/scim/v2/Groups': {
+    get: op({
+      tags: ['SCIM'],
+      summary: 'List groups (SCIM 2.0)',
+      description:
+        'Lists org groups. Supports filter=displayName eq "…", startIndex, count (RFC 7644 §3.4.2).',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        { name: 'filter', in: 'query', required: false, schema: { type: 'string' } },
+        { name: 'startIndex', in: 'query', required: false, schema: { type: 'integer' } },
+        { name: 'count', in: 'query', required: false, schema: { type: 'integer', maximum: 100 } },
+      ],
+      responses: {
+        '200': { description: 'ListResponse with Resources' },
+        '401': { description: 'Missing or invalid SCIM token' },
+      },
+    }),
+    post: op({
+      tags: ['SCIM'],
+      summary: 'Create a group (SCIM 2.0)',
+      description:
+        'Creates a group with displayName and optional members. Emits scim.group_created audit event.',
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({
+          type: 'object',
+          properties: {
+            schemas: { type: 'array', items: { type: 'string' } },
+            displayName: { type: 'string' },
+            members: { type: 'array', items: { type: 'object' } },
+          },
+        }),
+      },
+      responses: {
+        '201': { description: 'Group created' },
+        '400': { description: 'Invalid body' },
+        '401': { description: 'Missing or invalid SCIM token' },
+      },
+    }),
+  },
+  '/scim/v2/Groups/{id}': {
+    get: op({
+      tags: ['SCIM'],
+      summary: 'Fetch one group (SCIM 2.0)',
+      security: [{ bearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': { description: 'Group resource' },
+        '401': { description: 'Missing or invalid SCIM token' },
+        '404': { description: 'Group not found' },
+      },
+    }),
+    put: op({
+      tags: ['SCIM'],
+      summary: 'Replace a group (SCIM 2.0)',
+      description:
+        'Full update of displayName and members. Emits scim.group_updated audit event.',
+      security: [{ bearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({
+          type: 'object',
+          properties: {
+            schemas: { type: 'array', items: { type: 'string' } },
+            displayName: { type: 'string' },
+            members: { type: 'array', items: { type: 'object' } },
+          },
+        }),
+      },
+      responses: {
+        '200': { description: 'Group updated' },
+        '400': { description: 'Invalid body' },
+        '401': { description: 'Missing or invalid SCIM token' },
+        '404': { description: 'Group not found' },
+      },
+    }),
+    patch: op({
+      tags: ['SCIM'],
+      summary: 'Update a group (SCIM 2.0 PATCH - not implemented)',
+      security: [{ bearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '501': { description: 'PATCH not implemented' },
+        '401': { description: 'Missing or invalid SCIM token' },
+      },
+    }),
+    delete: op({
+      tags: ['SCIM'],
+      summary: 'Delete a group (SCIM 2.0)',
+      description:
+        'Deletes the group. Emits scim.group_deleted audit event.',
+      security: [{ bearerAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '204': { description: 'Deleted' },
+        '401': { description: 'Missing or invalid SCIM token' },
+        '404': { description: 'Group not found' },
+      },
+    }),
+  },
   '/settings/region': {
     get: authed(op({
       tags: ['Settings'],

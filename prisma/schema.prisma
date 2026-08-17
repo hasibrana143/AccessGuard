@@ -33,6 +33,7 @@ model Organization {
   users                User[]
   teamInvites          TeamInvite[]
   customRoles          CustomRole[]
+  scimGroups           ScimGroup[]
 }
 
 model User {
@@ -254,6 +255,20 @@ model WcagRule {
   category     String
   howToFix     String
   createdAt    DateTime @default(now())
+}
+
+// SCIM 2.0 Group model
+model ScimGroup {
+  id          String   @id @default(cuid())
+  orgId       String
+  displayName String
+  members     String   @default("[]") // JSON array of user IDs
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, displayName])
+  @@index([orgId])
 }
 
 // Stripe at-least-once delivery — dedupe key so webhook replays are a no-op
