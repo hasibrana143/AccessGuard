@@ -102,7 +102,7 @@ describe('GET/PATCH /api/billing/currency (contract)', () => {
     expect(createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: testOrgId,
-        action: 'settings.updated',
+        action: 'settings_updated',
         metadata: expect.objectContaining({ field: 'billing.currency', value: 'inr' }),
       })
     );

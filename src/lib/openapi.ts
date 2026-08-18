@@ -1540,7 +1540,7 @@ const paths: Record<string, PathItem> = {
       tags: ['Admin'],
       summary: 'Generate a SCIM bearer token (admin/owner)',
       description:
-        'Rotates the org SCIM token (RFC 7644 provisioning). Returns the token exactly once; store it in your IdP (Okta/Azure AD). Emits scim.token_generated audit event.',
+        'Rotates the org SCIM token (RFC 7644 provisioning). Returns the token exactly once; store it in your IdP (Okta/Azure AD). Emits scim_token_generated audit event.',
       responses: {
         '200': { description: 'New SCIM token (shown once)' },
         '403': { description: 'Requires admin/owner role' },

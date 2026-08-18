@@ -158,7 +158,7 @@ describe('SCIM 2.0 endpoints (contract)', () => {
     expect(response.status).toBe(204);
 
     const audit = await db.auditLog.findFirst({
-      where: { orgId: testOrgId, action: 'scim.user_deactivated' },
+      where: { orgId: testOrgId, action: 'scim_user_deactivated' },
       orderBy: { createdAt: 'desc' },
     });
     expect(audit).not.toBeNull();

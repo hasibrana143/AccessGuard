@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
     await db.auditLog.create({
       data: {
         orgId,
-        action: 'scim.user_created',
+        action: 'scim_user_created',
         metadata: JSON.stringify({ email, userId: user.id, timestamp: new Date().toISOString() }),
       },
     });

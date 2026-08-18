@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
       await db.auditLog.create({
         data: {
           orgId: org.id,
-          action: 'project.created',
+          action: 'project_created',
           metadata: JSON.stringify({
             bulkImport: true,
             count: created.length,

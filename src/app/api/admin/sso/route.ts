@@ -148,7 +148,7 @@ export async function PATCH(request: NextRequest) {
 
     await createAuditLog({
       orgId,
-      action: ssoEnabled === false ? 'sso.config_removed' : 'sso.config_updated',
+      action: ssoEnabled === false ? 'sso_config_removed' : 'sso_config_updated',
       metadata: {
         provider: updated.ssoProvider,
         enabled: updated.ssoEnabled,

@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     await db.auditLog.create({
       data: {
         orgId: project.orgId,
-        action: 'report.generated',
+        action: 'report_generated',
         metadata: JSON.stringify({
           reportId: report.id,
           projectName: project.name,

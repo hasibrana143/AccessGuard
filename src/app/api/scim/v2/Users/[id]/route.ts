@@ -93,7 +93,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       await db.auditLog.create({
         data: {
           orgId,
-          action: 'scim.user_deactivated',
+action: 'scim_user_deactivated',
           metadata: JSON.stringify({ email: target.email, userId: id, timestamp: new Date().toISOString() }),
         },
       });
@@ -123,7 +123,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await db.auditLog.create({
       data: {
         orgId,
-        action: 'scim.user_deactivated',
+        action: 'scim_user_deactivated',
         metadata: JSON.stringify({ email: user.email, userId: id, timestamp: new Date().toISOString() }),
       },
     });

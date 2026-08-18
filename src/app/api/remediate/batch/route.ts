@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
     if (costs.llmCalls > 0) {
       await createAuditLog({
         orgId: auth.user.orgId,
-        action: 'remediation.ai_cost',
+        action: 'remediation_ai_cost',
         userId: auth.user.id,
         metadata: {
           batchSize: results.length,

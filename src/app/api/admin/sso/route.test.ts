@@ -154,7 +154,7 @@ describe('GET/PATCH /api/admin/sso (contract)', () => {
     expect(createAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         orgId: testOrgId,
-        action: 'sso.config_updated',
+        action: 'sso_config_updated',
         metadata: expect.objectContaining({ provider: 'okta', enabled: true }),
       })
     );
@@ -175,7 +175,7 @@ describe('GET/PATCH /api/admin/sso (contract)', () => {
     expect(response.status).toBe(200);
     expect((await response.json()).data.ssoEnabled).toBe(false);
     expect(createAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({ orgId: testOrgId, action: 'sso.config_removed' })
+      expect.objectContaining({ orgId: testOrgId, action: 'sso_config_removed' })
     );
   });
 });

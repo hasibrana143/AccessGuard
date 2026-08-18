@@ -82,7 +82,7 @@ export async function PATCH(request: NextRequest) {
 
     await createAuditLog({
       orgId,
-      action: 'settings.updated',
+      action: 'settings_updated',
       metadata: {
         field: 'billing.currency',
         value: updated.currency,

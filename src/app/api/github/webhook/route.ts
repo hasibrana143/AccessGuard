@@ -157,7 +157,7 @@ async function createAudit(
     await db.auditLog.create({
       data: {
         orgId,
-        action: 'github.connection_sync',
+        action: 'github_connection_sync',
         metadata: JSON.stringify({
           eventAction: action,
           installationId,

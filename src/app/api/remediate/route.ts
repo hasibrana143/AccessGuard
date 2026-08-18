@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
     if (result.usage && result.costEstimate) {
       await createAuditLog({
         orgId: auth.user.orgId,
-        action: 'remediation.ai_cost',
+        action: 'remediation_ai_cost',
         userId: auth.user.id,
         metadata: {
           violationId,

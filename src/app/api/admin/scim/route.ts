@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     await createAuditLog({
       orgId,
-      action: 'scim.token_generated',
+      action: 'scim_token_generated',
       metadata: { actorId: (session.user as { id?: string }).id },
       userId: (session.user as { id?: string }).id,
     });

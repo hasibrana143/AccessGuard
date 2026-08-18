@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
           await tx.auditLog.create({
             data: {
               orgId,
-              action: 'subscription.created',
+              action: 'subscription_created',
               metadata: JSON.stringify({
                 plan,
                 subscriptionId,
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
             await tx.auditLog.create({
               data: {
                 orgId,
-                action: 'subscription.changed',
+                action: 'subscription_changed',
                 metadata: JSON.stringify({
                   status: subscription.status,
                   plan,
@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
             await tx.auditLog.create({
               data: {
                 orgId,
-                action: 'subscription.cancelled',
+                action: 'subscription_cancelled',
                 metadata: JSON.stringify({
                   subscriptionId: subscription.id,
                   eventId: event.id,

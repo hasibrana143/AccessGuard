@@ -123,7 +123,7 @@ export async function PUT(request: NextRequest) {
     await db.auditLog.create({
       data: {
         orgId,
-        action: 'scim.group_updated',
+        action: 'scim_group_updated',
         metadata: JSON.stringify({ groupId, displayName, memberCount: memberIds.length, timestamp: new Date().toISOString() }),
       },
     });
@@ -151,7 +151,7 @@ export async function DELETE(request: NextRequest) {
     await db.auditLog.create({
       data: {
         orgId,
-        action: 'scim.group_deleted',
+        action: 'scim_group_deleted',
         metadata: JSON.stringify({ groupId, timestamp: new Date().toISOString() }),
       },
     });

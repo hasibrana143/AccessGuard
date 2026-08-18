@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     await db.auditLog.create({
       data: {
         orgId,
-        action: 'subscription.changed',
+        action: 'subscription_changed',
         metadata: JSON.stringify({
           coupon: couponName,
           percentOff,
