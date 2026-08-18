@@ -21,7 +21,7 @@ test.describe('Authentication', () => {
 
   test('should have link to register page', async ({ page }) => {
     await page.goto('/auth/login');
-    await expect(page.locator('text=Sign up')).toBeVisible();
+    await expect(page.locator('text=Create account')).toBeVisible();
   });
 
   test('should have back to home button', async ({ page }) => {
