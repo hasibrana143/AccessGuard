@@ -7,6 +7,7 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 let config: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
+  turbopack: false,
 
   async rewrites() {
     return [
