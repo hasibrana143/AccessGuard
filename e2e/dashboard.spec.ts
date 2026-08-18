@@ -26,7 +26,7 @@ test.describe('Dashboard', () => {
   });
 
   test('should navigate to scans from sidebar', async ({ page }) => {
-    const scansLink = page.locator('nav').getByText('Scan History', { exact: true });
+    const scansLink = page.locator('nav').getByText('Scans', { exact: true });
     await expect(scansLink).toBeVisible({ timeout: 8000 });
     await scansLink.click();
     await expect(page).toHaveURL(/\/scans/, { timeout: 8000 });
