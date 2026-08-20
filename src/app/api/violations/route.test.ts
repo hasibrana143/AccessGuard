@@ -148,7 +148,6 @@ describe('Violations API', () => {
 
     it('should update violation status to fixed', async () => {
       if (!testViolationId) {
-        console.log('Skipping test - no violation found');
         return;
       }
 

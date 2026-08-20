@@ -7,10 +7,7 @@
     },
     "redis": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-redis@2025.4.25"],
-      "environment": {
-        "REDIS_URL": "redis://localhost:6379"
-      }
+      "command": ["npx", "-y", "@modelcontextprotocol/server-redis@2025.4.25", "redis://localhost:6379"]
     },
     "playwright": {
       "type": "local",

@@ -62,7 +62,9 @@ export default function CookieConsent() {
       className="fixed inset-x-0 bottom-0 z-[9999] flex flex-wrap items-start justify-between gap-3 border-t border-border bg-card p-4 text-card-foreground shadow-lg sm:items-center sm:p-6"
     >
       <p className="m-0 max-w-[640px] text-sm leading-relaxed text-foreground">
-        {t('description')}
+        {t.rich('description', {
+          link: (chunks) => <a href="/api/legal/privacy" target="_blank" className="underline">{chunks}</a>,
+        })}
       </p>
       <div className="flex shrink-0 gap-2">
         <button

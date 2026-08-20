@@ -1,7 +1,9 @@
-import { getTranslations } from 'next-intl/server';
+'use client';
 
-export async function TrustIndicators() {
-  const t = await getTranslations('landing');
+import { useTranslations } from 'next-intl';
+
+export function TrustIndicators() {
+  const t = useTranslations('landing');
   const items = [
     { stat: '500+', label: t('companiesProtected') },
     { stat: '2M+', label: t('pagesScanned') },

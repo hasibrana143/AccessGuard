@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
 
   const event = request.headers.get('x-github-event') || 'unknown';
-  let payload: Record<string, any>;
+  let payload: Record<string, unknown>;
   try {
     payload = JSON.parse(rawBody);
   } catch {
@@ -68,13 +68,15 @@ async function resolveOrgId(login: string | undefined): Promise<string | null> {
   return user?.orgId ?? null;
 }
 
-async function handleInstallation(payload: Record<string, any>): Promise<void> {
-  const action: string = payload.action ?? 'created';
-  const installationId = String(payload.installation?.id ?? '');
-  const accountLogin: string | undefined = payload.installation?.account?.login;
-  const login: string | undefined = payload.sender?.login ?? accountLogin;
-  const repositories: string[] = (payload.repositories ?? []).map(
-    (r: { full_name?: string }) => r.full_name ?? ''
+async function handleInstallation(payload: Record<string, unknown>): Promise<void> {
+  const action: string = (payload.action as string) ?? 'created';
+  const installation = payload.installation as Record<string, unknown> | undefined;
+  const installationId = String(installation?.id ?? '');
+  const accountLogin: string | undefined = (installation?.account as Record<string, unknown>)?.login as string | undefined;
+  const sender = payload.sender as Record<string, unknown> | undefined;
+  const login: string | undefined = (sender?.login as string | undefined) ?? accountLogin;
+  const repositories: string[] = ((payload.repositories as Array<Record<string, unknown>>) ?? []).map(
+    (r: Record<string, unknown>) => (r.full_name as string) ?? ''
   ).filter(Boolean);
 
   if (!installationId) {
@@ -112,9 +114,9 @@ async function handleInstallation(payload: Record<string, any>): Promise<void> {
   await createAudit(orgId, action, installationId, login);
 }
 
-async function handleInstallationRepositories(payload: Record<string, any>): Promise<void> {
-  const action: string = payload.action ?? 'added';
-  const installationId = String(payload.installation?.id ?? '');
+async function handleInstallationRepositories(payload: Record<string, unknown>): Promise<void> {
+  const action: string = (payload.action as string) ?? 'added';
+  const installationId = String((payload.installation as Record<string, unknown>)?.id ?? '');
   if (!installationId) return;
 
   const existing = await db.githubConnection.findUnique({
@@ -126,11 +128,11 @@ async function handleInstallationRepositories(payload: Record<string, any>): Pro
   }
 
   const current: string[] = JSON.parse(existing.repositories || '[]');
-  const added: string[] = (payload.repositories_added ?? []).map(
-    (r: { full_name?: string }) => r.full_name ?? ''
+  const added: string[] = ((payload.repositories_added as Array<Record<string, unknown>>) ?? []).map(
+    (r: Record<string, unknown>) => (r.full_name as string) ?? ''
   ).filter(Boolean);
-  const removed: string[] = (payload.repositories_removed ?? []).map(
-    (r: { full_name?: string }) => r.full_name ?? ''
+  const removed: string[] = ((payload.repositories_removed as Array<Record<string, unknown>>) ?? []).map(
+    (r: Record<string, unknown>) => (r.full_name as string) ?? ''
   ).filter(Boolean);
 
   let next = current;

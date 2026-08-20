@@ -410,7 +410,7 @@ export async function GET(request: NextRequest) {
     // Generate PDF
     const { renderToBuffer } = await import('@react-pdf/renderer');
     const doc = React.createElement(ComplianceReport, { data: reportData });
-    const buffer = await renderToBuffer(doc as any);
+    const buffer = await renderToBuffer(doc as React.ReactElement<any>);
 
     // Create audit log
     await db.auditLog.create({

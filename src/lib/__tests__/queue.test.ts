@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const { processorRef, queueRef, FakeQueue } = vi.hoisted(() => {
-  const processorRef: { current: ((job: any) => Promise<void>) | null } = { current: null };
+  const processorRef: { current: ((job: unknown) => Promise<void>) | null } = { current: null };
   const queueRef: { current: FakeQueue | null } = { current: null };
   class FakeQueue {
     add = vi.fn(async () => ({ id: 'fake-job' }));
@@ -21,8 +21,8 @@ vi.mock('bullmq', () => ({
       queueRef.current = this;
     }
   },
-  Worker: class {
-    constructor(_name: string, fn: (job: any) => Promise<void>) {
+Worker: class {
+      constructor(_name: string, fn: (job: unknown) => Promise<void>) {
       processorRef.current = fn;
     }
     on() {}
@@ -49,7 +49,10 @@ vi.mock('@/lib/db', () => ({
       findUnique: vi.fn(async () => ({ id: 'org-1', plan: 'agency', settings: '{}' })),
     },
     scan: {
-      create: vi.fn(async (args: any) => ({ id: 'scan-1', ...args.data })),
+      create: vi.fn(async (args: unknown) => {
+      const argsRecord = args as Record<string, unknown>;
+      return { id: 'scan-1', ...(argsRecord.data as Record<string, unknown>) };
+    }),
       update: vi.fn(async () => ({})),
     },
     violation: { createMany: vi.fn(async () => ({ count: 0 })) },

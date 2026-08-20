@@ -124,10 +124,10 @@ export default async function RootLayout({
             <main id="main-content" tabIndex={-1}>
               {children}
             </main>
+            <Toaster />
+            <CookieConsent />
           </NextIntlClientProvider>
         </Providers>
-        <Toaster />
-        <CookieConsent />
       </body>
     </html>
   );

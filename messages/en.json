@@ -334,8 +334,9 @@
     "filterBySeverity": "Filter by severity",
     "filterByStatus": "Filter by status",
     "sortByLabel": "Sort by",
-    "allSeverities": "All Severities",
-    "allStatuses": "All Statuses",
+"allSeverities": "All Severities",
+  "allStatuses": "All Statuses",
+  "status": "Status",
     "sortSeverityDesc": "Severity: High to Low",
     "sortSeverityAsc": "Severity: Low to High",
     "sortNewest": "Newest first",
@@ -1310,7 +1311,7 @@
     "startScanning": "Start Scanning"
   },
   "cookieConsent": {
-    "description": "We use essential cookies for authentication and session management. Analytics cookies are used only with your consent. <a href=\"/api/legal/privacy\" target=\"blank\" class=\"underline\">Privacy Policy</a>",
+    "description": "We use essential cookies for authentication and session management. Analytics cookies are used only with your consent. <link>Privacy Policy</link>",
     "accept": "Accept All",
     "decline": "Essential Only"
   }

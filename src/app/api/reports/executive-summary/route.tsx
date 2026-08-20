@@ -324,7 +324,7 @@ export async function GET(request: NextRequest) {
 
     const { renderToBuffer } = await import('@react-pdf/renderer');
     const doc = React.createElement(ExecutiveSummary, { data: reportData });
-    const buffer = await renderToBuffer(doc as any);
+    const buffer = await renderToBuffer(doc as React.ReactElement<any>);
 
     await db.auditLog.create({
       data: {

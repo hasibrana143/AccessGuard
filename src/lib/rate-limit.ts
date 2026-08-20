@@ -1,4 +1,5 @@
 import { getRedis, isRedisReady } from './redis';
+import { randomUUID } from 'crypto';
 
 interface RateLimitEntry {
   count: number;
@@ -63,7 +64,7 @@ async function checkRedis(identifier: string, config: RateLimitConfig): Promise<
   try {
     const multi = redis.multi();
     multi.zremrangebyscore(key, 0, now - windowMs);
-    multi.zadd(key, now, `${now}-${Math.random()}`);
+    multi.zadd(key, now, `${now}-${randomUUID()}`);
     multi.zcard(key);
     multi.expire(key, Math.ceil(windowMs / 1000));
     const results = await multi.exec();

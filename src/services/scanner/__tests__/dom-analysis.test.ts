@@ -3,10 +3,10 @@ import { domAnalysisStrategy } from '../strategies/dom-analysis';
 
 const TEST_URL = 'https://example.com';
 
-function cleanResultViolations(violations: any[]) {
+function cleanResultViolations(violations: Array<Record<string, unknown>>) {
   return violations.map(({ elementHtml, ...rest }) => ({
     ...rest,
-    elementHtml: elementHtml?.substring(0, 100),
+    elementHtml: (elementHtml as string | undefined)?.substring(0, 100),
   }));
 }
 

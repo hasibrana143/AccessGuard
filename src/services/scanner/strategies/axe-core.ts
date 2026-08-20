@@ -84,7 +84,7 @@ async function runAxeOnPage(page: Page, url: string): Promise<ScannerViolation[]
     await Promise.race([
       page.evaluate(() => {
         return new Promise<void>((resolve, reject) => {
-          if (typeof (window as any).axe !== 'undefined') { resolve(); return; }
+          if (typeof (window as unknown as Record<string, unknown>).axe !== 'undefined') { resolve(); return; }
           const script = document.createElement('script');
           script.src = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.8.4/axe.min.js';
           script.onload = () => resolve();
@@ -95,27 +95,31 @@ async function runAxeOnPage(page: Page, url: string): Promise<ScannerViolation[]
       timeoutAfter(AXE_CDN_LOAD_TIMEOUT_MS, 'axe-core CDN load timed out'),
     ]);
 
+    type AxeViolations = Array<{ id: string; helpUrl: string; impact: string; tags: string[]; nodes: unknown[] }>;
+type AxeRunResult = { violations: AxeViolations };
+type AxeWindow = { axe: { run: (doc: Document, options: unknown) => Promise<AxeRunResult> } };
+const axeWindow = window as unknown as AxeWindow;
     const results = await Promise.race([
       page.evaluate(async () => {
-        return await (window as any).axe.run(document, {
+        return await axeWindow.axe.run(document, {
           runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] }
         });
       }),
       timeoutAfter(AXE_RUN_TIMEOUT_MS, 'axe-core analysis timed out'),
-    ]);
+    ]) as { violations: Array<{ id: string; helpUrl: string; impact: string; tags: string[]; nodes: unknown[] }> };
 
     for (const violation of results.violations || []) {
       const { code, explanation } = generateRemediation(violation.id, violation.helpUrl);
 
-      for (const node of violation.nodes || []) {
+      for (const node of (violation.nodes || []) as Array<Record<string, unknown>>) {
         violations.push({
           ruleId: violation.id,
           wcagCriteria: mapWcagCriteria(violation.tags),
           severity: mapImpact(violation.impact),
           url,
-          elementSelector: node.target?.join(' > ') ?? null,
-          elementHtml: node.html?.substring(0, 500) ?? null,
-          description: violation.help,
+          elementSelector: (node.target as string[])?.join(' > ') ?? null,
+          elementHtml: (node.html as string)?.substring(0, 500) ?? null,
+          description: violation.helpUrl,
           remediationCode: code,
           aiExplanation: `${explanation}\n\n${violation.helpUrl}`,
           aiConfidenceScore: null,

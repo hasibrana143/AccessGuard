@@ -4,6 +4,8 @@
 
 export const PROMPT_VERSION = 1;
 
+import { randomUUID } from 'crypto';
+
 export interface RuleInfo {
   name: string;
   requirement: string;
@@ -155,7 +157,7 @@ export function renderTemplateFix(html: string, ruleId: string, description: str
     label: () => ({
       remediationCode: html.includes('id=')
         ? html
-        : `<label for="${Math.random().toString(36).slice(2, 8)}">${description || 'Field label'}</label>\n${html}`,
+        : `<label for="${randomUUID().slice(0, 8)}">${description || 'Field label'}</label>\n${html}`,
       explanation: 'Associated the input with a label so screen readers announce the field purpose.',
     }),
     'link-name': () => ({
