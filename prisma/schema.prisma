@@ -16,6 +16,8 @@ model Organization {
   stripeCustomerId     String?
   stripeSubscriptionId String?
   dataRegion           String             @default("us")
+  euConsentAt          DateTime?
+  euConsentedBy        String?
   churnScore           Int                @default(0)
   lastChurnCalcAt      DateTime?
   ssoEnabled           Boolean            @default(false)

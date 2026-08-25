@@ -21,6 +21,7 @@ export const AUDIT_ACTIONS = [
   'scim_token_generated', 'scim_user_created', 'scim_user_deactivated',
   'scim_group_created', 'scim_group_updated', 'scim_group_deleted',
   'cookie_consent_updated',
+  'eu_data_transfer_consent',
   'payment_failed', 'payment_succeeded',
   'vendor_review',
 ] as const;

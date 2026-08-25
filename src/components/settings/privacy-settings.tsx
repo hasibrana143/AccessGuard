@@ -132,16 +132,14 @@ export function PrivacySettings() {
   };
 
   const handleSaveRegion = async () => {
-    if (dataRegion === 'eu') {
-      const consent = window.confirm(t('euConsent'));
-      if (!consent) return;
-    }
+    const consented = dataRegion === 'eu' ? window.confirm(t('euConsent')) : false;
+    if (dataRegion === 'eu' && !consented) return;
     setRegionSaving(true);
     try {
       const res = await fetch('/api/settings/region', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataRegion }),
+        body: JSON.stringify({ dataRegion, euTransferConsent: consented || undefined }),
       });
       const data = await res.json();
       if (data.success) {

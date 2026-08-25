@@ -25,12 +25,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No organization found' }, { status: 403 });
     }
 
-    const org = await db.organization.findUnique({ where: { id: orgId }, select: { dataRegion: true } });
+    const org = await db.organization.findUnique({
+      where: { id: orgId },
+      select: { dataRegion: true, euConsentAt: true },
+    });
     if (!org) {
       return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, dataRegion: org.dataRegion });
+    return NextResponse.json({
+      success: true,
+      dataRegion: org.dataRegion,
+      euConsentAt: org.euConsentAt?.toISOString() ?? null,
+    });
   } catch (error) {
     logger.error({ err: error }, 'get data region failed');
     return NextResponse.json({ success: false, error: 'Failed to read data region' }, { status: 500 });
@@ -63,11 +70,23 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const body = (await request.json().catch(() => null)) as { dataRegion?: unknown } | null;
+    const body = (await request.json().catch(() => null)) as {
+      dataRegion?: unknown;
+      euTransferConsent?: unknown;
+    } | null;
     const dataRegion = body?.dataRegion;
     if (typeof dataRegion !== 'string' || !isAllowedRegion(dataRegion)) {
       return NextResponse.json(
         { success: false, error: `Invalid region. Supported: ${ALLOWED_REGIONS.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    // GDPR: switching to the EU region routes data through EU subprocessors and
+    // requires an explicit, recorded consent from the acting admin/owner.
+    if (dataRegion === 'eu' && body?.euTransferConsent !== true) {
+      return NextResponse.json(
+        { success: false, error: 'EU data-transfer consent is required to select the eu region.' },
         { status: 400 }
       );
     }
@@ -79,7 +98,12 @@ export async function PATCH(request: NextRequest) {
 
     await db.organization.update({
       where: { id: orgId },
-      data: { dataRegion },
+      data: {
+        dataRegion,
+        ...(dataRegion === 'eu'
+          ? { euConsentAt: new Date(), euConsentedBy: (session.user as { id?: string }).id ?? null }
+          : {}),
+      },
     });
 
     // Region switch = data now processed in a different subprocessor
@@ -93,6 +117,18 @@ export async function PATCH(request: NextRequest) {
           reason: 'data-residency-change',
           from: current.dataRegion,
           to: dataRegion,
+          actorId: (session.user as { id?: string }).id,
+        },
+        userId: (session.user as { id?: string }).id,
+      });
+    }
+
+    if (dataRegion === 'eu') {
+      await createAuditLog({
+        orgId,
+        action: 'eu_data_transfer_consent',
+        metadata: {
+          consentedAt: new Date().toISOString(),
           actorId: (session.user as { id?: string }).id,
         },
         userId: (session.user as { id?: string }).id,
