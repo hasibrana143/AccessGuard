@@ -10,7 +10,7 @@ This repo is built in **12 volumes** (see `docs/VOLUMES.md`). Every change belon
 
 ## Commands (Windows / PowerShell)
 - `npm run dev` — Next dev on :3000 (ONE instance only; concurrent dev corrupts `.next` types)
-- `npm test` — vitest run (currently 234 passing)
+- `npm test` — vitest run
 - `npm run lint` — eslint (must be 0 errors)
 - `npm run build` — Next standalone build (stop dev server first)
 - `npm run test:e2e` — Playwright suite
@@ -44,7 +44,8 @@ npx tsc -p tsconfig.check.json
 - ✅ V1 Product, V2 Design/UX, V3 Engineering, V4 Development, V5 AI, V6 Security, V7 DevOps, V8 Testing, V9 Documentation, V10 Business, V11 Operations, V12 Launch.
 - Open deferrals (documented in volume docs): semantic-release, deploy/preview jobs, PostHog, PagerDuty, status page, pixel contrast analysis, i18n, soak test.
 - Typecheck: `npx tsc -p tsconfig.check.json` (source-only; never `tsc` on `.next-types`).
-- Tests: vitest 251 ✓ · coverage gate 55/50/58/57 · Playwright baseline ~12 specs · lint 0 ✓.
+- Tests: vitest 321+ ✓ · coverage gate 55/50/58/57 · Playwright 13 spec files · lint 0 ✓.
+- Do not hardcode test counts in this file — they drift. Check `npm test` output instead.
 
 ## Session continuity
 - At the end of a meaningful work block (feature done, before long builds, session wrap), run `/context-save` — snapshots live in `~/.gstack/projects/` (machine-local, not git).

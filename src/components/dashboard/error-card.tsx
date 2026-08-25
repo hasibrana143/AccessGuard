@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, RefreshCw, ArrowLeft } from 'lucide-react';
@@ -20,10 +21,7 @@ export function DashboardError({
   const router = useRouter();
 
   useEffect(() => {
-    // Log to Sentry in production
-    if (process.env.NODE_ENV === 'production' && typeof window !== 'undefined') {
-      console.error('[Dashboard Error]', error.message, error.digest);
-    }
+    Sentry.captureException(error, { tags: { digest: error.digest ?? 'none', boundary: 'error-card' } });
   }, [error]);
 
   return (

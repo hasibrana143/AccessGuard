@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { Shield, RefreshCw, Home, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function DashboardError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
-    // Log to Sentry in production
-    if (process.env.NODE_ENV === 'production' && error) {
-      console.error('[DashboardError]', error.message, error.digest);
+    if (error) {
+      Sentry.captureException(error, { tags: { digest: error.digest ?? 'none', boundary: 'dashboard' } });
     }
   }, [error, error?.digest]);
 
