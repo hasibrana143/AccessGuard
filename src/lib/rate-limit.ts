@@ -133,3 +133,19 @@ export function createRateLimitResponse(result: RateLimitResult): Response {
     }
   );
 }
+
+/**
+ * Apply rate limit headers to any Response (success or error).
+ * Call this after every successful API response so clients always see their limits.
+ */
+export function applyRateLimitHeaders(response: Response, result: RateLimitResult): Response {
+  const newHeaders = new Headers(response.headers);
+  newHeaders.set('X-RateLimit-Limit', result.limit.toString());
+  newHeaders.set('X-RateLimit-Remaining', result.remaining.toString());
+  newHeaders.set('X-RateLimit-Reset', result.reset.toString());
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
+}

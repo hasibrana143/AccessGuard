@@ -1,14 +1,37 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
-import { motion } from 'framer-motion';
+import { motion, useInView, useMotionValue, useTransform, animate } from 'framer-motion';
 import {
   Shield, Sparkles, Check, ArrowRight, Play, Target, AlertCircle,
   AlertTriangle, Activity, TrendingUp, Github, CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+
+/** Animated counter that counts up from 0 to target */
+function AnimatedCounter({ target, duration = 1.5 }: { target: number; duration?: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const inView = useInView(ref, { once: true });
+  const motionVal = useMotionValue(0);
+  const rounded = useTransform(motionVal, (v) => Math.round(v));
+
+  useEffect(() => {
+    if (inView) {
+      animate(motionVal, target, { duration, ease: 'easeOut' });
+    }
+  }, [inView, motionVal, target, duration]);
+
+  useEffect(() => {
+    const unsubscribe = rounded.on('change', (v) => {
+      if (ref.current) ref.current.textContent = String(v);
+    });
+    return unsubscribe;
+  }, [rounded]);
+
+  return <span ref={ref}>0</span>;
+}
 
 const statColors: Record<string, string> = {
   emerald: 'text-emerald-500',
@@ -41,15 +64,37 @@ export function Hero({
   ];
 
   return (
-    <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
-      <div className="max-w-7xl mx-auto">
+    <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden relative">
+      {/* Animated gradient orbs */}
+      <motion.div
+        className="absolute top-20 -left-32 w-96 h-96 bg-coral/10 rounded-full blur-3xl pointer-events-none"
+        animate={{ x: [0, 30, 0], y: [0, -20, 0], scale: [1, 1.1, 1] }}
+        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute bottom-0 -right-32 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"
+        animate={{ x: [0, -30, 0], y: [0, 20, 0], scale: [1, 1.15, 1] }}
+        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-3xl pointer-events-none"
+        animate={{ rotate: [0, 360] }}
+        transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
+      />
+
+      <div className="max-w-7xl mx-auto relative z-10">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <div className="flex items-center gap-2 mb-6">
+            <motion.div
+              className="flex items-center gap-2 mb-6"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
               <Badge variant="outline" className="border-coral/20 text-coral px-3 py-1">
                 <Sparkles aria-hidden="true" className="h-3 w-3 mr-1" />
                 {t('devFirst')}
@@ -58,13 +103,18 @@ export function Hero({
                 <Shield aria-hidden="true" className="h-3 w-3 mr-1" />
                 {t('wcagBadge')}
               </Badge>
-            </div>
+            </motion.div>
 
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 leading-tight">
+            <motion.h1
+              className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 leading-tight"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.6 }}
+            >
               {t('headlineA')} <span className="text-coral">{t('headlineHighlight')}</span>
               <br />
               <span className="text-muted-foreground">{t('headlineB')}</span>
-            </h1>
+            </motion.h1>
 
             <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
               {t.rich('heroParagraph', {
@@ -129,7 +179,7 @@ export function Hero({
                         <stat.icon aria-hidden="true" className={`h-4 w-4 ${statColors[stat.color]}`} />
                         <span className="text-xs text-muted-foreground">{stat.label}</span>
                       </div>
-                      <div className="text-2xl font-bold">{stat.value}</div>
+                      <div className="text-2xl font-bold"><AnimatedCounter target={parseInt(stat.value)} /></div>
                       <div className={`text-xs ${stat.trend.startsWith('+') ? 'text-emerald-500' : 'text-red-500'} mt-1`}>
                         {t('trendWeek', { trend: stat.trend })}
                       </div>
@@ -161,9 +211,9 @@ export function Hero({
 
             {/* Floating Elements */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.5 }}
+              initial={{ opacity: 0, scale: 0.8, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ delay: 0.8, type: 'spring', stiffness: 200 }}
               className="absolute -right-4 top-20 bg-emerald-700 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium"
             >
               <Check aria-hidden="true" className="inline h-4 w-4 mr-1" />
@@ -171,9 +221,9 @@ export function Hero({
             </motion.div>
 
             <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.7 }}
+              initial={{ opacity: 0, scale: 0.8, y: -10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ delay: 1, type: 'spring', stiffness: 200 }}
               className="absolute -left-4 bottom-40 bg-card border border-border px-4 py-3 rounded-lg shadow-lg"
             >
               <div className="flex items-center gap-2">
@@ -182,6 +232,14 @@ export function Hero({
                 <CheckCircle2 aria-hidden="true" className="h-4 w-4 text-emerald-500" />
               </div>
             </motion.div>
+
+            {/* Animated scan line */}
+            <motion.div
+              className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-coral to-transparent"
+              initial={{ top: '0%', opacity: 0 }}
+              animate={{ top: ['0%', '100%', '0%'], opacity: [0, 0.6, 0] }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            />
           </motion.div>
         </div>
       </div>

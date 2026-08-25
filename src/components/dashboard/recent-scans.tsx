@@ -41,7 +41,7 @@ export function RecentScans({ scans }: RecentScansProps) {
               <div className={`p-2 rounded-lg ${
                 scan.status === 'completed' ? 'bg-emerald-500/10' :
                 scan.status === 'running' ? 'bg-blue-500/10' :
-                scan.status === 'failed' ? 'bg-red-500/10' : 'bg-gray-500/10'
+                scan.status === 'failed' ? 'bg-red-500/10' : 'bg-muted'
               }`}>
                 {scan.status === 'completed' ? (
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -50,7 +50,7 @@ export function RecentScans({ scans }: RecentScansProps) {
                 ) : scan.status === 'failed' ? (
                   <XCircle className="h-4 w-4 text-red-500" />
                 ) : (
-                  <Clock className="h-4 w-4 text-gray-500" />
+                  <Clock className="h-4 w-4 text-muted-foreground" />
                 )}
               </div>
               <div className="flex-1 min-w-0">

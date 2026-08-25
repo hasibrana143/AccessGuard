@@ -1,29 +1,24 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  AlertTriangle, AlertCircle, CheckCircle2, Download, Github, Search, Globe, Code, Clock,
-  Sparkles, EyeOff, XCircle, Check, Loader2, CheckSquare, Square, ExternalLink
-} from 'lucide-react';
+import { Download, Github, CheckCircle2, CheckSquare, Square, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useViolations, useRemediation, useUpdateViolationStatus, useGenerateRemediation, useBulkUpdateViolations } from '@/hooks/useApi';
-import { getSeverityBadge, getStatusBadge, formatRelativeTime, SEVERITY_BG, SEVERITY_TEXT } from '@/lib/constants';
+import { ViolationFilters } from '@/components/violations/violation-filters';
+import { ViolationRow } from '@/components/violations/violation-row';
+import { ViolationDetailDialog } from '@/components/violations/violation-detail-dialog';
+import { CreatePrDialog } from '@/components/violations/create-pr-dialog';
 import type { Violation, Severity, ViolationStatus } from '@/types';
 
 export default function ViolationsPage() {
   const t = useTranslations('violations');
   const tc = useTranslations('common');
   const { toast } = useToast();
-  const [selectedViolation, setSelectedViolation] = useState<Violation | null>(null);
+
+  // Filters
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('open');
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,60 +26,36 @@ export default function ViolationsPage() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 25;
 
+  // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Dialogs
+  const [selectedViolation, setSelectedViolation] = useState<Violation | null>(null);
   const [prDialogOpen, setPrDialogOpen] = useState(false);
-  const [repos, setRepos] = useState<{ fullName: string; name: string; description?: string | null; private?: boolean }[]>([]);
-  const [reposLoading, setReposLoading] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
-  const [selectedRepo, setSelectedRepo] = useState('');
-  const [prSubmitting, setPrSubmitting] = useState(false);
-  const [prResult, setPrResult] = useState<{ prUrl?: string; message?: string; demoMode?: boolean; violationsCount?: number; project?: { name: string } } | null>(null);
 
+  // Data
   const bulkUpdate = useBulkUpdateViolations();
-
-  const { data: violationsData, isLoading } = useViolations({
-    severity: severityFilter as Severity | 'all',
-    status: statusFilter as ViolationStatus | 'all',
-    limit: 100
-  });
-
+  const { data: violationsData, isLoading } = useViolations({ severity: severityFilter as Severity | 'all', status: statusFilter as ViolationStatus | 'all', limit: 100 });
   const { data: remediation, isLoading: remediationLoading } = useRemediation(selectedViolation?.id || null);
   const updateStatus = useUpdateViolationStatus();
   const generateRemediation = useGenerateRemediation();
 
+  // Filtering + sorting
   const filteredViolations = useMemo(() => {
     if (!Array.isArray(violationsData)) return [];
-
     let list = violationsData;
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      list = list.filter(v =>
-        v.ruleId.toLowerCase().includes(query) ||
-        v.description.toLowerCase().includes(query) ||
-        v.url.toLowerCase().includes(query)
-      );
+      list = list.filter(v => v.ruleId.toLowerCase().includes(query) || v.description.toLowerCase().includes(query) || v.url.toLowerCase().includes(query));
     }
-
     const severityRank = { critical: 0, serious: 1, moderate: 2, minor: 3 } as const;
     switch (sortBy) {
-      case 'severity-asc':
-        list = [...list].sort((a, b) => (severityRank[b.severity] ?? 9) - (severityRank[a.severity] ?? 9));
-        break;
-      case 'severity-desc':
-        list = [...list].sort((a, b) => (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9));
-        break;
-      case 'date-new':
-        list = [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        break;
-      case 'date-old':
-        list = [...list].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-        break;
-      case 'rule':
-        list = [...list].sort((a, b) => a.ruleId.localeCompare(b.ruleId));
-        break;
-      default:
-        list = [...list].sort((a, b) => (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9));
+      case 'severity-asc': list = [...list].sort((a, b) => (severityRank[b.severity] ?? 9) - (severityRank[a.severity] ?? 9)); break;
+      case 'severity-desc': list = [...list].sort((a, b) => (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9)); break;
+      case 'date-new': list = [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()); break;
+      case 'date-old': list = [...list].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()); break;
+      case 'rule': list = [...list].sort((a, b) => a.ruleId.localeCompare(b.ruleId)); break;
+      default: list = [...list].sort((a, b) => (severityRank[a.severity] ?? 9) - (severityRank[b.severity] ?? 9));
     }
     return list;
   }, [violationsData, searchQuery, sortBy]);
@@ -95,126 +66,38 @@ export default function ViolationsPage() {
     return filteredViolations.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   }, [filteredViolations, page, totalPages]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [severityFilter, statusFilter, searchQuery, sortBy]);
+  useEffect(() => { setPage(1); }, [severityFilter, statusFilter, searchQuery, sortBy]);
 
+  // Handlers
   const handleStatusUpdate = async (id: string, status: ViolationStatus) => {
-    try {
-      await updateStatus.mutateAsync({ id, status });
-      toast({ title: t('updated'), description: t('markedAs', { status }) });
-      setSelectedViolation(null);
-    } catch (error) {
-      toast({ title: tc('error'), description: t('updateFailed'), variant: 'destructive' });
-    }
+    try { await updateStatus.mutateAsync({ id, status }); toast({ title: t('updated'), description: t('markedAs', { status }) }); setSelectedViolation(null); }
+    catch { toast({ title: tc('error'), description: t('updateFailed'), variant: 'destructive' }); }
   };
 
   const handleGenerateFix = async (violationId: string) => {
-    try {
-      await generateRemediation.mutateAsync({ violationId, forceRegenerate: true });
-      toast({ title: t('fixGenerated'), description: t('fixGeneratedMsg') });
-    } catch (error) {
-      toast({ title: tc('error'), description: t('fixFailed'), variant: 'destructive' });
-    }
+    try { await generateRemediation.mutateAsync({ violationId, forceRegenerate: true }); toast({ title: t('fixGenerated'), description: t('fixGeneratedMsg') }); }
+    catch { toast({ title: tc('error'), description: t('fixFailed'), variant: 'destructive' }); }
   };
 
   const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+    setSelectedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredViolations.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredViolations.map(v => v.id)));
-    }
+    if (selectedIds.size === filteredViolations.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredViolations.map(v => v.id)));
   };
 
   const handleBulkStatusUpdate = async (status: ViolationStatus) => {
     try {
       const ids = Array.from(selectedIds);
-      // Get projectId from the first selected violation (assumes all selected are from same project)
       const firstViolation = filteredViolations.find(v => ids.includes(v.id));
       const projectId = firstViolation?.projectId;
-      if (!projectId) {
-        toast({ title: tc('error'), description: t('bulkNoProject'), variant: 'destructive' });
-        return;
-      }
+      if (!projectId) { toast({ title: tc('error'), description: t('bulkNoProject'), variant: 'destructive' }); return; }
       await bulkUpdate.mutateAsync({ ids, status, projectId });
       toast({ title: t('updated'), description: t('bulkUpdated', { count: ids.length, status }) });
       setSelectedIds(new Set());
-    } catch {
-      toast({ title: tc('error'), description: t('bulkUpdateFailed'), variant: 'destructive' });
-    }
-  };
-
-  const openPrDialog = async () => {
-    setPrDialogOpen(true);
-    setPrResult(null);
-    setSelectedRepo('');
-    setReposLoading(true);
-    try {
-      const res = await fetch('/api/github/repos');
-      const data = await res.json();
-      if (data.success) {
-        setRepos(data.data || []);
-        setDemoMode(!!data.demoMode);
-        if (data.data?.length > 0 && data.demoMode) {
-          setSelectedRepo(data.data[0].fullName);
-        }
-      } else {
-        toast({ title: tc('error'), description: data.error || t('fetchReposFailed'), variant: 'destructive' });
-      }
-    } catch {
-      toast({ title: tc('error'), description: t('fetchReposFailed'), variant: 'destructive' });
-    } finally {
-      setReposLoading(false);
-    }
-  };
-
-  const handleCreatePr = async () => {
-    if (prSubmitting) return;
-    const ids = selectedIds.size > 0
-      ? Array.from(selectedIds)
-      : filteredViolations.filter(v => v.remediationCode).map(v => v.id);
-    if (ids.length === 0) {
-      toast({ title: t('noFixesAvailable'), description: t('noFixesAvailableDesc'), variant: 'destructive' });
-      return;
-    }
-    setPrSubmitting(true);
-    setPrResult(null);
-    try {
-      const res = await fetch('/api/github/create-pr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ violationIds: ids, repository: selectedRepo || undefined }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        toast({ title: tc('error'), description: data.error || t('prCreateFailed'), variant: 'destructive' });
-      } else {
-        const info = data.data || {};
-        setPrResult({
-          prUrl: info.prUrl,
-          message: info.message || t('prCreated'),
-          demoMode: data.demoMode || false,
-          violationsCount: info.violationsCount || ids.length,
-          project: info.project,
-        });
-        toast({
-          title: data.demoMode ? t('previewGenerated') : t('prCreated'),
-          description: data.demoMode ? t('githubNotConnected') : t('prCreated'),
-        });
-      }
-    } catch {
-      toast({ title: tc('error'), description: t('prCreateFailed'), variant: 'destructive' });
-    } finally {
-      setPrSubmitting(false);
-    }
+    } catch { toast({ title: tc('error'), description: t('bulkUpdateFailed'), variant: 'destructive' }); }
   };
 
   const selectedFixCount = filteredViolations.filter(v => v.remediationCode).length;
@@ -233,72 +116,15 @@ export default function ViolationsPage() {
             if (statusFilter !== 'all') params.append('status', statusFilter);
             window.open(`/api/violations/export?${params}`, '_blank');
           }}>
-            <Download className="h-4 w-4 mr-2" />
-            {t('exportCsv')}
+            <Download className="h-4 w-4 mr-2" />{t('exportCsv')}
           </Button>
-          <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={openPrDialog}>
-            <Github className="h-4 w-4 mr-2" />
-            {t('createFixPrs')}
+          <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={() => setPrDialogOpen(true)}>
+            <Github className="h-4 w-4 mr-2" />{t('createFixPrs')}
           </Button>
         </div>
       </div>
 
-      <Card>
-        <CardContent className="py-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-64">
-              <Label htmlFor="violations-search" className="sr-only">{t('searchLabel')}</Label>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              <Input
-                id="violations-search"
-                placeholder={t('searchPlaceholder')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-                autoComplete="off"
-              />
-            </div>
-            <Select value={severityFilter} onValueChange={setSeverityFilter}>
-              <SelectTrigger className="w-40" aria-label={t('filterBySeverity')}>
-                <SelectValue placeholder={t('severity')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('allSeverities')}</SelectItem>
-                <SelectItem value="critical">{t('critical')}</SelectItem>
-                <SelectItem value="serious">{t('serious')}</SelectItem>
-                <SelectItem value="moderate">{t('moderate')}</SelectItem>
-                <SelectItem value="minor">{t('minor')}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40" aria-label={t('filterByStatus')}>
-                <SelectValue placeholder={t('status')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('allStatuses')}</SelectItem>
-                <SelectItem value="open">{t('open')}</SelectItem>
-                <SelectItem value="fixed">{t('fixed')}</SelectItem>
-                <SelectItem value="ignored">{t('ignored')}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-44" aria-label={t('sortByLabel')}>
-                <SelectValue placeholder={t('sortByLabel')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="severity-desc">{t('sortSeverityDesc')}</SelectItem>
-                <SelectItem value="severity-asc">{t('sortSeverityAsc')}</SelectItem>
-                <SelectItem value="date-new">{t('sortNewest')}</SelectItem>
-                <SelectItem value="date-old">{t('sortOldest')}</SelectItem>
-                <SelectItem value="rule">{t('sortRule')}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Badge variant="secondary" className="px-3 py-1">
-              {t('count', { count: filteredViolations.length })}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+      <ViolationFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} severityFilter={severityFilter} onSeverityChange={setSeverityFilter} statusFilter={statusFilter} onStatusChange={setStatusFilter} sortBy={sortBy} onSortChange={setSortBy} totalCount={filteredViolations.length} />
 
       {selectedIds.size > 0 && (
         <Card className="border-coral/30 bg-coral/5">
@@ -309,40 +135,8 @@ export default function ViolationsPage() {
                 <span className="text-sm font-medium">{t('selected', { count: selectedIds.size })}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleBulkStatusUpdate('fixed')}
-                  disabled={bulkUpdate.isPending}
-                >
-                  <Check className="h-4 w-4 mr-1" />
-                  {t('markFixed')}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleBulkStatusUpdate('ignored')}
-                  disabled={bulkUpdate.isPending}
-                >
-                  <EyeOff className="h-4 w-4 mr-1" />
-                  {t('ignore')}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleBulkStatusUpdate('false_positive')}
-                  disabled={bulkUpdate.isPending}
-                >
-                  <XCircle className="h-4 w-4 mr-1" />
-                  {t('falsePositive')}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedIds(new Set())}
-                >
-                  {t('clear')}
-                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleBulkStatusUpdate('fixed')} disabled={bulkUpdate.isPending}><CheckSquare className="h-4 w-4 mr-1" />{t('markFixed')}</Button>
+                <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>{t('clear')}</Button>
               </div>
             </div>
           </CardContent>
@@ -350,393 +144,43 @@ export default function ViolationsPage() {
       )}
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : (
         <div className="space-y-3">
           {filteredViolations.length > 0 && (
             <div className="flex items-center gap-2 px-1">
-              <button
-                onClick={toggleSelectAll}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {selectedIds.size === filteredViolations.length ? (
-                  <CheckSquare className="h-3.5 w-3.5" />
-                ) : (
-                  <Square className="h-3.5 w-3.5" />
-                )}
+              <button onClick={toggleSelectAll} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                {selectedIds.size === filteredViolations.length ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
                 {t('selectAll')}
               </button>
             </div>
           )}
           {pagedViolations.map((violation) => (
-            <Card
-              key={violation.id}
-              className={`hover:border-coral/30 transition-colors cursor-pointer group ${selectedIds.has(violation.id) ? 'ring-1 ring-coral/40 border-coral/30' : ''}`}
-            >
-              <CardContent className="pt-4">
-                <div className="flex items-start gap-4">
-                  <div
-                    className="flex-shrink-0 pt-1"
-                    onClick={(e) => { e.stopPropagation(); toggleSelect(violation.id); }}
-                  >
-                    {selectedIds.has(violation.id) ? (
-                      <CheckSquare className="h-5 w-5 text-coral cursor-pointer" />
-                    ) : (
-                      <Square className="h-5 w-5 text-muted-foreground/40 hover:text-muted-foreground cursor-pointer" />
-                    )}
-                  </div>
-                  <div className={`p-2.5 rounded-lg flex-shrink-0 ${SEVERITY_BG[violation.severity]}`}>
-                    {violation.severity === 'critical' ? (
-                      <AlertCircle className={`h-5 w-5 ${SEVERITY_TEXT[violation.severity]}`} />
-                    ) : (
-                      <AlertTriangle className={`h-5 w-5 ${SEVERITY_TEXT[violation.severity]}`} />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-semibold">
-                        {violation.ruleId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      </span>
-                      <Badge variant="outline" className={`text-xs ${getSeverityBadge(violation.severity)}`}>
-                        {violation.severity}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        WCAG {violation.wcagCriteria}
-                      </Badge>
-                      <Badge variant="outline" className={`text-xs ${getStatusBadge(violation.status)}`}>
-                        {violation.status}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-2">{violation.description}</p>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Globe className="h-3 w-3" />
-                        <span className="truncate max-w-md">{violation.url}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Code className="h-3 w-3" />
-                        <span className="truncate max-w-xs">{violation.elementSelector}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatRelativeTime(violation.createdAt)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {violation.aiConfidenceScore && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge variant="secondary" className="text-xs">
-                              <Sparkles className="h-3 w-3 mr-1" />
-                              {Math.round(violation.aiConfidenceScore * 100)}%
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>{t('aiConfidenceScore')}</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                    {violation.githubPrUrl && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              aria-label={t('viewPullRequest')}
-                              className="text-coral hover:text-coral"
-                              onClick={(e) => { e.stopPropagation(); window.open(violation.githubPrUrl!, '_blank', 'noopener,noreferrer'); }}
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>{t('viewPullRequest')}</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => { e.stopPropagation(); setSelectedViolation(violation); }}
-                    >
-                      {t('viewFix')}
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <ViolationRow key={violation.id} violation={violation} isSelected={selectedIds.has(violation.id)} onToggleSelect={() => toggleSelect(violation.id)} onViewFix={() => setSelectedViolation(violation)} />
           ))}
-
           {filteredViolations.length === 0 && (
             <Card>
               <CardContent className="py-16 text-center">
                 <CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-emerald-500" />
                 <h3 className="text-lg font-semibold mb-2">{t('noViolationsFound')}</h3>
-                <p className="text-muted-foreground">
-                  {searchQuery ? t('adjustSearch') : t('allResolved')}
-                </p>
+                <p className="text-muted-foreground">{searchQuery ? t('adjustSearch') : t('allResolved')}</p>
               </CardContent>
             </Card>
           )}
-
           {totalPages > 1 && (
             <div className="flex items-center justify-between pt-4">
-              <p className="text-sm text-muted-foreground">
-                {t('pageOf', { current: Math.min(page, totalPages), total: totalPages, count: filteredViolations.length })}
-              </p>
+              <p className="text-sm text-muted-foreground">{t('pageOf', { current: Math.min(page, totalPages), total: totalPages, count: filteredViolations.length })}</p>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                >
-                  {t('previous')}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                >
-                  {t('next')}
-                </Button>
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>{t('previous')}</Button>
+                <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>{t('next')}</Button>
               </div>
             </div>
           )}
         </div>
       )}
 
-      <Dialog open={!!selectedViolation} onOpenChange={() => setSelectedViolation(null)}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
-              {selectedViolation?.ruleId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              <Badge variant="outline" className={`text-xs ${getSeverityBadge(selectedViolation?.severity || 'moderate')}`}>
-                {selectedViolation?.severity}
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                WCAG {selectedViolation?.wcagCriteria}
-              </Badge>
-            </DialogTitle>
-            <DialogDescription className="flex items-center gap-2">
-              <Globe className="h-3 w-3" />
-              <a
-                href={selectedViolation?.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-coral transition-colors"
-              >
-                {selectedViolation?.url}
-              </a>
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-auto space-y-4">
-            <div>
-              <h4 className="text-sm font-medium mb-2">{t('description')}</h4>
-              <p className="text-sm text-muted-foreground">{selectedViolation?.description}</p>
-            </div>
-
-            {selectedViolation?.elementSelector && (
-              <div>
-                <h4 className="text-sm font-medium mb-2">{t('elementSelectorLabel')}</h4>
-                <code className="block p-3 bg-muted rounded-lg text-sm font-mono">
-                  {selectedViolation.elementSelector}
-                </code>
-              </div>
-            )}
-
-            {selectedViolation?.elementHtml && (
-              <div>
-                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                  <Code className="h-4 w-4" />
-                  {t('currentCode')}
-                </h4>
-                <pre className="p-4 bg-muted rounded-lg text-sm font-mono overflow-x-auto text-red-400/80">
-                  <code>{selectedViolation.elementHtml}</code>
-                </pre>
-              </div>
-            )}
-
-            {(selectedViolation?.remediationCode || remediation?.remediationCode) && (
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-medium flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-coral" />
-                    {t('aiSuggestedFix')}
-                  </h4>
-                  {remediation?.confidence && (
-                    <Badge variant="secondary" className="text-xs">
-                      {t('confidence', { percent: Math.round(remediation.confidence * 100) })}
-                    </Badge>
-                  )}
-                </div>
-                {remediationLoading ? (
-                  <div className="flex items-center justify-center py-8 bg-muted rounded-lg">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : (
-                  <pre className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-lg text-sm font-mono overflow-x-auto text-emerald-500/90">
-                    <code>{remediation?.remediationCode || selectedViolation?.remediationCode}</code>
-                  </pre>
-                )}
-                {(remediation?.explanation || selectedViolation?.aiExplanation) && (
-                  <div className="mt-3 p-3 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">
-                      <strong>{t('explanation')}</strong> {remediation?.explanation || selectedViolation?.aiExplanation}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2 pt-4 border-t">
-            <div className="flex gap-2 flex-1">
-              <Button
-                variant="outline"
-                onClick={() => selectedViolation && handleStatusUpdate(selectedViolation.id, 'ignored')}
-                disabled={updateStatus.isPending}
-              >
-                <EyeOff className="h-4 w-4 mr-2" />
-                {t('ignore')}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => selectedViolation && handleStatusUpdate(selectedViolation.id, 'false_positive')}
-                disabled={updateStatus.isPending}
-              >
-                <XCircle className="h-4 w-4 mr-2" />
-                {t('falsePositive')}
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10"
-                onClick={() => selectedViolation && handleStatusUpdate(selectedViolation.id, 'fixed')}
-                disabled={updateStatus.isPending}
-              >
-                <Check className="h-4 w-4 mr-2" />
-                {t('markFixed')}
-              </Button>
-              <Button
-                className="bg-coral hover:bg-coral/90 text-coral-foreground"
-                onClick={() => selectedViolation && handleGenerateFix(selectedViolation.id)}
-                disabled={generateRemediation.isPending}
-              >
-                {generateRemediation.isPending ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('generating')}</>
-                ) : (
-                  <><Sparkles className="h-4 w-4 mr-2" />{t('generateFix')}</>
-                )}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={prDialogOpen} onOpenChange={setPrDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Github className="h-5 w-5 text-coral" />
-              {t('createFixPrs')}
-            </DialogTitle>
-            <DialogDescription>
-              {t('createPrDesc')}{' '}
-              <strong>{selectedIds.size > 0 ? t('prSelectedCount', { count: selectedIds.size }) : t('prFixCount', { count: selectedFixCount })}</strong>.
-              {selectedIds.size === 0 && selectedFixCount === 0 && (
-                <span className="block mt-1 text-red-500">{t('prNoFixes')}</span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {reposLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <>
-                {demoMode && (
-                  <div className="p-3 rounded-lg border border-coral/20 bg-coral/5 text-sm text-muted-foreground">
-                    {t('githubNotConnected')}
-                  </div>
-                )}
-                <div className="grid gap-2">
-                  <Label htmlFor="pr-repo">{t('repository')}</Label>
-                  {repos.length > 0 ? (
-                    <Select value={selectedRepo} onValueChange={setSelectedRepo}>
-                      <SelectTrigger id="pr-repo">
-                        <SelectValue placeholder={t('selectRepository')} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {repos.map((repo) => (
-                          <SelectItem key={repo.fullName} value={repo.fullName}>
-                            {repo.fullName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{t('noRepositories')}</p>
-                  )}
-                </div>
-
-                {prResult && (
-                  <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className={`h-4 w-4 ${prResult.demoMode ? 'text-coral' : 'text-emerald-500'}`} />
-                      <span className="text-sm font-medium">
-                        {prResult.demoMode ? t('previewGenerated') : t('prCreated')}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{prResult.message}</p>
-                    {prResult.violationsCount != null && (
-                      <p className="text-xs text-muted-foreground">
-                        {t('fixFiles', { count: prResult.violationsCount })}{prResult.project ? ` ${t('forProject', { name: prResult.project.name })}` : ''}
-                      </p>
-                    )}
-                    {prResult.prUrl && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-coral border-coral/30 hover:bg-coral/10"
-                        onClick={() => window.open(prResult.prUrl, '_blank', 'noopener,noreferrer')}
-                      >
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        {t('viewPrOnGithub')}
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setPrDialogOpen(false)} disabled={prSubmitting}>
-              {tc('close')}
-            </Button>
-            <Button
-              className="bg-coral hover:bg-coral/90 text-coral-foreground"
-              onClick={handleCreatePr}
-              disabled={prSubmitting || (repos.length > 0 && !selectedRepo)}
-            >
-              {prSubmitting ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('creatingPr')}</>
-              ) : (
-                <><Github className="h-4 w-4 mr-2" />{t('createPr')}</>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ViolationDetailDialog violation={selectedViolation} open={!!selectedViolation} onOpenChange={() => setSelectedViolation(null)} remediation={remediation ?? null} remediationLoading={remediationLoading} onUpdateStatus={handleStatusUpdate} onGenerateFix={handleGenerateFix} isUpdating={updateStatus.isPending} isGenerating={generateRemediation.isPending} />
+      <CreatePrDialog open={prDialogOpen} onOpenChange={setPrDialogOpen} violationIds={selectedIds.size > 0 ? Array.from(selectedIds) : filteredViolations.filter(v => v.remediationCode).map(v => v.id)} totalCount={selectedFixCount} />
     </div>
   );
 }

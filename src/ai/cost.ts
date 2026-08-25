@@ -9,8 +9,19 @@ export interface PriceRow {
   outputPerMillion: number;
 }
 
-// Baseline: meta/llama-3.3-70b-instruct (~$0.13 / $0.40 per 1M tokens, USD).
+// Model pricing (per 1M tokens, USD) — updated Aug 2026
 export const MODEL_PRICING: Record<string, PriceRow> = {
+  // OpenAI
+  'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
+  'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
+  'gpt-4-turbo': { inputPerMillion: 10.0, outputPerMillion: 30.0 },
+  // Anthropic
+  'claude-3-5-sonnet-20241022': { inputPerMillion: 3.0, outputPerMillion: 15.0 },
+  'claude-3-haiku-20240307': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
+  // Groq (fast inference)
+  'llama-3.3-70b-versatile': { inputPerMillion: 0.59, outputPerMillion: 0.79 },
+  'llama-3.1-8b-instant': { inputPerMillion: 0.05, outputPerMillion: 0.08 },
+  // NVIDIA NIM
   'meta/llama-3.3-70b-instruct': { inputPerMillion: 0.13, outputPerMillion: 0.4 },
   'meta/llama-3.1-8b-instruct': { inputPerMillion: 0.018, outputPerMillion: 0.018 },
 };

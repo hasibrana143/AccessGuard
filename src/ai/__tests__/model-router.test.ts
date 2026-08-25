@@ -64,8 +64,9 @@ describe('ai/model-router', () => {
   });
 
   it('falls back to the second provider when the first fails', async () => {
+    // Primary always fails (4xx = no retry, immediate fallback)
     mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 500 } as Response)
+      .mockResolvedValueOnce({ ok: false, status: 401, text: async () => 'Unauthorized' } as unknown as Response)
       .mockResolvedValueOnce(providerResponse('fallback content'));
 
     const configs: ModelConfig[] = [

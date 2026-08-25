@@ -163,7 +163,7 @@ export default function ScansPage() {
                   <div className={`p-2.5 rounded-lg ${
                     scan.status === 'completed' ? 'bg-emerald-500/10' :
                     scan.status === 'running' ? 'bg-blue-500/10' :
-                    scan.status === 'failed' ? 'bg-red-500/10' : 'bg-gray-500/10'
+                    scan.status === 'failed' ? 'bg-red-500/10' : 'bg-muted'
                   }`}>
                     {scan.status === 'completed' ? (
                       <CheckCircle2 className="h-5 w-5 text-emerald-500" />
@@ -172,7 +172,7 @@ export default function ScansPage() {
                     ) : scan.status === 'failed' ? (
                       <XCircle className="h-5 w-5 text-red-500" />
                     ) : (
-                      <Clock className="h-5 w-5 text-gray-500" />
+                      <Clock className="h-5 w-5 text-muted-foreground" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">

@@ -100,6 +100,84 @@ function detectViolations(html: string, url: string): ScannerViolation[] {
     }
   }
 
+  // Check for button-name violations (buttons without text content)
+  const buttonMatches = html.matchAll(/<button[^>]*>([^<]*)<\/button>/gi);
+  for (const match of buttonMatches) {
+    const content = match[1].trim();
+    const tag = match[0];
+    if (!content && !/aria-label|aria-labelledby/.test(tag)) {
+      violations.push({
+        ruleId: 'button-name', wcagCriteria: '4.1.2', severity: 'serious',
+        url, elementSelector: null, elementHtml: tag.substring(0, 500),
+        description: 'Button has no accessible name.',
+        remediationCode: tag.replace('<button', '<button aria-label="Action"'),
+        aiExplanation: 'Added aria-label to empty button.', aiConfidenceScore: null, status: 'open',
+      });
+    }
+  }
+
+  // Check for meta viewport blocking zoom
+  if (/user-scalable=no|maximum-scale=1\.0/i.test(html)) {
+    violations.push({
+      ruleId: 'meta-viewport', wcagCriteria: 'Best Practice', severity: 'serious',
+      url, elementSelector: 'meta[name="viewport"]', elementHtml: 'user-scalable=no',
+      description: 'Viewport meta tag blocks user scaling.',
+      remediationCode: '<meta name="viewport" content="width=device-width, initial-scale=1">',
+      aiExplanation: 'Removed zoom-blocking attributes.', aiConfidenceScore: null, status: 'open',
+    });
+  }
+
+  // Check for landmark regions
+  const hasMain = /<main[\s>]/i.test(html);
+  const hasNav = /<nav[\s>]/i.test(html);
+  if (!hasMain && html.length > 5000) {
+    violations.push({
+      ruleId: 'region', wcagCriteria: 'Best Practice', severity: 'moderate',
+      url, elementSelector: null, elementHtml: 'No <main> landmark found',
+      description: 'Page lacks a main landmark region.',
+      remediationCode: '<main>\n  <!-- Page content -->\n</main>',
+      aiExplanation: 'Wrap primary content in <main> landmark.', aiConfidenceScore: null, status: 'open',
+    });
+  }
+  if (!hasNav && html.length > 10000) {
+    violations.push({
+      ruleId: 'landmark-navigation', wcagCriteria: 'Best Practice', severity: 'minor',
+      url, elementSelector: null, elementHtml: 'No <nav> landmark found',
+      description: 'Page lacks a navigation landmark region.',
+      remediationCode: '<nav aria-label="Main navigation">\n  <!-- Navigation links -->\n</nav>',
+      aiExplanation: 'Add <nav> landmark for navigation.', aiConfidenceScore: null, status: 'open',
+    });
+  }
+
+  // Check for list structure (li without ul/ol)
+  const liCount = (html.match(/<li[\s>]/gi) || []).length;
+  const ulCount = (html.match(/<ul[\s>]/gi) || []).length;
+  const olCount = (html.match(/<ol[\s>]/gi) || []).length;
+  if (liCount > 0 && ulCount + olCount === 0) {
+    violations.push({
+      ruleId: 'listitem', wcagCriteria: '1.3.1', severity: 'serious',
+      url, elementSelector: null, elementHtml: `Found ${liCount} <li> elements without <ul>/<ol>`,
+      description: 'List items found without a parent list element.',
+      remediationCode: '<ul>\n  <!-- list items -->\n</ul>',
+      aiExplanation: 'Wrap <li> elements in <ul> or <ol>.', aiConfidenceScore: null, status: 'open',
+    });
+  }
+
+  // Check for empty links
+  const emptyLinks = html.matchAll(/<a[^>]*>\s*<\/a>/gi);
+  for (const match of emptyLinks) {
+    const tag = match[0];
+    if (!/aria-label|aria-labelledby|title/.test(tag)) {
+      violations.push({
+        ruleId: 'link-name', wcagCriteria: '2.4.4', severity: 'serious',
+        url, elementSelector: null, elementHtml: tag.substring(0, 500),
+        description: 'Link has no accessible name.',
+        remediationCode: tag.replace('<a', '<a aria-label="Link description"'),
+        aiExplanation: 'Added aria-label to empty link.', aiConfidenceScore: null, status: 'open',
+      });
+    }
+  }
+
   return violations;
 }
 

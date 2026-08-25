@@ -12,6 +12,7 @@ import { TrendChart } from '@/components/dashboard/trend-chart';
 import { SeverityPie } from '@/components/dashboard/severity-pie';
 import { RecentViolations } from '@/components/dashboard/recent-violations';
 import { RecentScans } from '@/components/dashboard/recent-scans';
+import { ScanStatusWidget } from '@/components/dashboard/scan-status-widget';
 import { RegressionAlerts } from '@/components/dashboard/regression-alerts';
 import { AIFixRate } from '@/components/dashboard/ai-fix-rate';
 
@@ -83,9 +84,10 @@ export default function DashboardPage() {
 
       <RegressionAlerts projects={projects || []} />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
         <RecentViolations violations={violationsData || []} />
         <RecentScans scans={scansData || []} />
+        <ScanStatusWidget scans={scansData || []} />
       </div>
     </div>
   );

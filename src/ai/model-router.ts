@@ -67,6 +67,13 @@ function parseUsage(data: { usage?: { prompt_tokens?: number; completion_tokens?
   };
 }
 
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 1000;
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export async function callChatCompletions(
   messages: ChatMessage[],
   configs: ModelConfig[] = getModelConfigs(),
@@ -82,43 +89,55 @@ export async function callChatCompletions(
       continue;
     }
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), config.timeoutMs);
 
-    try {
-      const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify({
+      try {
+        const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: config.model,
+            messages,
+            temperature: 0.2,
+            max_tokens: 1000,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const errorBody = await response.text().catch(() => '');
+          lastError.push(new Error(`Provider ${config.model} rejected: ${response.status} ${errorBody.slice(0, 200)}`));
+          // Don't retry on 4xx (client errors) — only retry on 5xx or network errors
+          if (response.status >= 400 && response.status < 500) break;
+          if (attempt < MAX_RETRIES) { await sleep(RETRY_DELAY_MS * (attempt + 1)); continue; }
+          break;
+        }
+
+        const data = await response.json();
+        const content = data?.choices?.[0]?.message?.content || '';
+
+        if (!content) {
+          lastError.push(new Error(`Provider ${config.model} returned empty content`));
+          continue;
+        }
+
+        return {
+          content,
           model: config.model,
-          messages,
-          temperature: 0.2,
-          max_tokens: 1000,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        lastError.push(new Error(`Provider ${config.model} rejected: ${response.status}`));
-        continue;
+          baseUrl: config.baseUrl,
+          usage: parseUsage(data),
+        };
+      } catch (error) {
+        lastError.push(error);
+        if (attempt < MAX_RETRIES) { await sleep(RETRY_DELAY_MS * (attempt + 1)); }
+      } finally {
+        clearTimeout(timer);
       }
-
-      const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content || '';
-
-      return {
-        content,
-        model: config.model,
-        baseUrl: config.baseUrl,
-        usage: parseUsage(data),
-      };
-    } catch (error) {
-      lastError.push(error);
-    } finally {
-      clearTimeout(timer);
     }
   }
 

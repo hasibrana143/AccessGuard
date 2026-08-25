@@ -19,7 +19,7 @@ interface AuditLogEntry {
 
 const ACTION_META: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string }> = {
   'user_login': { icon: LogIn, color: 'text-emerald-500 bg-emerald-500/10' },
-  'user_logout': { icon: LogOut, color: 'text-gray-500 bg-gray-500/10' },
+  'user_logout': { icon: LogOut, color: 'text-muted-foreground bg-muted' },
   'user_invited': { icon: UserPlus, color: 'text-blue-500 bg-blue-500/10' },
   'user_removed': { icon: UserX, color: 'text-red-500 bg-red-500/10' },
   'project_created': { icon: Globe, color: 'text-coral bg-coral/10' },
@@ -29,14 +29,14 @@ const ACTION_META: Record<string, { icon: React.ComponentType<{ className?: stri
   'scan_completed': { icon: ScanLine, color: 'text-emerald-500 bg-emerald-500/10' },
   'scan_failed': { icon: ScanLine, color: 'text-red-500 bg-red-500/10' },
   'scan_scheduled': { icon: ScanLine, color: 'text-blue-500 bg-blue-500/10' },
-  'scan_unscheduled': { icon: ScanLine, color: 'text-gray-500 bg-gray-500/10' },
+  'scan_unscheduled': { icon: ScanLine, color: 'text-muted-foreground bg-muted' },
   'violation_status_changed': { icon: Bug, color: 'text-orange-500 bg-orange-500/10' },
   'violation_fixed': { icon: CheckCircle2, color: 'text-emerald-500 bg-emerald-500/10' },
-  'settings_updated': { icon: SettingsIcon, color: 'text-gray-500 bg-gray-500/10' },
+  'settings_updated': { icon: SettingsIcon, color: 'text-muted-foreground bg-muted' },
   'subscription_changed': { icon: SettingsIcon, color: 'text-purple-500 bg-purple-500/10' },
   'subscription_created': { icon: SettingsIcon, color: 'text-purple-500 bg-purple-500/10' },
   'subscription_cancelled': { icon: SettingsIcon, color: 'text-red-500 bg-red-500/10' },
-  'github_connected': { icon: Github, color: 'text-gray-500 bg-gray-500/10' },
+  'github_connected': { icon: Github, color: 'text-muted-foreground bg-muted' },
   'github_disconnected': { icon: Github, color: 'text-red-500 bg-red-500/10' },
   'report_generated': { icon: FileText, color: 'text-blue-500 bg-blue-500/10' },
   'api_key_regenerated': { icon: ShieldCheck, color: 'text-coral bg-coral/10' },
@@ -50,7 +50,7 @@ const ACTION_META: Record<string, { icon: React.ComponentType<{ className?: stri
   'sso_config_removed': { icon: ShieldCheck, color: 'text-red-500 bg-red-500/10' },
   'scim_token_generated': { icon: ShieldCheck, color: 'text-coral bg-coral/10' },
   'scim_user_created': { icon: UserPlus, color: 'text-blue-500 bg-blue-500/10' },
-  'scim_user_deactivated': { icon: UserX, color: 'text-gray-500 bg-gray-500/10' },
+  'scim_user_deactivated': { icon: UserX, color: 'text-muted-foreground bg-muted' },
   'vendor_review': { icon: FileText, color: 'text-orange-500 bg-orange-500/10' },
 };
 
@@ -154,7 +154,7 @@ export default function AuditLogsPage() {
               {logs.map((log) => {
                 const meta = ACTION_META[log.action] || {
                   icon: ScrollText,
-                  color: 'text-gray-500 bg-gray-500/10',
+                  color: 'text-muted-foreground bg-muted',
                 };
                 const Icon = meta.icon;
                 const details = Object.entries(log.metadata)

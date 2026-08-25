@@ -5,6 +5,7 @@ import { db } from './db';
 import { logger } from './error-logger';
 import { getNextRunForSchedule } from './cron';
 import { computeChurnScores } from './churn';
+import { validateTargetUrl } from './url-validation';
 
 const TICK_INTERVAL_MS = 60 * 1000;
 const TICK_JOB_ID = 'scheduler-tick';
@@ -79,6 +80,19 @@ export async function processDueScheduledScans(): Promise<number> {
       });
       if (claim.count !== 1) continue; // already claimed by another tick/instance
 
+      // Validate URL before enqueueing — skip gracefully if unresolvable
+      const urlCheck = await validateTargetUrl(schedule.project.url);
+      if (!urlCheck.ok) {
+        logger.warn({ scheduleId: schedule.id, url: schedule.project.url, error: urlCheck.error }, 'Scheduled scan skipped — target URL invalid');
+        // Still advance the schedule so we don't loop on the same bad URL every tick
+        await db.project.update({
+          where: { id: schedule.project.id },
+          data: { nextScheduledScan: nextRunAt },
+        });
+        processed++;
+        continue;
+      }
+
       const userId = await getOrgUserId(schedule.project.orgId);
       await enqueueScan(schedule.project.id, schedule.project.url, userId);
 
@@ -119,6 +133,14 @@ export async function processDueScheduledScans(): Promise<number> {
         data: { nextScheduledScan: null },
       });
       if (claim.count !== 1) continue;
+
+      // Validate URL before enqueueing — skip gracefully if unresolvable
+      const urlCheck = await validateTargetUrl(project.url);
+      if (!urlCheck.ok) {
+        logger.warn({ projectId: project.id, url: project.url, error: urlCheck.error }, 'One-off scan skipped — target URL invalid');
+        processed++;
+        continue;
+      }
 
       const userId = await getOrgUserId(project.orgId);
       await enqueueScan(project.id, project.url, userId);

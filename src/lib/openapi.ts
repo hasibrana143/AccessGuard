@@ -1611,6 +1611,26 @@ const paths: Record<string, PathItem> = {
       },
     }),
   },
+  '/health/performance': {
+    get: op({
+      tags: ['System'],
+      summary: 'Performance monitoring (DB latency, Redis, memory, uptime)',
+      responses: {
+        '200': jsonResponse('Performance metrics', { $ref: '#/components/schemas/PerformanceResponse' }),
+        '503': { description: 'One or more checks degraded' },
+      },
+    }),
+  },
+  '/stats/dashboard-summary': {
+    get: authed(op({
+      tags: ['Stats'],
+      summary: 'Aggregated dashboard summary (violations, scans, projects, fix rate)',
+      responses: {
+        '200': jsonResponse('Dashboard summary', { $ref: '#/components/schemas/DashboardSummaryResponse' }),
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
   '/consent': {
     get: authed(op({
       tags: ['Settings'],
@@ -1968,6 +1988,49 @@ const schemas = {
     required: ['id'],
     properties: {
       id: { type: 'string' },
+    },
+  },
+  PerformanceResponse: {
+    type: 'object',
+    properties: {
+      status: { type: 'string', enum: ['healthy', 'degraded'] },
+      checks: {
+        type: 'object',
+        additionalProperties: {
+          type: 'object',
+          properties: {
+            ok: { type: 'boolean' },
+            latencyMs: { type: 'integer' },
+            detail: { type: 'string' },
+          },
+        },
+      },
+      uptime: { type: 'integer' },
+      timestamp: { type: 'string', format: 'date-time' },
+    },
+  },
+  DashboardSummaryResponse: {
+    type: 'object',
+    properties: {
+      projects: { type: 'integer' },
+      activeScans: { type: 'integer' },
+      violations: {
+        type: 'object',
+        properties: {
+          open: { type: 'integer' },
+          fixed: { type: 'integer' },
+          critical: { type: 'integer' },
+          serious: { type: 'integer' },
+          moderate: { type: 'integer' },
+          minor: { type: 'integer' },
+        },
+      },
+      fixRate: { type: 'integer' },
+      recentScans: {
+        type: 'array',
+        items: { type: 'object' },
+      },
+      generatedAt: { type: 'string', format: 'date-time' },
     },
   },
 } as const;

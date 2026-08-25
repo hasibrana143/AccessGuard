@@ -183,7 +183,7 @@ async function main() {
       data: {
         orgId: defaultOrg.id,
         name: 'Demo Website',
-        url: 'https://demo.accessguard.dev',
+        url: 'https://example.com',
         description: 'Sample project created by the seed script to showcase AccessGuard features.',
         isVerified: true,
         riskScore: 42,
@@ -226,7 +226,7 @@ async function main() {
         ruleId: v.ruleId,
         wcagCriteria: v.wcagCriteria,
         severity: v.severity,
-        url: 'https://demo.accessguard.dev/',
+        url: 'https://example.com/',
         elementSelector: v.elementSelector,
         elementHtml: v.elementHtml,
         description: v.description,

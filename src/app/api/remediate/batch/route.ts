@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse, applyRateLimitHeaders, rateLimits } from '@/lib/rate-limit';
 import { logger } from '@/lib/error-logger';
 import { requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 import { createAuditLog } from '@/lib/audit';
+import { getRequestId } from '@/lib/request-id';
 
 const BATCH_LIMIT = 50;
+
+function jsonWithRateLimit(data: object, status: number, rateResult: ReturnType<typeof checkRateLimit> extends Promise<infer R> ? R : never): Response {
+  const response = NextResponse.json(data, { status });
+  return applyRateLimitHeaders(response, rateResult);
+}
 
 type BatchResult = {
   violationId: string;
@@ -39,17 +45,11 @@ export async function POST(request: NextRequest) {
     const { violationIds, forceRegenerate = false } = body;
 
     if (!violationIds || !Array.isArray(violationIds) || violationIds.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'violationIds array is required' },
-        { status: 400 }
-      );
+      return jsonWithRateLimit({ success: false, error: 'violationIds array is required' }, 400, rateResult);
     }
 
     if (violationIds.length > BATCH_LIMIT) {
-      return NextResponse.json(
-        { success: false, error: `Batch limit is ${BATCH_LIMIT} violations per request` },
-        { status: 400 }
-      );
+      return jsonWithRateLimit({ success: false, error: `Batch limit is ${BATCH_LIMIT} violations per request` }, 400, rateResult);
     }
 
     const auth = await requireVerifiedEmail(request, { permission: PERMISSIONS.GENERATE_REMEDIATION });
@@ -60,10 +60,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (violations.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'No violations found' },
-        { status: 404 }
-      );
+      return jsonWithRateLimit({ success: false, error: 'No violations found' }, 404, rateResult);
     }
 
     const { generateRemediation } = await import('@/app/api/remediate/remediation');
@@ -152,7 +149,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({
+    return jsonWithRateLimit({
       success: true,
       data: {
         results,
@@ -160,13 +157,14 @@ export async function POST(request: NextRequest) {
         succeeded,
         failed: results.length - succeeded,
         cached: results.filter(r => r.cached).length,
+        requestId: getRequestId(request),
       },
-    });
+    }, 200, rateResult);
   } catch (error) {
-    logger.error({ err: error }, '');
-    return NextResponse.json(
+    logger.error({ err: error, requestId: getRequestId(request) }, '');
+    return jsonWithRateLimit(
       { success: false, error: 'Failed to process batch remediation' },
-      { status: 500 }
+      500, rateResult
     );
   }
 }

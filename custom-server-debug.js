@@ -1,6 +1,11 @@
 import { createServer } from 'http';
 import { parse } from 'url';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 import next from 'next';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev, dir: __dirname });

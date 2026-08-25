@@ -11,8 +11,10 @@ import {
 
 describe('ai/prompts', () => {
   it('exposes a versioned prompt contract', () => {
-    expect(PROMPT_VERSION).toBe(1);
+    expect(PROMPT_VERSION).toBe(2);
     expect(WCAG_RULES['image-alt'].name).toContain('1.1.1');
+    expect(WCAG_RULES['image-alt'].examples).toBeDefined();
+    expect(WCAG_RULES['button-name']).toBeDefined();
   });
 
   it('falls back to generic rule info for unknown rules', () => {
@@ -32,8 +34,8 @@ describe('ai/prompts', () => {
     expect(prompt).toContain('image-alt');
     expect(prompt).toContain('1.1.1');
     expect(prompt).toContain('<img src="a.jpg" />');
-    expect(prompt).toContain('---CODE---');
-    expect(prompt).toContain('---CONFIDENCE---');
+    expect(prompt).toContain('violation');
+    expect(prompt).toContain('chain-of-thought');
   });
 
   it('parses a well-formed model response', () => {
@@ -53,7 +55,21 @@ describe('ai/prompts', () => {
 
   it('uses the default confidence when missing', () => {
     const parsed = parseRemediationResponse('---CODE---\nc\n---EXPLANATION---\ne');
-    expect(parsed.confidence).toBe(0.85);
+    expect(parsed.confidence).toBe(0.75);
+  });
+
+  it('parses approach field from response', () => {
+    const parsed = parseRemediationResponse(
+      '---CODE---\nc\n---EXPLANATION---\ne\n---CONFIDENCE---\n0.9\n---APPROACH---\nsemantic-html'
+    );
+    expect(parsed.approach).toBe('semantic-html');
+  });
+
+  it('defaults approach to unknown when invalid', () => {
+    const parsed = parseRemediationResponse(
+      '---CODE---\nc\n---EXPLANATION---\ne\n---CONFIDENCE---\n0.9\n---APPROACH---\ninvalid'
+    );
+    expect(parsed.approach).toBe('unknown');
   });
 
   it('renders template fixes without claiming AI origin', () => {
