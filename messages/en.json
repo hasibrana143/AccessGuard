@@ -396,6 +396,8 @@
   },
   "reports": {
     "title": "Reports",
+    "noProjectsTitle": "No projects yet",
+    "noProjectsDesc": "Create a project and run your first scan to generate reports.",
     "generate": "Generate report",
     "downloadPdf": "Download PDF",
     "subtitle": "Generate compliance reports and VPAT documentation",
@@ -891,6 +893,14 @@
     "signOut": "Sign Out"
   },
   "dash": {
+    "liveScanStatus": "Live Scan Status",
+    "scanning": "Scanning",
+    "idle": "Idle",
+    "queued": "Queued",
+    "running": "Running",
+    "recentActivity": "Recent Activity",
+    "pagesUnit": "pages",
+    "noActiveScans": "No active scans right now.",
     "recentScans": "Recent Scans",
     "recentScansDesc": "Latest scan activity",
     "viewAll": "View All",

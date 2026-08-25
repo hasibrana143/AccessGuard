@@ -396,6 +396,8 @@
   },
   "reports": {
     "title": "रिपोर्ट",
+    "noProjectsTitle": "अभी कोई प्रोजेक्ट नहीं",
+    "noProjectsDesc": "रिपोर्ट बनाने के लिए प्रोजेक्ट बनाएँ और पहला स्कैन चलाएँ।",
     "generate": "रिपोर्ट बनाएँ",
     "downloadPdf": "PDF डाउनलोड करें",
     "subtitle": "अनुपालन रिपोर्ट और VPAT दस्तावेज़ीकरण उत्पन्न करें",
@@ -870,6 +872,14 @@
     "disabled": "अक्षम",
     "flagToggled": "{flag} {state}",
     "flagUpdateFailed": "फ़्लैग अपडेट नहीं हो सका",
+    "liveScanStatus": "लाइव स्कैन स्थिति",
+    "scanning": "स्कैन हो रहा है",
+    "idle": "निष्क्रिय",
+    "queued": "कतार में",
+    "running": "चल रहा है",
+    "recentActivity": "हाल की गतिविधि",
+    "pagesUnit": "पेज",
+    "noActiveScans": "अभी कोई सक्रिय स्कैन नहीं है।",
     "recentScans": "हाल के स्कैन",
     "scanCounts": "{pages} पेज \u00b7 {violations} उल्लंघन \u00b7 {date}",
     "noScans": "अभी कोई स्कैन नहीं"

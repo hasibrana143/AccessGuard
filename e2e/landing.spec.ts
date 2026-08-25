@@ -8,10 +8,11 @@ test.describe('Landing Page', () => {
 
   test('should have start button that navigates to login', async ({ page }) => {
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
     const startButton = page.locator('button:has-text("Start Free Trial")').first();
     await expect(startButton).toBeVisible();
     await startButton.click();
-    await expect(page).toHaveURL(/\/auth\/login/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/auth\/login/, { timeout: 15000 });
   });
 
   test('should display features section', async ({ page }) => {

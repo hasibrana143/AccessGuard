@@ -11,7 +11,7 @@ test.describe('Accessibility (axe-core)', () => {
 
     test('login page has no WCAG A/AA violations', async ({ page }) => {
       await page.goto('/auth/login');
-      await expect(page.locator('h1')).toContainText('Welcome Back', { timeout: 8000 });
+      await expect(page.locator('h1')).toContainText('Welcome back', { timeout: 8000 });
       const results = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
         .disableRules(['region', 'landmark-one-main'])
@@ -32,7 +32,7 @@ test.describe('Accessibility (axe-core)', () => {
 
   test('login page has no WCAG A/AA violations', async ({ page }) => {
     await page.goto('/auth/login');
-    await expect(page.locator('h1')).toContainText('Welcome Back', { timeout: 8000 });
+    await expect(page.locator('h1')).toContainText('Welcome back', { timeout: 8000 });
     const results = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .disableRules(['region', 'landmark-one-main'])

@@ -77,10 +77,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-background flex">
-      {/* Skip link for keyboard navigation */}
-      <a href="#main-content" className="skip-link">
-        Skip to main content
-      </a>
       <div className="hidden lg:block">
         <Sidebar activeView={currentView} onNavigate={(v) => router.push(`/${v}`)} user={user} onLogout={logout} />
       </div>
