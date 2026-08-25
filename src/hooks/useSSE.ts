@@ -32,6 +32,7 @@ export function useSSE<T = Record<string, unknown>>({
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectCountRef = useRef(0);
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const connectRef = useRef<() => void>(() => {});
 
   const cleanup = useCallback(() => {
     if (eventSourceRef.current) {
@@ -88,7 +89,7 @@ export function useSSE<T = Record<string, unknown>>({
           const delay = reconnectInterval * Math.pow(2, reconnectCountRef.current);
           reconnectTimerRef.current = setTimeout(() => {
             reconnectCountRef.current++;
-            connect();
+            connectRef.current();
           }, Math.min(delay, 30000));
         }
       };
@@ -103,6 +104,7 @@ export function useSSE<T = Record<string, unknown>>({
   }, [connect]);
 
   useEffect(() => {
+    connectRef.current = connect;
     connect();
     return cleanup;
   }, [connect, cleanup]);

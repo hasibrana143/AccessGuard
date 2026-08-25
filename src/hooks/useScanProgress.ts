@@ -33,6 +33,7 @@ export function useScanProgress(
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectCountRef = useRef(0);
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const connectRef = useRef<() => void>(() => {});
 
   const cleanup = useCallback(() => {
     if (eventSourceRef.current) {
@@ -101,7 +102,7 @@ export function useScanProgress(
           const delay = reconnectInterval * Math.pow(2, reconnectCountRef.current);
           reconnectTimerRef.current = setTimeout(() => {
             reconnectCountRef.current++;
-            connect();
+            connectRef.current();
           }, Math.min(delay, 15000));
         } else {
           setError('Connection lost');
@@ -118,6 +119,7 @@ export function useScanProgress(
   }, [connect]);
 
   useEffect(() => {
+    connectRef.current = connect;
     connect();
     return cleanup;
   }, [connect, cleanup]);

@@ -70,7 +70,6 @@ export abstract class BaseDTO<T> {
   /**
    * Format Zod errors
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   protected formatErrors(zodError: any): Record<string, string[]> {
     const errors: Record<string, string[]> = {};
     const issues = zodError?.issues || [];
