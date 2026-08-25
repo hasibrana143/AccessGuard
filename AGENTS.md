@@ -6,6 +6,7 @@ This repo is built in **12 volumes** (see `docs/VOLUMES.md`). Every change belon
 - `docs/` is the system of record: `product/`, `design/ux/`, `engineering/`, `security/`, `ai/`, `development/`.
 - Read the relevant docs BEFORE changing code — they encode decisions made in volumes 1–6.
 - Code conventions: `docs/development/CODING_STANDARDS.md`. Branching: `docs/development/BRANCHING_STRATEGY.md`.
+- Visual judgment: use root `DESIGN.md` (distilled checklist) — canonical detail in `docs/design/ux/`.
 
 ## Commands (Windows / PowerShell)
 - `npm run dev` — Next dev on :3000 (ONE instance only; concurrent dev corrupts `.next` types)
@@ -44,6 +45,10 @@ npx tsc -p tsconfig.check.json
 - Open deferrals (documented in volume docs): semantic-release, deploy/preview jobs, PostHog, PagerDuty, status page, pixel contrast analysis, i18n, soak test.
 - Typecheck: `npx tsc -p tsconfig.check.json` (source-only; never `tsc` on `.next-types`).
 - Tests: vitest 251 ✓ · coverage gate 55/50/58/57 · Playwright baseline ~12 specs · lint 0 ✓.
+
+## Session continuity
+- At the end of a meaningful work block (feature done, before long builds, session wrap), run `/context-save` — snapshots live in `~/.gstack/projects/` (machine-local, not git).
+- New sessions resuming prior work: `/context-restore` first, then check `server-memory` for the latest progress entity.
 
 ## Local environment (Aug 2026)
 - DB + Redis run via Docker: `docker compose up -d postgres redis` (accessguard-postgres-1 + accessguard-redis-1).
