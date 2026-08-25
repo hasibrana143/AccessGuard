@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { SuccessAnimation } from '@/components/ui/success-animation';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useCreateProject } from '@/hooks/useApi';
@@ -28,6 +29,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
   const createProject = useCreateProject();
   const [newProject, setNewProject] = useState<CreateProjectInput>({ name: '', url: '', description: '' });
   const [scanFrequency, setScanFrequency] = useState('none');
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const handleCreate = async () => {
     if (!newProject.name || !newProject.url) {
@@ -40,6 +42,7 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
     }
     try {
       const result = await createProject.mutateAsync({ ...newProject, orgSlug });
+      setShowSuccess(true);
       toast({ title: t('projectCreated'), description: t('projectCreatedMsg', { name: newProject.name }) });
       if (scanFrequency && scanFrequency !== 'none' && result?.project?.id) {
         try {
@@ -94,7 +97,8 @@ export function CreateProjectDialog({ open, onOpenChange }: CreateProjectDialogP
             </Select>
           </div>
         </div>
-        <DialogFooter>
+        <DialogFooter className="relative">
+          <SuccessAnimation show={showSuccess} variant="confetti" size="md" className="absolute left-1/2 -translate-x-1/2" />
           <Button variant="outline" onClick={() => onOpenChange(false)}>{tc('cancel')}</Button>
           <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={handleCreate} disabled={createProject.isPending}>
             {createProject.isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('creating')}</> : t('addProject')}

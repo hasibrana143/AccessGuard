@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Menu, Search, Bell, HelpCircle, Settings, LogOut, ChevronDown, CreditCard, Loader2, ArrowRight } from 'lucide-react';
+import { Menu, Search, Bell, HelpCircle, Settings, LogOut, ChevronDown, CreditCard, Loader2, ArrowRight, Keyboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -165,6 +165,16 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
             </DropdownMenuContent>
           </DropdownMenu>
           )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Keyboard Shortcuts" onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}>
+                  <Keyboard className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Keyboard Shortcuts (⌘K)</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

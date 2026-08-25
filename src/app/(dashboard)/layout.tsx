@@ -14,6 +14,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import { PushNotificationCenter } from '@/components/dashboard/push-notification-center';
+import { PageBreadcrumbs } from '@/components/ui/page-breadcrumbs';
+import { CommandPalette } from '@/components/command-palette';
 import type { View } from '@/types';
 
 const viewMap: Record<string, View> = {
@@ -118,6 +120,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <OnboardingWizard />
         <PushNotificationCenter />
         <div className="flex-1 p-4 sm:p-6 lg:p-8">
+          <PageBreadcrumbs />
           {children}
         </div>
         <footer className="border-t border-border py-4 px-6">
@@ -133,6 +136,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </footer>
       </div>
+      <CommandPalette />
       <Toaster />
     </div>
   );

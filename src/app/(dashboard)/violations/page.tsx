@@ -104,22 +104,22 @@ export default function ViolationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{t('title')}</h1>
           <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => {
+          <Button variant="outline" size="sm" className="sm:size-default" onClick={() => {
             const params = new URLSearchParams();
             if (severityFilter !== 'all') params.append('severity', severityFilter);
             if (statusFilter !== 'all') params.append('status', statusFilter);
             window.open(`/api/violations/export?${params}`, '_blank');
           }}>
-            <Download className="h-4 w-4 mr-2" />{t('exportCsv')}
+            <Download className="h-4 w-4 sm:mr-2" /><span className="hidden sm:inline">{t('exportCsv')}</span>
           </Button>
-          <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" onClick={() => setPrDialogOpen(true)}>
-            <Github className="h-4 w-4 mr-2" />{t('createFixPrs')}
+          <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" size="sm" onClick={() => setPrDialogOpen(true)}>
+            <Github className="h-4 w-4 sm:mr-2" /><span className="hidden sm:inline">{t('createFixPrs')}</span>
           </Button>
         </div>
       </div>
@@ -129,13 +129,13 @@ export default function ViolationsPage() {
       {selectedIds.size > 0 && (
         <Card className="border-coral/30 bg-coral/5">
           <CardContent className="py-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <CheckSquare className="h-4 w-4 text-coral" />
                 <span className="text-sm font-medium">{t('selected', { count: selectedIds.size })}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleBulkStatusUpdate('fixed')} disabled={bulkUpdate.isPending}><CheckSquare className="h-4 w-4 mr-1" />{t('markFixed')}</Button>
+                <Button variant="outline" size="sm" onClick={() => handleBulkStatusUpdate('fixed')} disabled={bulkUpdate.isPending}><CheckSquare className="h-4 w-4 sm:mr-1" /><span className="hidden sm:inline">{t('markFixed')}</span></Button>
                 <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>{t('clear')}</Button>
               </div>
             </div>

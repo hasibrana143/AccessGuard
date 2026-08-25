@@ -2,10 +2,11 @@
 
 import React from 'react';
 import { useTranslations } from 'next-intl';
-import { Activity, CheckCircle2, Loader2, XCircle, Clock, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Activity, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ScanProgressAnimation } from '@/components/ui/scan-progress-animation';
 import { formatRelativeTime } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import type { Scan } from '@/types';
@@ -36,23 +37,13 @@ export function RecentScans({ scans }: RecentScansProps) {
           {Array.isArray(scans) && scans.slice(0, 5).map((scan) => (
             <div
               key={scan.id}
-              className="flex items-center gap-3 p-3 rounded-lg bg-muted/30"
+              className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
             >
-              <div className={`p-2 rounded-lg ${
-                scan.status === 'completed' ? 'bg-emerald-500/10' :
-                scan.status === 'running' ? 'bg-blue-500/10' :
-                scan.status === 'failed' ? 'bg-red-500/10' : 'bg-muted'
-              }`}>
-                {scan.status === 'completed' ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                ) : scan.status === 'running' ? (
-                  <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
-                ) : scan.status === 'failed' ? (
-                  <XCircle className="h-4 w-4 text-red-500" />
-                ) : (
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                )}
-              </div>
+              <ScanProgressAnimation
+                status={scan.status as 'pending' | 'running' | 'completed' | 'failed'}
+                pagesScanned={scan.pagesScanned}
+                violationsFound={scan.violationsFound}
+              />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-medium text-sm">{scan.project?.name || t('unknown')}</span>
@@ -65,8 +56,6 @@ export function RecentScans({ scans }: RecentScansProps) {
                   </Badge>
                 </div>
                 <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>{t('pages', { count: scan.pagesScanned })}</span>
-                  <span>{t('violations', { count: scan.violationsFound })}</span>
                   <span>{formatRelativeTime(scan.createdAt)}</span>
                 </div>
               </div>

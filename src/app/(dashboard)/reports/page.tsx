@@ -3,12 +3,14 @@
 import React, { useState } from 'react';
 import { FileText, BarChart3, Shield } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useProjects } from '@/hooks/useApi';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ReportCard } from '@/components/reports/report-card';
 import { ShareReportDialog } from '@/components/reports/share-report-dialog';
 
@@ -25,6 +27,7 @@ export default function ReportsPage() {
   const [generating, setGenerating] = useState<ShareType | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareType, setShareType] = useState<ShareType>('report');
+  const router = useRouter();
 
   const typeName = (type: ShareType) => type === 'report' ? t('legalShield') : type === 'vpat' ? t('vpat') : t('execSummary');
 
@@ -90,11 +93,21 @@ export default function ReportsPage() {
         </CardContent>
       </Card>
 
+      {!projects || projects.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title={t('noProjectsTitle')}
+          description={t('noProjectsDesc')}
+          actionLabel={t('addProject')}
+          onAction={() => router.push('/projects')}
+        />
+      ) : (
       <div className="grid gap-6 md:grid-cols-2">
         <ReportCard type="report" icon={<FileText className="h-6 w-6 text-coral" />} color="coral" generating={generating} onGenerate={generateReport} onShare={openShareDialog} />
         <ReportCard type="vpat" icon={<Shield className="h-6 w-6 text-blue-500" />} color="blue-500" generating={generating} onGenerate={generateReport} onShare={openShareDialog} />
         <ReportCard type="summary" icon={<BarChart3 className="h-6 w-6 text-emerald-500" />} color="emerald-500" generating={generating} onGenerate={generateReport} onShare={openShareDialog} />
       </div>
+      )}
 
       <ShareReportDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} shareType={shareType} projects={projects || []} selectedProjectId={selectedProjectId} onSelectProject={setSelectedProjectId} />
     </div>

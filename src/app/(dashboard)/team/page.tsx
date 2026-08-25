@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Users } from 'lucide-react';
+import { EmptyState } from '@/components/ui/empty-state';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { InviteForm } from '@/components/team/invite-form';
@@ -131,8 +132,20 @@ export default function TeamPage() {
       ) : (
         <>
           <InviteForm onInvited={fetchData} />
-          <MemberList members={members} currentUserId={user?.id} onRoleChange={handleRoleChange} onRemove={setMemberToRemove} roleLabels={roleLabels} />
-          <PendingInvites invites={invites} onCancel={handleCancelInvite} onResend={handleResendInvite} />
+          {members.length === 0 && invites.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title={t('noMembersTitle')}
+              description={t('noMembersDesc')}
+              actionLabel={t('inviteFirstMember')}
+              onAction={() => document.querySelector<HTMLInputElement>('[data-slot="input"]')?.focus()}
+            />
+          ) : (
+            <>
+              <MemberList members={members} currentUserId={user?.id} onRoleChange={handleRoleChange} onRemove={setMemberToRemove} roleLabels={roleLabels} />
+              <PendingInvites invites={invites} onCancel={handleCancelInvite} onResend={handleResendInvite} />
+            </>
+          )}
         </>
       )}
 

@@ -31,22 +31,24 @@ export function MemberList({ members, currentUserId, onRoleChange, onRemove, rol
       </CardHeader>
       <CardContent className="space-y-3">
         {members.map((member) => (
-          <div key={member.id} className="flex items-center gap-4 p-3 rounded-lg bg-muted/30">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={member.avatar || undefined} alt={member.name || member.email} />
-              <AvatarFallback className="bg-coral/10 text-coral">
-                {(member.name || member.email).charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="font-medium truncate">{member.name || member.email}</span>
-                {member.role === 'owner' && <Crown className="h-4 w-4 text-yellow-500" />}
-                {member.id === currentUserId && <Badge variant="outline" className="text-xs">{t('you')}</Badge>}
+          <div key={member.id} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 rounded-lg bg-muted/30">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <Avatar className="h-10 w-10 shrink-0">
+                <AvatarImage src={member.avatar || undefined} alt={member.name || member.email} />
+                <AvatarFallback className="bg-coral/10 text-coral">
+                  {(member.name || member.email).charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium truncate">{member.name || member.email}</span>
+                  {member.role === 'owner' && <Crown className="h-4 w-4 text-yellow-500 shrink-0" />}
+                  {member.id === currentUserId && <Badge variant="outline" className="text-xs shrink-0">{t('you')}</Badge>}
+                </div>
+                <p className="text-sm text-muted-foreground truncate">{member.email}</p>
               </div>
-              <p className="text-sm text-muted-foreground truncate">{member.email}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {member.role !== 'owner' ? (
                 <Select value={member.role} onValueChange={(role) => onRoleChange(member, role)}>
                   <SelectTrigger className="w-28" aria-label={t('changeRoleAria', { name: member.name || member.email })}>
