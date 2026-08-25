@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +44,7 @@ interface Report {
 }
 
 export default function ReportDetailPage() {
+  const t = useTranslations('rdetail');
   const params = useParams();
   const router = useRouter();
   const reportId = params.id as string;
@@ -69,7 +71,7 @@ export default function ReportDetailPage() {
   }
 
   if (!report) {
-    return <DashboardNotFound title="Report Not Found" description="This report doesn't exist or has been deleted." />;
+    return <DashboardNotFound title={t('notFoundTitle')} description={t('notFoundDesc')} />;
   }
 
   const violations = report.data?.violations || [];
@@ -130,10 +132,10 @@ export default function ReportDetailPage() {
       const data = await res.json();
       if (data.success && data.data?.url) {
         navigator.clipboard.writeText(data.data.url);
-        alert('Share link copied to clipboard!');
+        alert(t('shareCopied'));
       }
     } catch {
-      alert('Failed to generate share link');
+      alert(t('shareFailed'));
     }
   };
 
@@ -149,25 +151,25 @@ export default function ReportDetailPage() {
             className="mb-2"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Reports
+            {t('backToReports')}
           </Button>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{report.title}</h1>
           <p className="text-muted-foreground">
-            {report.projectName} • {formatDistanceToNow(new Date(report.createdAt))} ago
+            {report.projectName} • {t('timeAgo', { time: formatDistanceToNow(new Date(report.createdAt)) })}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button variant="outline" size="sm" onClick={handlePrint}>
             <Printer className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Print</span>
+            <span className="hidden sm:inline">{t('print')}</span>
           </Button>
           <Button variant="outline" size="sm" onClick={handleShare}>
             <Share2 className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Share</span>
+            <span className="hidden sm:inline">{t('share')}</span>
           </Button>
           <Button variant="outline" size="sm" onClick={() => handleDownload('pdf')}>
             <Download className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">PDF</span>
+            <span className="hidden sm:inline">{t('pdf')}</span>
           </Button>
         </div>
       </div>
@@ -180,8 +182,8 @@ export default function ReportDetailPage() {
             <p className="text-gray-600">{report.projectName}</p>
           </div>
           <div className="text-right text-sm text-gray-600">
-            <p>Generated: {new Date(report.createdAt).toLocaleDateString()}</p>
-            <p>AccessGuard Compliance Report</p>
+            <p>{t('generatedOn', { date: new Date(report.createdAt).toLocaleDateString() })}</p>
+            <p>{t('complianceReportName')}</p>
           </div>
         </div>
       </div>
@@ -192,7 +194,7 @@ export default function ReportDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Compliance Score</p>
+                <p className="text-sm text-muted-foreground">{t('complianceScore')}</p>
                 <p className="text-3xl font-bold text-emerald-600">{complianceScore}%</p>
               </div>
               <Shield className="h-8 w-8 text-emerald-600/30" />
@@ -203,7 +205,7 @@ export default function ReportDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Violations</p>
+                <p className="text-sm text-muted-foreground">{t('totalViolations')}</p>
                 <p className="text-3xl font-bold">{totalViolations}</p>
               </div>
               <AlertTriangle className="h-8 w-8 text-muted-foreground/30" />
@@ -214,7 +216,7 @@ export default function ReportDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Report Type</p>
+                <p className="text-sm text-muted-foreground">{t('reportType')}</p>
                 <p className="text-xl font-semibold capitalize">{report.type}</p>
               </div>
               <FileText className="h-8 w-8 text-muted-foreground/30" />
@@ -226,9 +228,9 @@ export default function ReportDetailPage() {
       {/* Main Content */}
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList className="overflow-x-auto scrollbar-none">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="violations">Violations ({violations.length})</TabsTrigger>
-          <TabsTrigger value="actions">Actions</TabsTrigger>
+          <TabsTrigger value="overview">{t('tabOverview')}</TabsTrigger>
+          <TabsTrigger value="violations">{t('tabViolations', { count: violations.length })}</TabsTrigger>
+          <TabsTrigger value="actions">{t('tabActions')}</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -236,7 +238,7 @@ export default function ReportDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Severity Distribution</CardTitle>
+                <CardTitle className="text-lg">{t('severityDistribution')}</CardTitle>
               </CardHeader>
               <CardContent>
                 {pieData.length > 0 ? (
@@ -262,7 +264,7 @@ export default function ReportDetailPage() {
                   </div>
                 ) : (
                   <div className="h-64 flex items-center justify-center text-muted-foreground">
-                    No violation data available
+                    {t('noViolationData')}
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-2 mt-4">
@@ -281,28 +283,28 @@ export default function ReportDetailPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Executive Summary</CardTitle>
+                <CardTitle className="text-lg">{t('executiveSummary')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
                     <div className="flex items-center gap-2 mb-2">
                       <CheckCircle className="h-5 w-5 text-emerald-600" />
-                      <span className="font-semibold text-emerald-800 dark:text-emerald-200">Compliance Status</span>
+                      <span className="font-semibold text-emerald-800 dark:text-emerald-200">{t('complianceStatus')}</span>
                     </div>
                     <p className="text-sm text-emerald-700 dark:text-emerald-300">
                       {complianceScore >= 80
-                        ? 'Your website meets most WCAG 2.1 AA standards. Continue monitoring to maintain compliance.'
-                        : 'Your website has accessibility issues that need attention. Review the violations below for remediation guidance.'}
+                        ? t('complianceGood')
+                        : t('complianceNeedsAttention')}
                     </p>
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    <p className="mb-2">This report covers:</p>
+                    <p className="mb-2">{t('reportCovers')}</p>
                     <ul className="list-disc list-inside space-y-1">
-                      <li>WCAG 2.1 Level AA compliance check</li>
-                      <li>{totalViolations} accessibility violations found</li>
-                      <li>AI-powered remediation suggestions available</li>
-                      <li>Generated on {new Date(report.createdAt).toLocaleDateString()}</li>
+                      <li>{t('coversWcag')}</li>
+                      <li>{t('coversViolations', { count: totalViolations })}</li>
+                      <li>{t('coversAiRemediation')}</li>
+                      <li>{t('coversGeneratedOn', { date: new Date(report.createdAt).toLocaleDateString() })}</li>
                     </ul>
                   </div>
                 </div>
@@ -317,8 +319,8 @@ export default function ReportDetailPage() {
             <Card>
               <CardContent className="py-16 text-center">
                 <CheckCircle className="h-16 w-16 mx-auto mb-4 text-emerald-500" />
-                <h3 className="text-lg font-semibold mb-2">No Violations Found</h3>
-                <p className="text-muted-foreground">Great job! Your website is compliant.</p>
+                <h3 className="text-lg font-semibold mb-2">{t('noViolationsTitle')}</h3>
+                <p className="text-muted-foreground">{t('noViolationsDesc')}</p>
               </CardContent>
             </Card>
           ) : (
@@ -340,7 +342,7 @@ export default function ReportDetailPage() {
                           </Badge>
                           <div>
                             <p className="font-medium">{violation.ruleId}</p>
-                            <p className="text-sm text-muted-foreground">{violation.count} instances</p>
+                            <p className="text-sm text-muted-foreground">{t('instancesCount', { count: violation.count })}</p>
                           </div>
                         </div>
                       </div>
@@ -356,22 +358,22 @@ export default function ReportDetailPage() {
         <TabsContent value="actions" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Download Report</CardTitle>
-              <CardDescription>Export this report in different formats</CardDescription>
+              <CardTitle className="text-lg">{t('downloadReport')}</CardTitle>
+              <CardDescription>{t('downloadReportDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Button variant="outline" onClick={() => handleDownload('pdf')} className="justify-start">
                   <Download className="h-4 w-4 mr-2" />
-                  Download PDF
+                  {t('downloadPdf')}
                 </Button>
                 <Button variant="outline" onClick={() => handleDownload('json')} className="justify-start">
                   <Download className="h-4 w-4 mr-2" />
-                  Download JSON
+                  {t('downloadJson')}
                 </Button>
                 <Button variant="outline" onClick={() => handleDownload('csv')} className="justify-start">
                   <Download className="h-4 w-4 mr-2" />
-                  Download CSV
+                  {t('downloadCsv')}
                 </Button>
               </div>
             </CardContent>
@@ -379,26 +381,26 @@ export default function ReportDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Share Report</CardTitle>
-              <CardDescription>Generate a shareable link for this report</CardDescription>
+              <CardTitle className="text-lg">{t('shareReport')}</CardTitle>
+              <CardDescription>{t('shareReportDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <Button onClick={handleShare}>
                 <Share2 className="h-4 w-4 mr-2" />
-                Generate Share Link
+                {t('generateShareLink')}
               </Button>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Print Report</CardTitle>
-              <CardDescription>Print a physical copy of this report</CardDescription>
+              <CardTitle className="text-lg">{t('printReport')}</CardTitle>
+              <CardDescription>{t('printReportDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <Button variant="outline" onClick={handlePrint}>
                 <Printer className="h-4 w-4 mr-2" />
-                Print Report
+                {t('printReport')}
               </Button>
             </CardContent>
           </Card>

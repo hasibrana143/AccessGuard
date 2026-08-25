@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useProject } from '@/hooks/useProjects';
 import { useScans } from '@/hooks/useScans';
 import { useViolations } from '@/hooks/useViolations';
@@ -26,6 +27,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 
 export default function ProjectDetailPage() {
+  const t = useTranslations('pdetail');
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
@@ -39,7 +41,7 @@ export default function ProjectDetailPage() {
   }
 
   if (!project) {
-    return <DashboardNotFound title="Project Not Found" description="This project doesn't exist or you don't have access." />;
+    return <DashboardNotFound title={t('notFoundTitle')} description={t('notFoundDesc')} />;
   }
 
   const severityCounts = violations.reduce(
@@ -70,7 +72,7 @@ export default function ProjectDetailPage() {
             className="mb-2"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Projects
+            {t('backToProjects')}
           </Button>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{project.name}</h1>
           <div className="flex items-center gap-2 text-muted-foreground">
@@ -89,11 +91,11 @@ export default function ProjectDetailPage() {
         <div className="flex items-center gap-2 shrink-0">
           <Button variant="outline" size="sm">
             <RefreshCw className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Run Scan</span>
+            <span className="hidden sm:inline">{t('runScan')}</span>
           </Button>
           <Button variant="outline" size="sm">
             <Settings className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Settings</span>
+            <span className="hidden sm:inline">{t('settings')}</span>
           </Button>
         </div>
       </div>
@@ -104,7 +106,7 @@ export default function ProjectDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Risk Score</p>
+                <p className="text-sm text-muted-foreground">{t('riskScore')}</p>
                 <p className="text-2xl font-bold">{project.riskScore ?? '—'}</p>
               </div>
               <Shield className="h-8 w-8 text-muted-foreground/30" />
@@ -115,7 +117,7 @@ export default function ProjectDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Scans</p>
+                <p className="text-sm text-muted-foreground">{t('totalScans')}</p>
                 <p className="text-2xl font-bold">{scans.length}</p>
               </div>
               <Activity className="h-8 w-8 text-muted-foreground/30" />
@@ -126,7 +128,7 @@ export default function ProjectDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Open Violations</p>
+                <p className="text-sm text-muted-foreground">{t('openViolations')}</p>
                 <p className="text-2xl font-bold text-coral">{statusCounts.open ?? 0}</p>
               </div>
               <AlertTriangle className="h-8 w-8 text-coral/30" />
@@ -137,7 +139,7 @@ export default function ProjectDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Fixed</p>
+                <p className="text-sm text-muted-foreground">{t('fixed')}</p>
                 <p className="text-2xl font-bold text-green-600">{statusCounts.fixed ?? 0}</p>
               </div>
               <CheckCircle className="h-8 w-8 text-green-600/30" />
@@ -149,10 +151,10 @@ export default function ProjectDetailPage() {
       {/* Main Content Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="scans">Scans ({scans.length})</TabsTrigger>
-          <TabsTrigger value="violations">Violations ({violations.length})</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="overview">{t('tabOverview')}</TabsTrigger>
+          <TabsTrigger value="scans">{t('tabScans', { count: scans.length })}</TabsTrigger>
+          <TabsTrigger value="violations">{t('tabViolations', { count: violations.length })}</TabsTrigger>
+          <TabsTrigger value="settings">{t('settings')}</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -160,33 +162,33 @@ export default function ProjectDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Project Info</CardTitle>
+                <CardTitle className="text-lg">{t('projectInfo')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Created</span>
-                  <span>{formatDistanceToNow(new Date(project.createdAt))} ago</span>
+                  <span className="text-muted-foreground">{t('created')}</span>
+                  <span>{t('timeAgo', { time: formatDistanceToNow(new Date(project.createdAt)) })}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Last Scan</span>
+                  <span className="text-muted-foreground">{t('lastScan')}</span>
                   <span>
                     {project.lastScanAt
-                      ? formatDistanceToNow(new Date(project.lastScanAt)) + ' ago'
-                      : 'Never'}
+                      ? t('timeAgo', { time: formatDistanceToNow(new Date(project.lastScanAt)) })
+                      : t('never')}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Next Scheduled</span>
+                  <span className="text-muted-foreground">{t('nextScheduled')}</span>
                   <span>
                     {project.nextScheduledScan
                       ? formatDistanceToNow(new Date(project.nextScheduledScan))
-                      : 'Not scheduled'}
+                      : t('notScheduled')}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status</span>
+                  <span className="text-muted-foreground">{t('status')}</span>
                   <Badge variant={project.isActive ? 'default' : 'secondary'}>
-                    {project.isActive ? 'Active' : 'Inactive'}
+                    {project.isActive ? t('active') : t('inactive')}
                   </Badge>
                 </div>
               </CardContent>
@@ -194,7 +196,7 @@ export default function ProjectDetailPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Violation Summary</CardTitle>
+                <CardTitle className="text-lg">{t('violationSummary')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {(['critical', 'serious', 'moderate', 'minor'] as const).map((sev) => (
@@ -232,7 +234,7 @@ export default function ProjectDetailPage() {
           ) : scans.length === 0 ? (
             <Card>
               <CardContent className="pt-6 text-center text-muted-foreground">
-                No scans yet. Run your first scan to get started.
+                {t('noScansYet')}
               </CardContent>
             </Card>
           ) : (
@@ -265,15 +267,15 @@ export default function ProjectDetailPage() {
                         </div>
                         <div>
                           <p className="font-medium">
-                            {scan.pagesScanned} pages scanned
+                            {t('pagesScannedCount', { count: scan.pagesScanned })}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            {scan.violationsFound} violations found
+                            {t('violationsFoundCount', { count: scan.violationsFound })}
                           </p>
                         </div>
                       </div>
                       <div className="text-right text-sm text-muted-foreground">
-                        <p>{formatDistanceToNow(new Date(scan.startedAt))} ago</p>
+                        <p>{t('timeAgo', { time: formatDistanceToNow(new Date(scan.startedAt)) })}</p>
                         <Badge variant={scan.status === 'completed' ? 'default' : 'secondary'}>
                           {scan.status}
                         </Badge>
@@ -297,7 +299,7 @@ export default function ProjectDetailPage() {
           ) : violations.length === 0 ? (
             <Card>
               <CardContent className="pt-6 text-center text-muted-foreground">
-                No violations found. Your project is looking good!
+                {t('noViolationsYet')}
               </CardContent>
             </Card>
           ) : (
@@ -345,12 +347,12 @@ export default function ProjectDetailPage() {
         <TabsContent value="settings">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Project Settings</CardTitle>
-              <CardDescription>Configure scan settings and notifications</CardDescription>
+              <CardTitle className="text-lg">{t('projectSettings')}</CardTitle>
+              <CardDescription>{t('projectSettingsDesc')}</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">
-                Project settings coming soon. Configure crawl rules, scan frequency, and team notifications.
+                {t('projectSettingsComingSoon')}
               </p>
             </CardContent>
           </Card>

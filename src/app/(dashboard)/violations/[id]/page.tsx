@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +28,7 @@ import { useState } from 'react';
 import type { Violation, RemediationResponse } from '@/types';
 
 export default function ViolationDetailPage() {
+  const t = useTranslations('vdetail');
   const params = useParams();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -74,7 +76,7 @@ export default function ViolationDetailPage() {
   }
 
   if (!violation) {
-    return <DashboardNotFound title="Violation Not Found" description="This violation doesn't exist or has been deleted." />;
+    return <DashboardNotFound title={t('notFoundTitle')} description={t('notFoundDesc')} />;
   }
 
   const copyToClipboard = (text: string) => {
@@ -104,10 +106,10 @@ export default function ViolationDetailPage() {
             className="mb-2"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Violations
+            {t('backToViolations')}
           </Button>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Violation Details</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{t('title')}</h1>
             <Badge variant={violation.status === 'open' ? 'destructive' : 'secondary'}>
               {violation.status}
             </Badge>
@@ -124,7 +126,7 @@ export default function ViolationDetailPage() {
             disabled={updateStatusMutation.isPending}
           >
             <CheckCircle className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Mark Fixed</span>
+            <span className="hidden sm:inline">{t('markFixed')}</span>
           </Button>
           <Button
             variant="outline"
@@ -133,7 +135,7 @@ export default function ViolationDetailPage() {
             disabled={updateStatusMutation.isPending}
           >
             <Ban className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Ignore</span>
+            <span className="hidden sm:inline">{t('ignore')}</span>
           </Button>
           <Button
             variant="outline"
@@ -142,7 +144,7 @@ export default function ViolationDetailPage() {
             disabled={updateStatusMutation.isPending}
           >
             <AlertCircle className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">False Positive</span>
+            <span className="hidden sm:inline">{t('falsePositive')}</span>
           </Button>
         </div>
       </div>
@@ -153,7 +155,7 @@ export default function ViolationDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Severity</p>
+                <p className="text-sm text-muted-foreground">{t('severity')}</p>
                 <p className={`text-2xl font-bold capitalize ${sevConfig.textColor}`}>
                   {violation.severity}
                 </p>
@@ -168,7 +170,7 @@ export default function ViolationDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">WCAG</p>
+                <p className="text-sm text-muted-foreground">{t('wcag')}</p>
                 <p className="text-2xl font-bold">{violation.wcagCriteria || '—'}</p>
               </div>
               <BookOpen className="h-8 w-8 text-muted-foreground/30" />
@@ -179,7 +181,7 @@ export default function ViolationDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">AI Confidence</p>
+                <p className="text-sm text-muted-foreground">{t('aiConfidence')}</p>
                 <p className="text-2xl font-bold">
                   {violation.aiConfidenceScore
                     ? `${Math.round(violation.aiConfidenceScore * 100)}%`
@@ -194,9 +196,9 @@ export default function ViolationDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Found</p>
+                <p className="text-sm text-muted-foreground">{t('found')}</p>
                 <p className="text-2xl font-bold">
-                  {formatDistanceToNow(new Date(violation.createdAt))} ago
+                  {t('foundAgo', { time: formatDistanceToNow(new Date(violation.createdAt)) })}
                 </p>
               </div>
               <Shield className="h-8 w-8 text-muted-foreground/30" />
@@ -208,16 +210,16 @@ export default function ViolationDetailPage() {
       {/* Main Content Tabs */}
       <Tabs defaultValue="details" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="remediation">Remediation</TabsTrigger>
-          <TabsTrigger value="element">Element</TabsTrigger>
+          <TabsTrigger value="details">{t('tabDetails')}</TabsTrigger>
+          <TabsTrigger value="remediation">{t('tabRemediation')}</TabsTrigger>
+          <TabsTrigger value="element">{t('tabElement')}</TabsTrigger>
         </TabsList>
 
         {/* Details Tab */}
         <TabsContent value="details" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Violation Description</CardTitle>
+              <CardTitle className="text-lg">{t('description')}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm whitespace-pre-wrap">{violation.description}</p>
@@ -227,11 +229,11 @@ export default function ViolationDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Location</CardTitle>
+                <CardTitle className="text-lg">{t('location')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <p className="text-sm text-muted-foreground">URL</p>
+                  <p className="text-sm text-muted-foreground">{t('url')}</p>
                   <a
                     href={violation.url}
                     target="_blank"
@@ -244,7 +246,7 @@ export default function ViolationDetailPage() {
                 </div>
                 {violation.elementSelector && (
                   <div>
-                    <p className="text-sm text-muted-foreground">Selector</p>
+                    <p className="text-sm text-muted-foreground">{t('selector')}</p>
                     <code className="text-xs bg-muted px-2 py-1 rounded block overflow-x-auto">
                       {violation.elementSelector}
                     </code>
@@ -255,39 +257,39 @@ export default function ViolationDetailPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Metadata</CardTitle>
+                <CardTitle className="text-lg">{t('metadata')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rule ID</span>
+                  <span className="text-muted-foreground">{t('ruleId')}</span>
                   <span className="font-mono text-sm">{violation.ruleId}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status</span>
+                  <span className="text-muted-foreground">{t('status')}</span>
                   <Badge variant={violation.status === 'open' ? 'destructive' : 'secondary'}>
                     {violation.status}
                   </Badge>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Created</span>
+                  <span className="text-muted-foreground">{t('created')}</span>
                   <span className="text-sm">{new Date(violation.createdAt).toLocaleString()}</span>
                 </div>
                 {violation.fixedAt && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Fixed</span>
+                    <span className="text-muted-foreground">{t('fixed')}</span>
                     <span className="text-sm">{new Date(violation.fixedAt).toLocaleString()}</span>
                   </div>
                 )}
                 {violation.githubPrUrl && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">PR</span>
+                    <span className="text-muted-foreground">{t('pr')}</span>
                     <a
                       href={violation.githubPrUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-blue-600 hover:underline flex items-center gap-1"
                     >
-                      View PR
+                      {t('viewPr')}
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </div>
@@ -299,7 +301,7 @@ export default function ViolationDetailPage() {
           {violation.aiExplanation && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">AI Explanation</CardTitle>
+                <CardTitle className="text-lg">{t('aiExplanation')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm whitespace-pre-wrap">{violation.aiExplanation}</p>
@@ -316,10 +318,10 @@ export default function ViolationDetailPage() {
             <>
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Suggested Fix</CardTitle>
+                  <CardTitle className="text-lg">{t('suggestedFix')}</CardTitle>
                   <CardDescription>
-                    AI-generated remediation with {Math.round(remediation.confidence * 100)}% confidence
-                    {remediation.cached && ' (cached)'}
+                    {t('aiGeneratedWith', { confidence: Math.round(remediation.confidence * 100) })}
+                    {remediation.cached && ` ${t('cached')}`}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -345,7 +347,7 @@ export default function ViolationDetailPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Explanation</CardTitle>
+                  <CardTitle className="text-lg">{t('explanation')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm whitespace-pre-wrap">{remediation.explanation}</p>
@@ -355,7 +357,7 @@ export default function ViolationDetailPage() {
           ) : violation.remediationCode ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Remediation Code</CardTitle>
+                <CardTitle className="text-lg">{t('remediationCode')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="relative">
@@ -380,7 +382,7 @@ export default function ViolationDetailPage() {
           ) : (
             <Card>
               <CardContent className="pt-6 text-center text-muted-foreground">
-                No remediation available for this violation.
+                {t('noRemediation')}
               </CardContent>
             </Card>
           )}
@@ -391,8 +393,8 @@ export default function ViolationDetailPage() {
           {violation.elementHtml ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Element HTML</CardTitle>
-                <CardDescription>The violating HTML element</CardDescription>
+                <CardTitle className="text-lg">{t('elementHtml')}</CardTitle>
+                <CardDescription>{t('elementHtmlDesc')}</CardDescription>
               </CardHeader>
               <CardContent>
                 <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto font-mono">
@@ -400,7 +402,7 @@ export default function ViolationDetailPage() {
                 </pre>
                 {violation.elementSelector && (
                   <div className="mt-4">
-                    <p className="text-sm text-muted-foreground mb-2">CSS Selector</p>
+                    <p className="text-sm text-muted-foreground mb-2">{t('cssSelector')}</p>
                     <code className="text-xs bg-muted px-2 py-1 rounded block overflow-x-auto">
                       {violation.elementSelector}
                     </code>
@@ -411,7 +413,7 @@ export default function ViolationDetailPage() {
           ) : (
             <Card>
               <CardContent className="pt-6 text-center text-muted-foreground">
-                No element HTML captured for this violation.
+                {t('noElementHtml')}
               </CardContent>
             </Card>
           )}

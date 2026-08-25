@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +25,7 @@ import { formatDistanceToNow } from 'date-fns';
 import type { Scan, Violation } from '@/types';
 
 export default function ScanDetailPage() {
+  const t = useTranslations('sdetail');
   const params = useParams();
   const router = useRouter();
   const scanId = params.id as string;
@@ -58,7 +60,7 @@ export default function ScanDetailPage() {
   }
 
   if (!scan) {
-    return <DashboardNotFound title="Scan Not Found" description="This scan doesn't exist or has been deleted." />;
+    return <DashboardNotFound title={t('notFoundTitle')} description={t('notFoundDesc')} />;
   }
 
   const duration = scan.completedAt
@@ -93,10 +95,10 @@ export default function ScanDetailPage() {
             className="mb-2"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Scans
+            {t('backToScans')}
           </Button>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">Scan Details</h1>
+            <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
             <Badge
               variant={
                 scan.status === 'completed'
@@ -121,7 +123,7 @@ export default function ScanDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Pages Scanned</p>
+                <p className="text-sm text-muted-foreground">{t('pagesScanned')}</p>
                 <p className="text-2xl font-bold">{scan.pagesScanned}</p>
               </div>
               <Layers className="h-8 w-8 text-muted-foreground/30" />
@@ -132,7 +134,7 @@ export default function ScanDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Violations Found</p>
+                <p className="text-sm text-muted-foreground">{t('violationsFound')}</p>
                 <p className="text-2xl font-bold text-coral">{scan.violationsFound}</p>
               </div>
               <AlertTriangle className="h-8 w-8 text-coral/30" />
@@ -143,9 +145,9 @@ export default function ScanDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Duration</p>
+                <p className="text-sm text-muted-foreground">{t('duration')}</p>
                 <p className="text-2xl font-bold">
-                  {duration !== null ? `${duration}s` : '—'}
+                  {duration !== null ? t('durationSeconds', { duration }) : '—'}
                 </p>
               </div>
               <Clock className="h-8 w-8 text-muted-foreground/30" />
@@ -156,7 +158,7 @@ export default function ScanDetailPage() {
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Fix Rate</p>
+                <p className="text-sm text-muted-foreground">{t('fixRate')}</p>
                 <p className="text-2xl font-bold text-green-600">
                   {scan.violationsFound > 0
                     ? Math.round(((statusCounts.fixed || 0) / scan.violationsFound) * 100)
@@ -173,9 +175,9 @@ export default function ScanDetailPage() {
       {/* Main Content Tabs */}
       <Tabs defaultValue="violations" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="violations">Violations ({violations.length})</TabsTrigger>
-          <TabsTrigger value="summary">Summary</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <TabsTrigger value="violations">{t('tabViolations', { count: violations.length })}</TabsTrigger>
+          <TabsTrigger value="summary">{t('tabSummary')}</TabsTrigger>
+          <TabsTrigger value="timeline">{t('tabTimeline')}</TabsTrigger>
         </TabsList>
 
         {/* Violations Tab */}
@@ -189,7 +191,7 @@ export default function ScanDetailPage() {
           ) : violations.length === 0 ? (
             <Card>
               <CardContent className="pt-6 text-center text-muted-foreground">
-                No violations found in this scan. Great job!
+                {t('noViolationsInScan')}
               </CardContent>
             </Card>
           ) : (
@@ -218,7 +220,7 @@ export default function ScanDetailPage() {
                           </span>
                           {violation.wcagCriteria && (
                             <span className="text-xs text-muted-foreground">
-                              WCAG {violation.wcagCriteria}
+                              {t('wcagCriteria', { criteria: violation.wcagCriteria })}
                             </span>
                           )}
                         </div>
@@ -238,7 +240,7 @@ export default function ScanDetailPage() {
                         </Badge>
                         {violation.aiConfidenceScore && (
                           <span className="text-xs text-muted-foreground">
-                            {Math.round(violation.aiConfidenceScore * 100)}% confidence
+                            {t('confidencePercent', { percent: Math.round(violation.aiConfidenceScore * 100) })}
                           </span>
                         )}
                       </div>
@@ -255,7 +257,7 @@ export default function ScanDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Severity Breakdown</CardTitle>
+                <CardTitle className="text-lg">{t('severityBreakdown')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {(['critical', 'serious', 'moderate', 'minor'] as const).map((sev) => (
@@ -282,7 +284,7 @@ export default function ScanDetailPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Status Breakdown</CardTitle>
+                <CardTitle className="text-lg">{t('statusBreakdown')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {(['open', 'fixed', 'ignored', 'false_positive'] as const).map((status) => (
@@ -298,7 +300,7 @@ export default function ScanDetailPage() {
           {scan.summary && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Scan Summary</CardTitle>
+                <CardTitle className="text-lg">{t('scanSummary')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm whitespace-pre-wrap">{scan.summary}</p>
@@ -309,7 +311,7 @@ export default function ScanDetailPage() {
           {scan.errorMessage && (
             <Card className="border-destructive">
               <CardHeader>
-                <CardTitle className="text-lg text-destructive">Error</CardTitle>
+                <CardTitle className="text-lg text-destructive">{t('error')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-destructive">{scan.errorMessage}</p>
@@ -322,7 +324,7 @@ export default function ScanDetailPage() {
         <TabsContent value="timeline">
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Scan Timeline</CardTitle>
+              <CardTitle className="text-lg">{t('scanTimeline')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -331,7 +333,7 @@ export default function ScanDetailPage() {
                     <Clock className="h-4 w-4 text-blue-600" />
                   </div>
                   <div>
-                    <p className="font-medium">Scan Started</p>
+                    <p className="font-medium">{t('scanStarted')}</p>
                     <p className="text-sm text-muted-foreground">
                       {new Date(scan.startedAt).toLocaleString()}
                     </p>
@@ -343,13 +345,13 @@ export default function ScanDetailPage() {
                       <CheckCircle className="h-4 w-4 text-green-600" />
                     </div>
                     <div>
-                      <p className="font-medium">Scan Completed</p>
+                      <p className="font-medium">{t('scanCompleted')}</p>
                       <p className="text-sm text-muted-foreground">
                         {new Date(scan.completedAt).toLocaleString()}
                       </p>
                       {duration !== null && (
                         <p className="text-xs text-muted-foreground">
-                          Duration: {duration} seconds
+                          {t('durationSecondsFull', { duration })}
                         </p>
                       )}
                     </div>
@@ -361,7 +363,7 @@ export default function ScanDetailPage() {
                       <AlertTriangle className="h-4 w-4 text-red-600" />
                     </div>
                     <div>
-                      <p className="font-medium text-destructive">Scan Failed</p>
+                      <p className="font-medium text-destructive">{t('scanFailed')}</p>
                       <p className="text-sm text-destructive">{scan.errorMessage}</p>
                     </div>
                   </div>
