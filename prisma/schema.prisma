@@ -157,6 +157,8 @@ model Violation {
   @@index([projectId, createdAt])
   @@index([scanId, severity])
   @@index([deletedAt])
+  @@index([projectId, status, severity])
+  @@index([status, createdAt])
 }
 
 model GithubConnection {
@@ -180,6 +182,7 @@ model AuditLog {
 
   @@index([orgId, createdAt])
   @@index([orgId, action])
+  @@index([orgId, action, createdAt])
 }
 
 model PasswordReset {

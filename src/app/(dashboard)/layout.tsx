@@ -77,6 +77,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-background flex">
+      {/* Skip link for keyboard navigation */}
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
       <div className="hidden lg:block">
         <Sidebar activeView={currentView} onNavigate={(v) => router.push(`/${v}`)} user={user} onLogout={logout} />
       </div>
@@ -119,10 +123,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
         <OnboardingWizard />
         <PushNotificationCenter />
-        <div className="flex-1 p-4 sm:p-6 lg:p-8">
+        <main id="main-content" className="flex-1 p-4 sm:p-6 lg:p-8">
           <PageBreadcrumbs />
           {children}
-        </div>
+        </main>
         <footer className="border-t border-border py-4 px-6">
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-2">

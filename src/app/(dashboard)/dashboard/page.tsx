@@ -9,14 +9,16 @@ import { useTranslations } from 'next-intl';
 import { useProjects, useViolationStats, useViolations, useScans, useTrendData } from '@/hooks/useApi';
 import { useDashboardSSE } from '@/hooks/useSSE';
 import { ConnectionStatus } from '@/components/ui/connection-status';
+import dynamic from 'next/dynamic';
 import { StatsGrid } from '@/components/dashboard/stats-grid';
-import { TrendChart } from '@/components/dashboard/trend-chart';
-import { SeverityPie } from '@/components/dashboard/severity-pie';
 import { RecentViolations } from '@/components/dashboard/recent-violations';
 import { RecentScans } from '@/components/dashboard/recent-scans';
 import { ScanStatusWidget } from '@/components/dashboard/scan-status-widget';
 import { RegressionAlerts } from '@/components/dashboard/regression-alerts';
-import { AIFixRate } from '@/components/dashboard/ai-fix-rate';
+
+const TrendChart = dynamic(() => import('@/components/dashboard/trend-chart').then(m => ({ default: m.TrendChart })), { ssr: false });
+const SeverityPie = dynamic(() => import('@/components/dashboard/severity-pie').then(m => ({ default: m.SeverityPie })), { ssr: false });
+const AIFixRate = dynamic(() => import('@/components/dashboard/ai-fix-rate').then(m => ({ default: m.AIFixRate })), { ssr: false });
 
 export default function DashboardPage() {
   const { user } = useAuth();

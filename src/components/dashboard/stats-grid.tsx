@@ -49,7 +49,7 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
               </div>
             </div>
             <div className="p-3 rounded-xl bg-orange-500/10">
-              <AlertTriangle className="h-6 w-6 text-orange-500" />
+              <AlertTriangle className="h-6 w-6 text-orange-500" aria-hidden="true" />
             </div>
           </div>
         </CardContent>
@@ -67,7 +67,7 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
               </div>
             </div>
             <div className="p-3 rounded-xl bg-red-500/10">
-              <AlertCircle className="h-6 w-6 text-red-500" />
+              <AlertCircle className="h-6 w-6 text-red-500" aria-hidden="true" />
             </div>
           </div>
         </CardContent>
@@ -85,7 +85,7 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
               </div>
             </div>
             <div className="p-3 rounded-xl bg-coral/10">
-              <Globe className="h-6 w-6 text-coral" />
+              <Globe className="h-6 w-6 text-coral" aria-hidden="true" />
             </div>
           </div>
         </CardContent>
