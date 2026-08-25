@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Download, Github, CheckCircle2, CheckSquare, Square, Loader2 } from 'lucide-react';
+import { Download, Github, CheckCircle2, CheckSquare, Square, Loader2, Bell } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useViolations, useRemediation, useUpdateViolationStatus, useGenerateRemediation, useBulkUpdateViolations } from '@/hooks/useApi';
+import { useViolationsSSE } from '@/hooks/useSSE';
+import { ConnectionStatus } from '@/components/ui/connection-status';
 import { ViolationFilters } from '@/components/violations/violation-filters';
 import { ViolationRow } from '@/components/violations/violation-row';
 import { ViolationDetailDialog } from '@/components/violations/violation-detail-dialog';
@@ -39,6 +41,7 @@ export default function ViolationsPage() {
   const { data: remediation, isLoading: remediationLoading } = useRemediation(selectedViolation?.id || null);
   const updateStatus = useUpdateViolationStatus();
   const generateRemediation = useGenerateRemediation();
+  const { newViolations, isConnected, reconnect, clearNewViolations } = useViolationsSSE();
 
   // Filtering + sorting
   const filteredViolations = useMemo(() => {
@@ -105,9 +108,12 @@ export default function ViolationsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{t('title')}</h1>
-          <p className="text-muted-foreground">{t('subtitle')}</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">{t('title')}</h1>
+            <p className="text-muted-foreground">{t('subtitle')}</p>
+          </div>
+          <ConnectionStatus isConnected={isConnected} onReconnect={reconnect} />
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="sm:size-default" onClick={() => {
@@ -123,6 +129,24 @@ export default function ViolationsPage() {
           </Button>
         </div>
       </div>
+
+      {newViolations.length > 0 && (
+        <Card className="border-blue-500/30 bg-blue-50 dark:bg-blue-950/30">
+          <CardContent className="py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium">
+                  {newViolations.length} new violation{newViolations.length > 1 ? 's' : ''} detected
+                </span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={clearNewViolations}>
+                Dismiss
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <ViolationFilters searchQuery={searchQuery} onSearchChange={setSearchQuery} severityFilter={severityFilter} onSeverityChange={setSeverityFilter} statusFilter={statusFilter} onStatusChange={setStatusFilter} sortBy={sortBy} onSortChange={setSortBy} totalCount={filteredViolations.length} />
 

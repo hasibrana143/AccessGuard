@@ -7,6 +7,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslations } from 'next-intl';
 import { useProjects, useViolationStats, useViolations, useScans, useTrendData } from '@/hooks/useApi';
+import { useDashboardSSE } from '@/hooks/useSSE';
+import { ConnectionStatus } from '@/components/ui/connection-status';
 import { StatsGrid } from '@/components/dashboard/stats-grid';
 import { TrendChart } from '@/components/dashboard/trend-chart';
 import { SeverityPie } from '@/components/dashboard/severity-pie';
@@ -27,6 +29,7 @@ export default function DashboardPage() {
   const { data: violationsData } = useViolations({ limit: 5 });
   const { data: scansData } = useScans(undefined, 5);
   const { data: trendData } = useTrendData(undefined, 30);
+  const { isConnected, reconnect } = useDashboardSSE(user?.orgId);
 
   const stats = statsData?.severity || { critical: 0, serious: 0, moderate: 0, minor: 0, total: 0 };
   const avgRiskScore = projects && projects.length > 0
@@ -36,9 +39,12 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t('title')}</h1>
-          <p className="text-muted-foreground">{t('subtitle')}</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">{t('title')}</h1>
+            <p className="text-muted-foreground">{t('subtitle')}</p>
+          </div>
+          <ConnectionStatus isConnected={isConnected} onReconnect={reconnect} />
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => {

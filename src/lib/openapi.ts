@@ -1661,6 +1661,30 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/sse/dashboard': {
+    get: authed(op({
+      tags: ['SSE'],
+      summary: 'Dashboard real-time updates (SSE)',
+      description:
+        'Server-Sent Events stream for live dashboard updates. Emits scan_complete, violation_found, project_added events.',
+      responses: {
+        '200': { description: 'Event stream (text/event-stream)' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
+  '/sse/violations': {
+    get: authed(op({
+      tags: ['SSE'],
+      summary: 'Violations live feed (SSE)',
+      description:
+        'Server-Sent Events stream for new violations. Emits new_violation events.',
+      responses: {
+        '200': { description: 'Event stream (text/event-stream)' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
 };
 
 const schemas = {
