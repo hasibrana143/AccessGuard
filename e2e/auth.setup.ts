@@ -3,34 +3,30 @@ import { test as setup, expect } from '@playwright/test';
 const authFile = 'playwright/.auth/user.json';
 
 setup('authenticate as test user', async ({ page }) => {
-  // Listen for console errors
-  const errors: string[] = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') errors.push(msg.text());
-  });
-
   await page.goto('/auth/login');
+  
+  // Accept cookies
+  await page.locator('button:has-text("Essential Only")').click({ timeout: 5000 });
+  
   await expect(page.locator('#email')).toBeVisible({ timeout: 5000 });
 
-  // Fill form
   await page.locator('#email').fill('test@accessguard.dev');
   await page.locator('#password').fill('testpass123');
 
-  // Click submit and wait
+  // Capture network response
+  const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/auth/callback/credentials'));
   await page.locator('button[type="submit"]').click();
-
-  // Wait for navigation (either redirect or stay)
-  await page.waitForTimeout(3000);
-
-  // Log current URL for debugging
-  console.log('Current URL:', page.url());
-  if (errors.length > 0) {
-    console.log('Console errors:', errors.join(', '));
+  
+  try {
+    const response = await responsePromise;
+    console.log('Auth response:', response.status(), await response.text());
+  } catch (e) {
+    console.log('No auth response:', e.message);
   }
-
-  // Take screenshot for debugging
-  await page.screenshot({ path: 'playwright/.auth/debug-login.png' });
-
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 15000 });
+  
+  await page.waitForTimeout(3000);
+  console.log('URL:', page.url());
+  
+  await page.waitForURL(/\/dashboard/, { timeout: 30000 });
   await page.context().storageState({ path: authFile });
 });

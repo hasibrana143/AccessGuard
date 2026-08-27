@@ -17,7 +17,7 @@ export const SEVERITY_BG: Record<Severity, string> = {
 export const SEVERITY_TEXT: Record<Severity, string> = {
   critical: 'text-red-500',
   serious: 'text-orange-500',
-  moderate: 'text-yellow-500',
+  moderate: 'text-yellow-700',
   minor: 'text-blue-500',
 };
 
@@ -26,10 +26,10 @@ export const WCAG_CATEGORIES = ['perceivable', 'operable', 'understandable', 'ro
 
 export function getSeverityBadge(severity: Severity) {
   const styles: Record<Severity, string> = {
-    critical: 'bg-red-500/10 text-red-500 border-red-500/20',
-    serious: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
-    moderate: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-    minor: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+    critical: 'bg-red-500/10 text-red-500 border-red-500/20 dark:text-red-400',
+    serious: 'bg-orange-500/10 text-orange-500 border-orange-500/20 dark:text-orange-400',
+    moderate: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:text-yellow-300',
+    minor: 'bg-blue-500/10 text-blue-500 border-blue-500/20 dark:text-blue-400',
   };
   return styles[severity];
 }

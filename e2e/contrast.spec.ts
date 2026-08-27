@@ -42,6 +42,30 @@ async function expectNoContrastViolations(page: Page, label: string): Promise<vo
   expect(failures, `${label} color-contrast failures:\n${failures.join('\n')}`).toEqual([]);
 }
 
+async function waitForPageReady(page: Page, path: string): Promise<void> {
+  // Use element visibility instead of networkidle to avoid hanging on SSE connections
+  if (path.startsWith('/dashboard')) {
+    await page.locator('h1:has-text("Dashboard")').waitFor({ timeout: 8000 });
+  } else if (path.startsWith('/projects')) {
+    await page.locator('h1').waitFor({ timeout: 8000 });
+  } else if (path.startsWith('/violations')) {
+    await page.locator('h1').waitFor({ timeout: 8000 });
+  } else if (path.startsWith('/scans')) {
+    await page.locator('h1').waitFor({ timeout: 8000 });
+  } else if (path.startsWith('/reports')) {
+    await page.locator('h1').waitFor({ timeout: 8000 });
+  } else if (path.startsWith('/settings')) {
+    await page.locator('h1').waitFor({ timeout: 8000 });
+  } else if (path.startsWith('/team')) {
+    await page.locator('h1').waitFor({ timeout: 8000 });
+  } else if (path.startsWith('/audit-logs')) {
+    await page.locator('h1').waitFor({ timeout: 8000 });
+  } else {
+    // Fallback for un-authed routes
+    await page.waitForLoadState('domcontentloaded');
+  }
+}
+
 async function assertThemeApplied(page: Page, theme: 'light' | 'dark'): Promise<void> {
   await page.waitForFunction((t) => document.documentElement.classList.contains(t), theme);
 }
@@ -59,7 +83,7 @@ function addContrastTests(routes: Array<[string, string]>, theme: 'light' | 'dar
         await page.emulateMedia({ reducedMotion: 'reduce' });
         await setTheme(page, theme);
         await page.goto(path);
-        await page.waitForLoadState('networkidle');
+        await waitForPageReady(page, path);
         await assertThemeApplied(page, theme);
         await expectNoContrastViolations(page, `${path} (${theme})`);
       });

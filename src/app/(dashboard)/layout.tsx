@@ -119,10 +119,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
         <OnboardingWizard />
         <PushNotificationCenter />
-        <main id="main-content" className="flex-1 p-4 sm:p-6 lg:p-8">
+        <div className="flex-1 p-4 sm:p-6 lg:p-8" role="main">
           <PageBreadcrumbs />
           {children}
-        </main>
+        </div>
         <footer className="border-t border-border py-4 px-6">
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-2">

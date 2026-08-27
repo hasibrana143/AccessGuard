@@ -51,6 +51,7 @@ export function ConnectionStatus({ isConnected, onReconnect, className }: Connec
                 size="sm"
                 onClick={onReconnect}
                 className="h-6 px-2"
+                aria-label="Reconnect"
               >
                 <RefreshCw className="h-3 w-3" />
               </Button>
