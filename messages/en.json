@@ -538,6 +538,7 @@
     "title": "Reports",
     "noProjectsTitle": "No projects yet",
     "noProjectsDesc": "Create a project and run your first scan to generate reports.",
+    "addProject": "Add project",
     "generate": "Generate report",
     "downloadPdf": "Download PDF",
     "subtitle": "Generate compliance reports and VPAT documentation",

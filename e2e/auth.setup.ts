@@ -13,20 +13,14 @@ setup('authenticate as test user', async ({ page }) => {
   await page.locator('#email').fill('test@accessguard.dev');
   await page.locator('#password').fill('testpass123');
 
-  // Capture network response
-  const responsePromise = page.waitForResponse(resp => resp.url().includes('/api/auth/callback/credentials'));
-  await page.locator('button[type="submit"]').click();
+  // Wait for navigation after submit
+  await Promise.all([
+    page.waitForURL(/\/dashboard/, { timeout: 30000 }),
+    page.locator('button[type="submit"]').click(),
+  ]);
   
-  try {
-    const response = await responsePromise;
-    console.log('Auth response:', response.status(), await response.text());
-  } catch (e) {
-    console.log('No auth response:', e.message);
-  }
-  
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(1000);
   console.log('URL:', page.url());
   
-  await page.waitForURL(/\/dashboard/, { timeout: 30000 });
   await page.context().storageState({ path: authFile });
 });
