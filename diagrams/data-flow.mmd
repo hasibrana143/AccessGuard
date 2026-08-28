@@ -1,0 +1,59 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant WebApp as Web App (Next.js)
+    participant Middleware as Next.js Middleware
+    participant APIGateway as API Gateway
+    participant AuthSvc as Auth Service
+    participant ScannerSvc as Scanner Service
+    participant Queue as BullMQ + Redis
+    participant Worker as Scan Worker
+    participant AI as NVIDIA NIM (LLM)
+    participant DB as PostgreSQL
+    participant Redis as Redis
+    participant Notification as Notification Svc
+
+    User->>WebApp: 1. Create Project + Start Scan
+    WebApp->>Middleware: 2. Request (with session)
+    Middleware->>Middleware: 3. Validate JWT + RateLimit + OrgScope
+    Middleware->>APIGateway: 4. Forward to POST /api/projects/{id}/scans
+    APIGateway->>AuthSvc: 5. requireVerifiedEmail + requireProjectAccess
+    AuthSvc->>DB: 6. Verify org membership + permissions
+    DB-->>AuthSvc: 7. User + Project + Org
+    AuthSvc-->>APIGateway: 8. Authorized
+    APIGateway->>DB: 9. Create Scan (status=pending)
+    APIGateway->>Queue: 10. Enqueue scan job (priority)
+    APIGateway-->>WebApp: 11. 202 Accepted + Scan ID
+    WebApp-->>User: 12. Scan queued
+
+    Note over Queue,Worker: ASYNC PROCESSING
+
+    Worker->>Queue: 13. Dequeue scan job
+    Worker->>DB: 14. Update Scan status=running
+    Worker->>Worker: 15. Launch Puppeteer + crawl pages
+    loop For each page
+        Worker->>Worker: 16. Run axe-core analysis
+        Worker->>DB: 17. Batch insert Violations
+    end
+    Worker->>DB: 18. Update Scan status=completed + summary
+    Worker->>Queue: 19. Enqueue remediation jobs (per violation)
+
+    Note over Queue,RemediationSvc: REMEDIATION PIPELINE
+
+    Worker->>Queue: 20. Dequeue remediation job
+    Worker->>DB: 21. Fetch Violation + elementHtml
+    alt AI Available
+        Worker->>AI: 22. Call NVIDIA NIM (chat/completions)
+        AI-->>Worker: 23. Structured response (code + explanation + confidence)
+        Worker->>Worker: 24. Parse + validate response
+    else AI Unavailable
+        Worker->>Worker: 25. Template fallback (WCAG_RULES)
+    end
+    Worker->>DB: 26. Update Violation (remediationCode, aiExplanation, confidence)
+    Worker->>Queue: 27. Enqueue notification (violation.fixed)
+
+    Note over Notification,User: REAL-TIME UPDATES
+
+    Notification->>Redis: 28. Publish domain event (SSE)
+    Redis->>WebApp: 29. SSE push to connected clients
+    WebApp->>User: 30. Live update (scan progress, new violations, fixes)
