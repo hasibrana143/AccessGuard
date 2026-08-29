@@ -11,7 +11,7 @@ model Organization {
   id                   String             @id @default(cuid())
   name                 String
   slug                 String             @unique
-  plan                 String             @default("starter")
+  plan                 String             @default("free")
   subscriptionStatus   String             @default("active")
   stripeCustomerId     String?
   stripeSubscriptionId String?
@@ -27,6 +27,8 @@ model Organization {
   ssoCertificate       String?
   currency             String             @default("usd")
   settings             String             @default("{}")
+  pagesUsedThisMonth   Int                @default(0)
+  pagesQuota           Int                @default(1000)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   auditLogs            AuditLog[]

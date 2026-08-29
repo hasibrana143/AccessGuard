@@ -694,6 +694,35 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/orgs/{id}/usage': {
+    get: authed(op({
+      tags: ['Organizations'],
+      summary: 'Get current month usage for organization',
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Usage data', { $ref: '#/components/schemas/OrgUsageResponse' }),
+        ...COMMON_RESPONSES,
+      },
+    })),
+    post: authed(op({
+      tags: ['Organizations'],
+      summary: 'Increment page usage (called after scan)',
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({
+          type: 'object',
+          properties: {
+            pagesScanned: { type: 'integer', minimum: 1, default: 1 },
+          },
+        }),
+      },
+      responses: {
+        '200': jsonResponse('Updated usage', { $ref: '#/components/schemas/OrgUsageIncrementResponse' }),
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
   '/roles': {
     get: authed(op({
       tags: ['Roles'],
@@ -2055,6 +2084,59 @@ const schemas = {
         items: { type: 'object' },
       },
       generatedAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  OrgUsageResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      data: {
+        type: 'object',
+        properties: {
+          org: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              plan: { type: 'string' },
+              subscriptionStatus: { type: 'string' },
+            },
+          },
+          usage: {
+            type: 'object',
+            properties: {
+              pagesUsed: { type: 'integer' },
+              pagesQuota: { type: 'integer' },
+              usagePercentage: { type: 'integer' },
+              isOverQuota: { type: 'boolean' },
+              remainingPages: { type: 'integer' },
+            },
+          },
+          limits: {
+            type: 'object',
+            properties: {
+              pagesPerMonth: { type: 'integer' },
+              websites: { type: 'integer' },
+            },
+          },
+        },
+      },
+    },
+  },
+  OrgUsageIncrementResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      data: {
+        type: 'object',
+        properties: {
+          pagesUsed: { type: 'integer' },
+          pagesQuota: { type: 'integer' },
+          usagePercentage: { type: 'integer' },
+          isOverQuota: { type: 'boolean' },
+          remainingPages: { type: 'integer' },
+        },
+      },
     },
   },
 } as const;

@@ -134,7 +134,9 @@ async function main() {
     create: {
       name: 'Default Organization',
       slug: 'default-org',
-      plan: 'agency',
+      plan: 'free',
+      pagesQuota: 1000,
+      pagesUsedThisMonth: 0,
       settings: JSON.stringify({
         theme: 'system',
         notifications: true

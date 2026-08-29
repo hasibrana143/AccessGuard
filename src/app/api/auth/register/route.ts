@@ -75,13 +75,15 @@ export async function POST(request: NextRequest) {
     // Create or get organization
     let organization;
     if (organizationName) {
-      // Create a new organization for the user
+      // Create a new organization for the user (Free tier by default)
       const slug = organizationName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       organization = await db.organization.create({
         data: {
           name: organizationName,
           slug: `${slug}-${Date.now()}`,
-          plan: 'starter',
+          plan: 'free',
+          pagesQuota: 1000,
+          pagesUsedThisMonth: 0,
           settings: JSON.stringify({ theme: 'system', notifications: true })
         }
       });
@@ -96,7 +98,9 @@ export async function POST(request: NextRequest) {
           data: {
             name: 'Default Organization',
             slug: 'default-org',
-            plan: 'starter',
+            plan: 'free',
+            pagesQuota: 1000,
+            pagesUsedThisMonth: 0,
             settings: JSON.stringify({ theme: 'system', notifications: true })
           }
         });

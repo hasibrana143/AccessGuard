@@ -1461,6 +1461,18 @@
     "skipTour": "Skip Tour",
     "startScanning": "Start Scanning"
   },
+  "usageMeter": {
+    "monthlyUsage": "Monthly Usage",
+    "pagesScanned": "Pages Scanned",
+    "pagesLeft": "Pages Left",
+    "remaining": "Remaining",
+    "quotaExceeded": "Quota Exceeded",
+    "quotaExceededDesc": "You have exceeded your monthly page limit. Upgrade your plan to continue scanning.",
+    "approachingLimit": "Approaching Limit",
+    "approachingLimitDesc": "You have used over 80% of your monthly quota. Consider upgrading to avoid interruption.",
+    "upgrade": "Upgrade Plan",
+    "freeTier": "Free Tier"
+  },
   "cookieConsent": {
     "description": "We use essential cookies for authentication and session management. Analytics cookies are used only with your consent. <link>Privacy Policy</link>",
     "accept": "Accept All",

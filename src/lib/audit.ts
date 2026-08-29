@@ -15,6 +15,7 @@ export const AUDIT_ACTIONS = [
   'email_verified', 'mfa_enabled', 'mfa_disabled',
   'api_key_regenerated', 'plan_limit_reached',
   'scan_scheduled', 'scan_unscheduled', 'scan_scheduled_triggered', 'scan_blocked_plan_limit',
+  'usage_incremented',
   'custom_role_created', 'custom_role_updated', 'custom_role_deleted',
   'team_invite_cancelled',
   'sso_config_updated', 'sso_config_removed',
