@@ -8,6 +8,17 @@ export default function PricingPage() {
   const t = useTranslations('landing');
   const plans = [
     {
+      name: t('pFree') || 'Free',
+      price: '$0',
+      period: '/forever',
+      desc: t('pFreeDesc') || 'Get started with basic accessibility testing',
+      features: [t('pFreeF1') || '1 website', t('pFreeF2') || '1,000 pages/month', t('pFreeF3') || 'Weekly scans', t('pFreeF4') || 'Basic reports', t('pFreeF5') || 'Community support'],
+      cta: t('getStartedFree') || 'Get Started Free',
+      popular: false,
+      enterprise: false,
+      free: true,
+    },
+    {
       name: t('pStarter'),
       price: '$49',
       period: '/month',
@@ -59,7 +70,7 @@ export default function PricingPage() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-4 gap-8">
+        <div className="grid md:grid-cols-5 gap-8">
           {plans.map((plan) => (
             <div
               key={plan.name}

@@ -11,6 +11,17 @@ export function Pricing({ onGetStarted = () => {} }: { onGetStarted?: () => void
 
   const plans = [
     {
+      name: t('pFree') || 'Free',
+      description: t('pFreeDesc') || 'Get started with basic accessibility testing',
+      price: '$0',
+      period: '/forever',
+      popular: false,
+      features: [t('pFreeF1') || '1 website', t('pFreeF2') || '1,000 pages/month', t('pFreeF3') || 'Weekly scans', t('pFreeF4') || 'Basic reports', t('pFreeF5') || 'Community support'],
+      cta: t('getStartedFree') || 'Get Started Free',
+      color: 'default',
+      free: true,
+    },
+    {
       name: t('pStarter'),
       description: t('pStarterDesc'),
       price: '$49',
@@ -71,7 +82,7 @@ export function Pricing({ onGetStarted = () => {} }: { onGetStarted?: () => void
           <p className="text-xl text-muted-foreground">{t('pricingSub')}</p>
         </div>
 
-        <div className="grid md:grid-cols-4 gap-8 max-w-6xl mx-auto mb-16">
+        <div className="grid md:grid-cols-5 gap-8 max-w-7xl mx-auto mb-16">
           {plans.map((plan) => (
             <Card key={plan.name} className={`relative ${plan.popular ? 'border-coral border-2 shadow-lg shadow-coral/10' : ''}`}>
               {plan.popular && (
