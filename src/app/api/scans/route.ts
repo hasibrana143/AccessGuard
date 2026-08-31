@@ -144,6 +144,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const org = await db.organization.findUnique({
+      where: { id: access.user.orgId },
+      select: { plan: true, settings: true },
+    });
+    if (org) {
+      const pageCheck = await checkPagesLimit(access.user.orgId, org.plan || 'free', org.settings);
+      if (!pageCheck.allowed) {
+        return NextResponse.json(
+          { success: false, error: `Monthly scan limit reached (${pageCheck.current}/${pageCheck.limit} pages). Upgrade your plan to continue scanning.` },
+          { status: 402 }
+        );
+      }
+    }
+
     const scan = await db.scan.create({
       data: { projectId, status: 'queued' },
     });

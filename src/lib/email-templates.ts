@@ -178,6 +178,50 @@ const templates: Record<string, TemplateRenderer> = {
     `),
     text: `You've been invited to join ${data.orgName || 'AccessGuard'}: ${data.inviteUrl}`,
   }),
+
+  'quota-warning': (data) => ({
+    subject: `AccessGuard: Usage quota ${data.warningType === 'approaching' ? 'warning' : 'exceeded'}`,
+    html: wrapEmail(`
+      <h2>Usage Quota ${data.warningType === 'approaching' ? 'Warning' : 'Exceeded'} ⚠️</h2>
+      <p>Hi ${data.name || 'there'},</p>
+      ${data.warningType === 'approaching' ? `
+      <p>Your organization <strong>${data.orgName}</strong> is approaching its monthly scan limit.</p>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value">${data.pagesUsed}</div>
+          <div class="stat-label">Pages Used</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">${data.pagesQuota}</div>
+          <div class="stat-label">Monthly Limit</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">${data.usagePercentage}%</div>
+          <div class="stat-label">Used</div>
+        </div>
+      </div>
+      <p>Upgrade your plan to continue scanning without interruptions.</p>
+      ` : `
+      <p>Your organization <strong>${data.orgName}</strong> has reached its monthly scan limit.</p>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-value">${data.pagesUsed}</div>
+          <div class="stat-label">Pages Used</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">${data.pagesQuota}</div>
+          <div class="stat-label">Monthly Limit</div>
+        </div>
+      </div>
+      <p>Upgrade your plan to resume scanning.</p>
+      `}
+      <p style="text-align: center; margin: 30px 0;">
+        <a href="${data.upgradeUrl || 'https://app.accessguard.dev/pricing'}" class="button">Upgrade Plan</a>
+      </p>
+      <p>Your quota will reset on the 1st of next month.</p>
+    `),
+    text: `Usage quota ${data.warningType === 'approaching' ? 'warning' : 'exceeded'}: ${data.pagesUsed}/${data.pagesQuota} pages used. Upgrade: ${data.upgradeUrl || 'https://app.accessguard.dev/pricing'}`,
+  }),
 };
 
 // Render a template
