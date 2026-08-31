@@ -1,0 +1,22 @@
+{
+  "name": "@accessguard/github-app",
+  "version": "0.1.0",
+  "description": "GitHub App for AccessGuard - PR checks, annotations, and auto-fix PRs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "probot": "^13.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "tsx": "^4.0.0"
+  },
+  "license": "MIT"
+}

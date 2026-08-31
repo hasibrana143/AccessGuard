@@ -1,0 +1,54 @@
+name: AccessGuard Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  scan:
+    name: Accessibility Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run AccessGuard Scan
+        uses: accessguard/action@v1
+        with:
+          api-key: ${{ secrets.ACCESSGUARD_API_KEY }}
+          project-id: ${{ secrets.ACCESSGUARD_PROJECT_ID }}
+          fail-on: critical
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accessguard-results
+          path: accessguard-results.json
+
+  vpaa-report:
+    name: Generate VPAT Report
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate VPAT
+        uses: accessguard/action@v1
+        with:
+          api-key: ${{ secrets.ACCESSGUARD_API_KEY }}
+          project-id: ${{ secrets.ACCESSGUARD_PROJECT_ID }}
+          command: generate-vpat
+          format: pdf
+
+      - name: Upload VPAT
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpat-report
+          path: vpat-*.pdf

@@ -1,7 +1,7 @@
 // Stripe configuration and service for AccessGuard
 import Stripe from 'stripe';
 
-export type PlanType = 'starter' | 'growth' | 'agency' | 'enterprise';
+export type PlanType = 'free' | 'starter' | 'growth' | 'agency' | 'enterprise';
 
 export type CurrencyCode = 'usd' | 'eur' | 'gbp' | 'inr';
 
@@ -53,6 +53,17 @@ export interface PricingPlan {
 }
 
 export const PRICING_PLANS: PricingPlan[] = [
+  {
+    id: 'free',
+    name: 'Free',
+    price: 0,
+    period: 'forever',
+    description: 'Get started with basic accessibility testing',
+    features: ['1 website', '1,000 pages/month', 'Weekly scans', 'Basic reports', 'Community support'],
+    cta: 'Get Started Free',
+    popular: false,
+    limits: { websites: 1, pagesPerMonth: 1000 },
+  },
   {
     id: 'starter',
     name: 'Starter',
@@ -202,5 +213,5 @@ export function getStripePriceId(planId: PlanType): string {
 // Get plan from price ID
 export function getPlanFromPriceId(priceId: string): PlanType {
   const plan = PRICING_PLANS.find(p => p.priceId === priceId);
-  return plan?.id || 'starter';
+  return plan?.id || 'free';
 }

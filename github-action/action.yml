@@ -1,0 +1,41 @@
+name: 'AccessGuard Accessibility Scan'
+description: 'Scan your project for WCAG accessibility violations'
+author: 'AccessGuard'
+
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+
+inputs:
+  api-key:
+    description: 'AccessGuard API key'
+    required: true
+  project-id:
+    description: 'AccessGuard project ID'
+    required: true
+  command:
+    description: 'Command to run (scan, generate-vpat, check-compliance)'
+    default: 'scan'
+  fail-on:
+    description: 'Fail on severity level (critical, serious, moderate, minor)'
+    default: 'critical'
+  standard:
+    description: 'WCAG standard (wcag21aa, wcag22aa, section508)'
+    default: 'wcag22aa'
+  format:
+    description: 'VPAT format (pdf, html, json)'
+    default: 'pdf'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
+
+outputs:
+  score:
+    description: 'Accessibility score percentage'
+  violations-count:
+    description: 'Number of violations found'
+  critical-count:
+    description: 'Number of critical violations'
+  vpat-url:
+    description: 'VPAT download URL (if generated)'

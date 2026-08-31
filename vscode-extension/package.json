@@ -1,0 +1,109 @@
+{
+  "name": "accessguard-vscode",
+  "displayName": "AccessGuard - Accessibility Scanner",
+  "description": "Inline accessibility diagnostics, one-click fixes, and scan integration for VS Code",
+  "version": "0.1.0",
+  "publisher": "accessguard",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "accessibility",
+    "a11y",
+    "wcag",
+    "wcag2.1",
+    "wcag2.2",
+    "section508",
+    "ada",
+    "linting"
+  ],
+  "activationEvents": [
+    "onLanguage:html",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascriptreact",
+    "onLanguage:vue",
+    "onLanguage:svelte",
+    "workspaceContains:**/*.{html,jsx,tsx,vue,svelte,astro}"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "accessguard.scanFile",
+        "title": "AccessGuard: Scan Current File"
+      },
+      {
+        "command": "accessguard.scanWorkspace",
+        "title": "AccessGuard: Scan Workspace"
+      },
+      {
+        "command": "accessguard.showOutput",
+        "title": "AccessGuard: Show Output"
+      },
+      {
+        "command": "accessguard.configure",
+        "title": "AccessGuard: Configure Settings"
+      }
+    ],
+    "configuration": {
+      "title": "AccessGuard",
+      "properties": {
+        "accessguard.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "AccessGuard API key (agk_...)"
+        },
+        "accessguard.orgId": {
+          "type": "string",
+          "default": "",
+          "description": "AccessGuard organization ID"
+        },
+        "accessguard.apiUrl": {
+          "type": "string",
+          "default": "https://api.accessguard.io",
+          "description": "AccessGuard API base URL"
+        },
+        "accessguard.autoScanOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically scan files on save"
+        },
+        "accessguard.severityFilter": {
+          "type": "array",
+          "default": ["critical", "serious", "moderate"],
+          "items": {
+            "type": "string",
+            "enum": ["critical", "serious", "moderate", "minor"]
+          },
+          "description": "Minimum severity levels to show"
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "html",
+        "extensions": [".html", ".htm"]
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "@vscode/test-electron": "^2.3.0"
+  },
+  "dependencies": {}
+}

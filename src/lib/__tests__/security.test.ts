@@ -70,11 +70,11 @@ describe('plan limits', () => {
     const project = await db.project.create({
       data: { name: 'Limits Project', url: 'https://limits.example.com', orgId: org.id },
     });
-    await db.scan.create({ data: { projectId: project.id, status: 'completed', pagesScanned: 500, violationsFound: 0 } });
+    await db.scan.create({ data: { projectId: project.id, status: 'completed', pagesScanned: 1500, violationsFound: 0 } });
 
     const check = await checkPagesLimit(org.id, 'free');
     expect(check.allowed).toBe(false);
-    expect(check.current).toBeGreaterThanOrEqual(500);
+    expect(check.current).toBeGreaterThanOrEqual(1500);
 
     const checkAgency = await checkPagesLimit(org.id, 'agency');
     expect(checkAgency.allowed).toBe(true);
