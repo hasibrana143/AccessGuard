@@ -15,6 +15,7 @@ import { RecentViolations } from '@/components/dashboard/recent-violations';
 import { RecentScans } from '@/components/dashboard/recent-scans';
 import { ScanStatusWidget } from '@/components/dashboard/scan-status-widget';
 import { RegressionAlerts } from '@/components/dashboard/regression-alerts';
+import { UsageMeter } from '@/components/dashboard/usage-meter';
 
 const TrendChart = dynamic(() => import('@/components/dashboard/trend-chart').then(m => ({ default: m.TrendChart })), { ssr: false });
 const SeverityPie = dynamic(() => import('@/components/dashboard/severity-pie').then(m => ({ default: m.SeverityPie })), { ssr: false });
@@ -83,6 +84,8 @@ export default function DashboardPage() {
       </div>
 
       <StatsGrid avgRiskScore={avgRiskScore} stats={stats} projectsCount={projects?.length || 0} />
+
+      {user?.orgId && <UsageMeter orgId={user.orgId} compact />}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <TrendChart trendData={trendData || []} />
