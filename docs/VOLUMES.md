@@ -83,7 +83,13 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | 10 | Business — Sales, Marketing, SEO, Pricing, Product Hunt, Investor Deck | `docs/business/*` (6 docs) | ✅ Done (commit 689424d) |
 | 11 | Operations — Support, Incident Response, SLA, Feature Flags, Analytics, KPI Dashboard | `docs/ops/*` (6 docs) | ✅ Done (commit 979ff05) |
 | 12 | Launch — Beta Plan, Production Checklist, Rollback, Roadmap, Versioning, Future | `docs/launch/*` (6 docs) | ✅ Done (commit ff7aaab) |
-| 13 | Global SaaS Hardening — Legal, Enterprise (SSO/SCIM/audit export), Compliance, FinOps, AI safety, i18n, data residency, customer success | `docs/legal/*`, `docs/enterprise/*`, `docs/compliance/*`, `docs/finops/*`, `docs/ai/AI_SAFETY_EU_AI_ACT.md` + code (audit export API) | 🚧 In progress (see upgrade log rows V13) |
+| 13 | Global SaaS Hardening — Legal, Enterprise (SSO/SCIM/audit export), Compliance, FinOps, AI safety, i18n, data residency, customer success | `docs/legal/*`, `docs/enterprise/*`, `docs/compliance/*`, `docs/finops/*`, `docs/ai/AI_SAFETY_EU_AI_ACT.md` + code (audit export API) | ✅ Done (see upgrade log rows V13) |
+| 14 | Architecture Documentation — Full architecture review & documentation | `docs/engineering/*` | ✅ Done (commit f0b4013) |
+| 15 | Free Tier & Self-Serve — Free tier pricing, self-serve onboarding flow | Pricing, onboarding UI, quota logic | ✅ Done (commit a1c1cc7) |
+| 16 | Developer Ecosystem — VS Code Extension, MCP Server, GitHub App, Rate Limiting | Extensions, integrations, API rate limits | ✅ Done (commit 9248de7) |
+| 17 | Legal & SDK — Legal pages, Mobile SDK, Quota integration, Email templates | Legal UI, SDK, email templates | ✅ Done (commit dcdca67) |
+| 18 | Pricing & SEO — Free tier pricing page, SEO optimization, robots.txt | Pricing, SEO, crawl config | ✅ Done (commit beb0445) |
+| 19 | Dashboard Meters — Dashboard usage meter integration | Usage meters, dashboard widgets | ✅ Done (commit 2dfcb1b) |
 
 **Scale anchor (per user directive):** ~80–120 docs, 300–500 diagrams, 100–200 API specs,
 100+ tables, 150–300 screens. Every volume docks target numbers to **verified build facts**
