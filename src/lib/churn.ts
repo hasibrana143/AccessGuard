@@ -8,8 +8,7 @@ import { logger } from './error-logger';
  *  - S1 +3: no scan in 30 days (or never scanned)
  *  - S2 +2: no audit activity in 30 days (inactivity proxy)
  *  - S3 +4: billing trouble (subscriptionStatus past_due / unpaid)
- *  - S4 +1: plan usage at ceiling (>= 95% of scansThisMonth vs plan limit — TODO
- *           when usage counters land; excluded for now)
+ *  - S4 +1: plan usage at ceiling (>= 95% of monthly scan quota)
  *
  * Score >= 8 → high risk (manual outreach); >= 5 → at-risk (win-back email).
  * Runs weekly, gated by Redis `churn:last-run` timestamp.
@@ -26,6 +25,7 @@ export interface ChurnSignalBreakdown {
   noRecentScan: boolean;
   noRecentActivity: boolean;
   billingTrouble: boolean;
+  planUsageCeiling: boolean;
   score: number;
 }
 
@@ -34,6 +34,7 @@ export function scoreOrg(
     subscriptionStatus: string;
     lastScanAt: Date | null;
     hasRecentActivity: boolean;
+    planUsageCeiling?: boolean;
   },
   now = new Date()
 ): ChurnSignalBreakdown {
@@ -44,12 +45,14 @@ export function scoreOrg(
   const noRecentScan = !args.lastScanAt || args.lastScanAt < scanCutoff;
   const noRecentActivity = !args.hasRecentActivity;
   const billingTrouble = BILLING_TROUBLE.has(args.subscriptionStatus);
+  const planUsageCeiling = Boolean(args.planUsageCeiling);
 
   if (noRecentScan) score += 3;
   if (noRecentActivity) score += 2;
   if (billingTrouble) score += 4;
+  if (planUsageCeiling) score += 1;
 
-  return { noRecentScan, noRecentActivity, billingTrouble, score };
+  return { noRecentScan, noRecentActivity, billingTrouble, planUsageCeiling, score };
 }
 
 export function riskBand(score: number): 'healthy' | 'at-risk' | 'high-risk' {

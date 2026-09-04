@@ -226,6 +226,65 @@ const paths: Record<string, PathItem> = {
       },
     }),
   },
+  '/auth/sso/login': {
+    get: op({
+      tags: ['Authentication'],
+      summary: 'Initiate SAML 2.0 SSO authentication flow with IdP redirect',
+      parameters: [
+        { name: 'orgId', in: 'query', required: false, schema: { type: 'string' } },
+        { name: 'slug', in: 'query', required: false, schema: { type: 'string' } },
+        { name: 'email', in: 'query', required: false, schema: { type: 'string' } },
+      ],
+      responses: {
+        '302': { description: 'Redirect to IdP login endpoint' },
+        '400': { description: 'Missing identifier' },
+        '404': { description: 'SSO not configured or enabled' },
+        '429': { description: 'Rate limit exceeded' },
+      },
+    }),
+  },
+  '/auth/sso/callback': {
+    post: op({
+      tags: ['Authentication'],
+      summary: 'SAML 2.0 Assertion Consumer Service (ACS) callback',
+      requestBody: {
+        description: 'SAML response from Identity Provider',
+        required: true,
+        content: {
+          'application/x-www-form-urlencoded': {
+            schema: {
+              type: 'object',
+              properties: {
+                SAMLResponse: { type: 'string' },
+                RelayState: { type: 'string' },
+              },
+              required: ['SAMLResponse'],
+            },
+          },
+        },
+      },
+      responses: {
+        '302': { description: 'Redirect to dashboard or login on failure' },
+        '429': { description: 'Rate limit exceeded' },
+      },
+    }),
+  },
+  '/auth/sso/metadata': {
+    get: op({
+      tags: ['Authentication'],
+      summary: 'SAML 2.0 Service Provider (SP) metadata XML',
+      responses: {
+        '200': {
+          description: 'SAML metadata XML document',
+          content: {
+            'application/samlmetadata+xml': {
+              schema: { type: 'string' },
+            },
+          },
+        },
+      },
+    }),
+  },
   '/account/export': {
     get: authed(op({
       tags: ['Account'],
@@ -1713,6 +1772,41 @@ const paths: Record<string, PathItem> = {
         ...COMMON_RESPONSES,
       },
     })),
+  },
+  '/csp-report': {
+    post: op({
+      tags: ['System'],
+      summary: 'Content Security Policy (CSP) violation report receiver',
+      requestBody: {
+        description: 'CSP violation report payload',
+        required: true,
+        content: {
+          'application/csp-report': {
+            schema: {
+              type: 'object',
+              properties: {
+                'csp-report': {
+                  type: 'object',
+                  properties: {
+                    'document-uri': { type: 'string' },
+                    'violated-directive': { type: 'string' },
+                    'blocked-uri': { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          'application/json': {
+            schema: { type: 'object' },
+          },
+        },
+      },
+      responses: {
+        '204': { description: 'CSP report accepted' },
+        '400': { description: 'Invalid CSP report payload' },
+        '429': { description: 'Rate limit exceeded' },
+      },
+    }),
   },
 };
 

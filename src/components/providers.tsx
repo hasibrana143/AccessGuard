@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionProvider } from '@/components/session-provider';
 import { ThemeProvider } from 'next-themes';
 
+import { PostHogProvider } from '@/components/providers/PostHogProvider';
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -23,7 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           enableSystem={false}
           disableTransitionOnChange
         >
-          {children}
+          <PostHogProvider>{children}</PostHogProvider>
         </ThemeProvider>
       </SessionProvider>
     </QueryClientProvider>

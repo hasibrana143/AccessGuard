@@ -19,6 +19,8 @@ export const AUDIT_ACTIONS = [
   'custom_role_created', 'custom_role_updated', 'custom_role_deleted',
   'team_invite_cancelled',
   'sso_config_updated', 'sso_config_removed',
+  'sso_login_success', 'sso_login_failure',
+  'csp_violation_reported',
   'scim_token_generated', 'scim_user_created', 'scim_user_deactivated',
   'scim_group_created', 'scim_group_updated', 'scim_group_deleted',
   'cookie_consent_updated',

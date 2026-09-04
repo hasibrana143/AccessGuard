@@ -72,6 +72,15 @@ describe('scoreOrg (churn signals)', () => {
     expect(result.score).toBe(4);
   });
 
+  it('adds +1 when plan usage is at ceiling', () => {
+    const result = scoreOrg(
+      { subscriptionStatus: 'active', lastScanAt: days(2), hasRecentActivity: true, planUsageCeiling: true },
+      now
+    );
+    expect(result.planUsageCeiling).toBe(true);
+    expect(result.score).toBe(1);
+  });
+
   it('stacks signals (idle + inactive + past_due = 9)', () => {
     const result = scoreOrg(
       { subscriptionStatus: 'past_due', lastScanAt: null, hasRecentActivity: false },

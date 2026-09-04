@@ -90,6 +90,8 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | 17 | Legal & SDK — Legal pages, Mobile SDK, Quota integration, Email templates | Legal UI, SDK, email templates | ✅ Done (commit dcdca67) |
 | 18 | Pricing & SEO — Free tier pricing page, SEO optimization, robots.txt | Pricing, SEO, crawl config | ✅ Done (commit beb0445) |
 | 19 | Dashboard Meters — Dashboard usage meter integration | Usage meters, dashboard widgets | ✅ Done (commit 2dfcb1b) |
+| 20 | Housekeeping & Git Hygiene — Dead architecture pattern cleanup, git hygiene | Clean working tree, removal of unused libs | ✅ Done (commit f337829) |
+| 21 | Enterprise Completion — SAML 2.0 SSO, PostHog, PagerDuty, CSP, semantic-release | SSO ACS, CSP report, telemetry, alerts | ✅ Done (pending commit) |
 
 **Scale anchor (per user directive):** ~80–120 docs, 300–500 diagrams, 100–200 API specs,
 100+ tables, 150–300 screens. Every volume docks target numbers to **verified build facts**

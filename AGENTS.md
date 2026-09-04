@@ -39,12 +39,13 @@ npx tsc -p tsconfig.check.json
 4. Commit message format: `vol: <area> — V<n>: <summary>`.
 5. Push to origin/main.
 
-## Current status (mid-Aug 2026)
-- ✅ All 12 volumes complete + docs-to-code upgrade audited V1→V12 (see the upgrade log in `docs/VOLUMES.md`).
-- ✅ V1 Product, V2 Design/UX, V3 Engineering, V4 Development, V5 AI, V6 Security, V7 DevOps, V8 Testing, V9 Documentation, V10 Business, V11 Operations, V12 Launch.
-- Open deferrals (documented in volume docs): semantic-release, deploy/preview jobs, PostHog, PagerDuty, status page, pixel contrast analysis, i18n, soak test.
+## Current status (Sept 2026)
+- ✅ All 12 volumes complete + V13 Global SaaS Hardening + V14–V20 complete (see the upgrade log in `docs/VOLUMES.md`).
+- ✅ V1 Product, V2 Design/UX, V3 Engineering, V4 Development, V5 AI, V6 Security, V7 DevOps, V8 Testing, V9 Documentation, V10 Business, V11 Operations, V12 Launch, V13 SaaS Hardening, V14–V20 Developer Ecosystem & Enterprise Hardening.
+- Closed deferrals: PostHog product analytics, PagerDuty incident alerting, semantic-release config, SAML 2.0 SSO ACS callback, CSP headers & violation receiver, status page, pixel contrast analysis, i18n (Phases 1–8), soak test.
+- Documented enterprise scale deferrals: DB Table Partitioning (deferred until >5M violation rows), Cosign container image signing (supply-chain hardening).
 - Typecheck: `npx tsc -p tsconfig.check.json` (source-only; never `tsc` on `.next-types`).
-- Tests: vitest 321+ ✓ · coverage gate 55/50/58/57 · Playwright 13 spec files · lint 0 ✓.
+- Tests: vitest 335+ ✓ · coverage gate 55/50/58/57 · Playwright 13 spec files · lint 0 ✓.
 - Do not hardcode test counts in this file — they drift. Check `npm test` output instead.
 
 ## Session continuity

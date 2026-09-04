@@ -23,6 +23,7 @@
 | GET | `/api/csrf-token` | – | CSRF token for forms |
 | GET | `/api/flags` / POST | session | Feature flags read/write |
 | GET | `/api/legal/tos`, `/api/legal/privacy` | – | Legal pages content |
+| POST | `/api/csp-report` | – | CSP violation report receiver |
 
 ### Authentication & account
 | Method | Path | Auth | Purpose |
@@ -34,6 +35,9 @@
 | POST+GET | `/api/auth/verify-email` | token | Email verification |
 | GET+POST+DELETE | `/api/auth/mfa/setup` | session | MFA enroll/verify/disable |
 | POST | `/api/auth/[...nextauth]` | – | NextAuth provider (login/logout/oauth) |
+| GET | `/api/auth/sso/login` | – | Initiate SAML 2.0 SSO redirect |
+| POST | `/api/auth/sso/callback` | – | SAML 2.0 ACS callback handler |
+| GET | `/api/auth/sso/metadata` | – | SAML 2.0 SP metadata XML |
 | GET | `/api/account/export` | session | GDPR data export |
 | POST | `/api/account/delete` | session | Account deletion |
 

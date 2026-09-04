@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { isRedisReady } from '@/lib/redis';
 import { logger } from '@/lib/error-logger';
 
+import { triggerIncident } from '@/lib/pagerduty';
+
 // Readiness probe (docs/devops/KUBERNETES.md): DB + Redis reachable.
 export async function GET() {
   const checks: Record<string, 'up' | 'down' | 'not-configured'> = {};
@@ -25,6 +27,13 @@ export async function GET() {
 
   if (!ready) {
     logger.warn({ checks }, 'Readiness probe failed');
+    triggerIncident({
+      summary: 'Readiness probe failed: Database or Redis unreachable',
+      severity: 'critical',
+      component: 'infrastructure',
+      customDetails: checks,
+    }).catch(() => {});
+
     return NextResponse.json(
       { status: 'not_ready', checks, timestamp: new Date().toISOString() },
       { status: 503 }

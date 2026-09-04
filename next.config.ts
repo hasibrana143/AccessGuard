@@ -33,6 +33,10 @@ let config: NextConfig = {
           { key: "X-XSS-Protection", value: "1; mode=block" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+          {
+            key: "Content-Security-Policy-Report-Only",
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.stripe.com https://*.ingest.sentry.io https://*.posthog.com https://integrate.api.nvidia.com https://api.github.com; frame-src 'self' https://js.stripe.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; report-uri /api/csp-report;",
+          },
         ],
       },
       {
