@@ -78,4 +78,29 @@ describe('ai/prompts', () => {
     expect(fix.explanation).toContain('Rule:');
     expect(fix.explanation).not.toContain('AI');
   });
+
+  it('provides WCAG 2.2 rule definitions and deterministic template fixes', () => {
+    expect(WCAG_RULES['target-size-minimum'].name).toContain('2.5.8');
+    expect(WCAG_RULES['focus-appearance'].name).toContain('2.4.11');
+    expect(WCAG_RULES['redundant-entry'].name).toContain('3.3.7');
+    expect(WCAG_RULES['accessible-auth'].name).toContain('3.3.8');
+
+    // Test target size fix
+    const targetFix = renderTemplateFix('<button class="icon-btn">x</button>', 'target-size-minimum', 'Target too small');
+    expect(targetFix.remediationCode).toContain('min-width: 24px');
+    expect(targetFix.remediationCode).toContain('min-height: 24px');
+
+    // Test focus appearance fix
+    const focusFix = renderTemplateFix('<input type="text" />', 'focus-appearance', 'Focus obscured');
+    expect(focusFix.remediationCode).toContain('outline: 2px solid');
+    expect(focusFix.remediationCode).toContain('scroll-margin-top');
+
+    // Test redundant entry fix
+    const redundantFix = renderTemplateFix('<input name="shipping-zip" />', 'redundant-entry', 'Redundant data');
+    expect(redundantFix.remediationCode).toContain('autocomplete="on"');
+
+    // Test accessible authentication fix
+    const authFix = renderTemplateFix('<input type="password" onpaste="return false;" />', 'accessible-auth', 'Paste blocked');
+    expect(authFix.remediationCode).not.toContain('onpaste="return false;"');
+  });
 });

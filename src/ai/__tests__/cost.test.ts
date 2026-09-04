@@ -38,4 +38,25 @@ describe('ai/cost', () => {
   it('formats cost as a stable USD string', () => {
     expect(formatCostUsd(0.000123456)).toBe('$0.000123');
   });
+
+  it('calculates exactly $0.00 cost for models with :free suffix', () => {
+    const cost = estimateCost('meta-llama/llama-3.3-70b-instruct:free', {
+      promptTokens: 500_000,
+      completionTokens: 500_000,
+      totalTokens: 1_000_000,
+    });
+    expect(cost?.costUsd).toBe(0);
+    expect(cost?.isFreeTier).toBe(true);
+    expect(cost?.estimate).toBe(false);
+  });
+
+  it('calculates exactly $0.00 cost for openrouter/free router', () => {
+    const cost = estimateCost('openrouter/free', {
+      promptTokens: 100_000,
+      completionTokens: 50_000,
+      totalTokens: 150_000,
+    });
+    expect(cost?.costUsd).toBe(0);
+    expect(cost?.isFreeTier).toBe(true);
+  });
 });

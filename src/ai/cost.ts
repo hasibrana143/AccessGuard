@@ -9,8 +9,15 @@ export interface PriceRow {
   outputPerMillion: number;
 }
 
-// Model pricing (per 1M tokens, USD) — updated Aug 2026
+// Model pricing (per 1M tokens, USD) — updated Sept 2026
 export const MODEL_PRICING: Record<string, PriceRow> = {
+  // Free tier models ($0.00 / 1M tokens)
+  'openrouter/free': { inputPerMillion: 0.0, outputPerMillion: 0.0 },
+  'meta-llama/llama-3.3-70b-instruct:free': { inputPerMillion: 0.0, outputPerMillion: 0.0 },
+  'qwen/qwen-2.5-coder-32b-instruct:free': { inputPerMillion: 0.0, outputPerMillion: 0.0 },
+  'google/gemini-2.0-flash-exp:free': { inputPerMillion: 0.0, outputPerMillion: 0.0 },
+  'deepseek/deepseek-r1:free': { inputPerMillion: 0.0, outputPerMillion: 0.0 },
+  'mistralai/mistral-small-24b-instruct-2501:free': { inputPerMillion: 0.0, outputPerMillion: 0.0 },
   // OpenAI
   'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10.0 },
   'gpt-4o-mini': { inputPerMillion: 0.15, outputPerMillion: 0.6 },
@@ -27,6 +34,9 @@ export const MODEL_PRICING: Record<string, PriceRow> = {
 };
 
 export function getPrice(model: string): PriceRow {
+  if (model.endsWith(':free') || model.startsWith('openrouter/free')) {
+    return { inputPerMillion: 0.0, outputPerMillion: 0.0 };
+  }
   return MODEL_PRICING[model] || { inputPerMillion: 0.13, outputPerMillion: 0.4 };
 }
 
@@ -37,18 +47,21 @@ export interface CostEstimate {
   totalTokens: number;
   costUsd: number;
   estimate: boolean;
+  isFreeTier?: boolean;
 }
 
 export function estimateCost(model: string, usage: ModelUsage | null): CostEstimate | null {
   if (!usage) return null;
 
-  const price = getPrice(model);
+  const isFree = model.endsWith(':free') || model.startsWith('openrouter/free') || process.env.AI_FREE_TIER === 'true';
+  const price = isFree ? { inputPerMillion: 0.0, outputPerMillion: 0.0 } : getPrice(model);
   const inputTokens = usage.promptTokens;
   const outputTokens = usage.completionTokens;
 
-  const costUsd =
-    (inputTokens / 1_000_000) * price.inputPerMillion +
-    (outputTokens / 1_000_000) * price.outputPerMillion;
+  const costUsd = isFree
+    ? 0.0
+    : (inputTokens / 1_000_000) * price.inputPerMillion +
+      (outputTokens / 1_000_000) * price.outputPerMillion;
 
   return {
     model,
@@ -56,7 +69,8 @@ export function estimateCost(model: string, usage: ModelUsage | null): CostEstim
     outputTokens,
     totalTokens: inputTokens + outputTokens,
     costUsd: Math.round(costUsd * 1_000_000) / 1_000_000,
-    estimate: !MODEL_PRICING[model],
+    estimate: !isFree && !MODEL_PRICING[model],
+    isFreeTier: isFree,
   };
 }
 

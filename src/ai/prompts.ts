@@ -129,6 +129,26 @@ export const WCAG_RULES: Record<string, RuleInfo> = {
     requirement: 'Table header cells (<th>) must have associated data cells.',
     examples: ['Ensure each <th> has at least one <td> referencing it', 'Use scope attribute on <th>', 'Check table structure is valid'],
   },
+  'target-size-minimum': {
+    name: 'Target Size (Minimum) (WCAG 2.2 - 2.5.8)',
+    requirement: 'Interactive touch targets must have an area of at least 24 by 24 CSS pixels, or sufficient spacing from adjacent targets.',
+    examples: ['Add min-w-[24px] min-h-[24px] or p-2 to clickable element', 'Increase icon button touch area with padding', 'Ensure 24px target spacing'],
+  },
+  'focus-appearance': {
+    name: 'Focus Appearance & Not Obscured (WCAG 2.2 - 2.4.11 / 2.4.12)',
+    requirement: 'When an item receives keyboard focus, the focus indicator must have a 2px perimeter with 3:1 contrast and must not be obscured by sticky headers or popups.',
+    examples: ['Add scroll-margin-top to prevent sticky header occlusion', 'Use outline: 2px solid var(--ring); outline-offset: 2px;', 'Avoid overflow: hidden clipping focus rings'],
+  },
+  'redundant-entry': {
+    name: 'Redundant Entry (WCAG 2.2 - 3.3.7)',
+    requirement: 'Information previously entered by the user in the same process must either be auto-populated or available for selection.',
+    examples: ['Add appropriate autocomplete attribute (e.g. autocomplete="email")', 'Provide "Same as billing address" checkbox', 'Pre-populate stored user profile data'],
+  },
+  'accessible-auth': {
+    name: 'Accessible Authentication (WCAG 2.2 - 3.3.8)',
+    requirement: 'Cognitive function tests (e.g. memorizing passwords, puzzles) must not be required without an alternative (e.g. copy-paste, password manager, passkeys).',
+    examples: ['Never disable copy-paste on password inputs (remove onpaste="return false")', 'Support autocomplete="current-password"', 'Support WebAuthn / Passkeys / Magic links'],
+  },
 };
 
 export function getRuleInfo(ruleId: string, fallbackDescription: string): RuleInfo {
@@ -302,6 +322,26 @@ export function renderTemplateFix(html: string, ruleId: string, description: str
     'meta-viewport': () => ({
       remediationCode: html.replace(/user-scalable=no/g, '').replace(/maximum-scale=1/g, ''),
       explanation: 'Removed user-scalable=no and maximum-scale=1 to allow pinch-to-zoom.',
+    }),
+    'target-size-minimum': () => ({
+      remediationCode: html.includes('style=')
+        ? html.replace(/style="([^"]*)"/i, 'style="$1; min-width: 24px; min-height: 24px; display: inline-flex; align-items: center; justify-content: center;"')
+        : html.replace(/(<[a-z0-9]+\b)/i, '$1 style="min-width: 24px; min-height: 24px; display: inline-flex; align-items: center; justify-content: center;"'),
+      explanation: 'Enforced a minimum 24x24px touch target size for interactive elements (WCAG 2.2 SC 2.5.8).',
+    }),
+    'focus-appearance': () => ({
+      remediationCode: html.includes('style=')
+        ? html.replace(/style="([^"]*)"/i, 'style="$1; outline: 2px solid currentColor; outline-offset: 2px; scroll-margin-top: 80px;"')
+        : html.replace(/(<[a-z0-9]+\b)/i, '$1 style="outline: 2px solid currentColor; outline-offset: 2px; scroll-margin-top: 80px;"'),
+      explanation: 'Ensured high-contrast focus outline and scroll margin to prevent focus obscuration (WCAG 2.2 SC 2.4.11 / 2.4.12).',
+    }),
+    'redundant-entry': () => ({
+      remediationCode: html.includes('autocomplete=') ? html : html.replace(/(<input\b)/i, '$1 autocomplete="on"'),
+      explanation: 'Enabled autocomplete attribute so user does not need to re-enter redundant data (WCAG 2.2 SC 3.3.7).',
+    }),
+    'accessible-auth': () => ({
+      remediationCode: html.replace(/onpaste="[^"]*"/gi, '').replace(/oncopy="[^"]*"/gi, ''),
+      explanation: 'Removed copy/paste restrictions to permit password managers and assistive input tools (WCAG 2.2 SC 3.3.8).',
     }),
   };
 
