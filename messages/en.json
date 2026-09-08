@@ -1015,7 +1015,15 @@
     "flagUpdateFailed": "Failed to update flag",
     "recentScans": "Recent Scans",
     "scanCounts": "{pages} pages \u00b7 {violations} violations \u00b7 {date}",
-    "noScans": "No scans yet"
+    "noScans": "No scans yet",
+    "admin.idle": "Idle",
+    "admin.liveScanStatus": "Live scan status",
+    "admin.noActiveScans": "No active scans",
+    "admin.pagesUnit": "pages per unit",
+    "admin.queued": "Queued",
+    "admin.recentActivity": "Recent activity",
+    "admin.running": "Running",
+    "admin.scanning": "Scanning"
   },
   "header": {
     "openMenu": "Open menu",

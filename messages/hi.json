@@ -1467,7 +1467,15 @@
     "tour5": "रिपोर्ट पेज से कार्यकारी सारांश और VPAT रिपोर्ट निर्यात करें।",
     "dashboard": "डैशबोर्ड",
     "skipTour": "टूर छोड़ें",
-    "startScanning": "स्कैनिंग शुरू करें"
+    "startScanning": "स्कैनिंग शुरू करें",
+    "dash.idle": "Idle",
+    "dash.liveScanStatus": "Live scan status",
+    "dash.noActiveScans": "No active scans",
+    "dash.pagesUnit": "pages per unit",
+    "dash.queued": "Queued",
+    "dash.recentActivity": "Recent activity",
+    "dash.running": "Running",
+    "dash.scanning": "Scanning"
   },
   "usageMeter": {
     "monthlyUsage": "मासिक उपयोग",
