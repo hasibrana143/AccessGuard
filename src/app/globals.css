@@ -151,7 +151,9 @@
   --muted-foreground: oklch(0.65 0 0);
   --accent: oklch(0.7 0.18 160);
   --accent-foreground: oklch(0.12 0 0);
-  --destructive: oklch(0.55 0.22 25);
+  /* Bumped lightness 0.55 → 0.72 to clear WCAG AA 4.5:1 against dark backgrounds
+     (was 3.57:1 on `.text-destructive` in /scans — see contrast spec). */
+  --destructive: oklch(0.72 0.21 25);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.65 0.2 25);

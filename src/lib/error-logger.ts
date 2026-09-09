@@ -20,9 +20,10 @@ export const correlationIdStorage = AsyncLocalStorageClass
 
 export const logger = pino({
   level: isServer ? (process.env.LOG_LEVEL || 'info') : 'silent',
-  transport: isServer && process.env.NODE_ENV === 'development'
-    ? { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss.l' } }
-    : undefined,
+  // No pino-pretty transport: the worker thread it spawns crashes Next
+  // standalone/serverless builds. Structured JSON logs only; prettify at
+  // collection time (e.g. `pino-pretty` on the log drain).
+  transport: undefined,
   redact: {
     paths: ['req.headers.authorization', 'req.headers.cookie', 'password', 'token', 'secret', 'apiKey'],
     censor: '[REDACTED]',

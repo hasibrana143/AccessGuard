@@ -28,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
     keywords: ["ADA compliance", "WCAG", "accessibility", "web accessibility", "ADA lawsuit prevention", "AI remediation", "accessibility scanner"],
     authors: [{ name: "AccessGuard Team" }],
     icons: {
-      icon: "/logo.svg",
+      icon: "/favicon.svg",
     },
     manifest: "/manifest.json",
     openGraph: {

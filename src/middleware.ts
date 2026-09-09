@@ -81,6 +81,6 @@ export default withAuth(
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|logo.svg|manifest.json|robots.txt|sitemap.xml).*)',
+    '/((?!_next/static|_next/image|favicon.ico|favicon.svg|logo.svg|manifest.json|robots.txt|sitemap.xml).*)',
   ],
 };

@@ -65,7 +65,7 @@ export function showBrowserNotification(title: string, options?: { body?: string
     try {
       new Notification(title, {
         body: options?.body,
-        icon: options?.icon || '/logo.svg',
+        icon: options?.icon || '/favicon.svg',
       });
     } catch {
       // ignore
