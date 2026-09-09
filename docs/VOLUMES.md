@@ -56,6 +56,7 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V13 | SCIM 2.0 Groups: `ScimGroup` model + `/api/scim/v2/Groups` (list/create) + `/Groups/{id}` (get/replace/delete) + `scim.group_*` audit events | `7ba4875` |
 | V13 | Consent: EU cookie consent persistence — `CookieConsent` model + `/api/consent` GET/POST + GDPR-compliant UI (i18n) | `73bc835` |
 | V13 | Compliance: Transfer Impact Assessment (`docs/legal/TRANSFER_IMPACT_ASSESSMENT.md`) + DATA_RESIDENCY DoDs updated (dataRegion field, data-export, TIA completed) | `9c22a9b` |
+| V20 | Brand/icon hygiene: square `favicon.svg` for tab/manifest/push icons (`layout.tsx`, `manifest.json`, `push.ts`, middleware exclusion), `logo.svg` wordmark for brand surfaces · `tw-animate-css` import restored (dialog/popover/tooltip/select animations) · pino-pretty transport removed with rationale comment (Next standalone worker crash) · unused `deepmerge-ts` dep dropped · junk `testcount.txt` removed · verified lint 0, tsc 0, vitest 349/349, `next build` green | `425cd37` |
 
 ## Process (per volume)
 
