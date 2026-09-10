@@ -11,10 +11,13 @@ interface StatsGridProps {
   avgRiskScore: number;
   stats: { critical: number; serious: number; moderate: number; minor: number; total: number };
   projectsCount: number;
+  /** Open-violation count 7 days ago (for the week-over-week delta). Null = unknown, row hidden. */
+  previousWeekTotal?: number | null;
 }
 
-export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps) {
+export function StatsGrid({ avgRiskScore, stats, projectsCount, previousWeekTotal = null }: StatsGridProps) {
   const t = useTranslations('dash');
+  const delta = previousWeekTotal === null ? null : stats.total - previousWeekTotal;
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card className="relative overflow-hidden">
@@ -30,7 +33,7 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
                 {getRiskLabel(avgRiskScore)}
               </Badge>
             </div>
-            <div className={`p-3 rounded-xl ${avgRiskScore >= 60 ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+            <div className={`p-3 rounded-xl ${avgRiskScore >= 60 ? 'bg-emerald/10' : 'bg-critical/10'}`}>
               <Target className={`h-6 w-6 ${getRiskColor(avgRiskScore)}`} />
             </div>
           </div>
@@ -43,13 +46,15 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
             <div>
               <p className="text-sm text-muted-foreground">{t('openViolations')}</p>
               <p className="text-3xl font-bold mt-1">{stats.total}</p>
-              <div className="flex items-center gap-1 mt-2 text-xs text-emerald-500">
-                <TrendingDown className="h-3 w-3" />
-                <span>{t('fromLastWeek', { percent: 12 })}</span>
-              </div>
+              {delta !== null && delta !== 0 && (
+                <div className={`flex items-center gap-1 mt-2 text-xs ${delta < 0 ? 'text-emerald' : 'text-muted-foreground'}`}>
+                  <TrendingDown className={`h-3 w-3 ${delta > 0 ? 'rotate-180' : ''}`} />
+                  <span>{t('fromLastWeek', { percent: Math.abs(delta) })}</span>
+                </div>
+              )}
             </div>
-            <div className="p-3 rounded-xl bg-orange-500/10">
-              <AlertTriangle className="h-6 w-6 text-orange-500" aria-hidden="true" />
+            <div className="p-3 rounded-xl bg-serious/10">
+              <AlertTriangle className="h-6 w-6 text-serious" aria-hidden="true" />
             </div>
           </div>
         </CardContent>
@@ -60,14 +65,14 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount }: StatsGridProps
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-muted-foreground">{t('criticalIssues')}</p>
-              <p className="text-3xl font-bold mt-1 text-red-500">{stats.critical}</p>
+              <p className="text-3xl font-bold mt-1 text-critical">{stats.critical}</p>
               <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
                 <AlertCircle className="h-3 w-3" />
                 <span>{t('requiresAttention')}</span>
               </div>
             </div>
-            <div className="p-3 rounded-xl bg-red-500/10">
-              <AlertCircle className="h-6 w-6 text-red-500" aria-hidden="true" />
+            <div className="p-3 rounded-xl bg-critical/10">
+              <AlertCircle className="h-6 w-6 text-critical" aria-hidden="true" />
             </div>
           </div>
         </CardContent>

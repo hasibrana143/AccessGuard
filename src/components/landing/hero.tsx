@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { motion, useInView, useMotionValue, useTransform, animate } from 'framer-motion';
 import {
@@ -48,7 +48,6 @@ export function Hero({
   onWatchDemo?: () => void;
 }) {
   const t = useTranslations('landing');
-  const [showDemoModal, setShowDemoModal] = useState(false);
 
   const stats = [
     { label: t('statRisk'), value: '78', icon: Target, trend: '+5', color: 'emerald' },
@@ -127,9 +126,9 @@ export function Hero({
                 {t('startFreeTrial')}
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
-              <Button size="lg" variant="outline" className="h-14 px-8 text-lg" onClick={() => { setShowDemoModal(true); onWatchDemo(); }}>
+              <Button size="lg" variant="outline" className="h-14 px-8 text-lg" onClick={onWatchDemo}>
                 <Play className="mr-2 h-5 w-5" />
-                {t('watchDemo')}
+                {t('howItWorks')}
               </Button>
             </div>
 

@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Menu, Search, Bell, HelpCircle, Settings, LogOut, ChevronDown, CreditCard, Loader2, ArrowRight, Keyboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -28,15 +26,14 @@ interface AuditNotification {
 }
 
 const NOTIFICATION_ACTIONS = new Set([
-  'scan.started',
-  'scan.completed',
-  'scan.failed',
-  'scan.blocked_plan_limit',
-  'github.pr_created',
+  'scan_started',
+  'scan_completed',
+  'scan_failed',
+  'scan_blocked_plan_limit',
+  'github_pr_created',
   'remediation_generated',
   'violation_status_changed',
-  'team.invite_sent',
-  'member_invited', // legacy
+  'user_invited',
 ]);
 
 export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeaderProps) {
@@ -111,16 +108,18 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
               ) : null}
             </div>
           )}
-          <div className="relative hidden sm:block">
-            <Label htmlFor="header-search" className="sr-only">{t('searchLabel')}</Label>
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <Input
-              id="header-search"
-              placeholder={t('searchPlaceholder')}
-              className="w-72 pl-9 bg-muted/50"
-              autoComplete="off"
-            />
-          </div>
+          <button
+            type="button"
+            onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground bg-muted/50 rounded-lg border border-border hover:bg-muted transition-colors w-72"
+            aria-label={t('searchLabel')}
+          >
+            <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left truncate">{t('searchPlaceholder')}</span>
+            <kbd className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-background border rounded">
+              <span className="text-xs">⌘</span>K
+            </kbd>
+          </button>
         </div>
         <div className="flex items-center gap-3">
           {isAdmin && (
@@ -178,7 +177,7 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label={t('helpSupport')} onClick={() => window.open('https://github.com', '_blank', 'noopener,noreferrer')}>
+                <Button variant="ghost" size="icon" aria-label={t('helpSupport')} onClick={() => window.open('/api/docs', '_blank', 'noopener,noreferrer')}>
                   <HelpCircle className="h-5 w-5" />
                 </Button>
               </TooltipTrigger>

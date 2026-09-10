@@ -31,13 +31,24 @@ export default function DashboardPage() {
   const { data: statsData } = useViolationStats(undefined, user?.orgSlug ?? undefined);
   const { data: violationsData } = useViolations({ limit: 5 });
   const { data: scansData } = useScans(undefined, 5);
-  const { data: trendData } = useTrendData(undefined, 30);
+  const [trendDays, setTrendDays] = React.useState(30);
+  const { data: trendData } = useTrendData(undefined, trendDays);
   const { isConnected, reconnect } = useDashboardSSE(user?.orgId);
 
   const stats = statsData?.severity || { critical: 0, serious: 0, moderate: 0, minor: 0, total: 0 };
   const avgRiskScore = projects && projects.length > 0
     ? Math.round(projects.reduce((acc, p) => acc + (p.riskScore || 0), 0) / projects.length)
     : 0;
+  // Week-over-week open-violation delta, derived from real trend buckets:
+  // open count only changes via creates/fixes, so "open 7 days ago" ≈
+  // current open − created(last 7d) + fixed(last 7d). Hidden when <7d of data.
+  const previousWeekTotal = (() => {
+    if (!trendData || trendData.length < 7) return null;
+    const last7 = trendData.slice(-7);
+    const created = last7.reduce((a, d) => a + (d.violations ?? 0), 0);
+    const fixed = last7.reduce((a, d) => a + (d.fixed ?? 0), 0);
+    return stats.total - created + fixed;
+  })();
 
   return (
     <div className="space-y-6">
@@ -83,12 +94,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <StatsGrid avgRiskScore={avgRiskScore} stats={stats} projectsCount={projects?.length || 0} />
+      <StatsGrid avgRiskScore={avgRiskScore} stats={stats} projectsCount={projects?.length || 0} previousWeekTotal={previousWeekTotal} />
 
       {user?.orgId && <UsageMeter orgId={user.orgId} compact />}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <TrendChart trendData={trendData || []} />
+        <TrendChart trendData={trendData || []} days={trendDays} onDaysChange={setTrendDays} />
         <SeverityPie stats={stats} />
         <AIFixRate fixRate={statsData?.fixRate} />
       </div>

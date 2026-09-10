@@ -1,24 +1,24 @@
 import type { Severity, ViolationStatus } from '@/types';
 
 export const SEVERITY_COLORS: Record<Severity, string> = {
-  critical: '#ef4444',
-  serious: '#f97316',
-  moderate: '#eab308',
-  minor: '#3b82f6',
+  critical: 'var(--critical)',
+  serious: 'var(--serious)',
+  moderate: 'var(--moderate)',
+  minor: 'var(--minor)',
 };
 
 export const SEVERITY_BG: Record<Severity, string> = {
-  critical: 'bg-red-500/10',
-  serious: 'bg-orange-500/10',
-  moderate: 'bg-yellow-500/10',
-  minor: 'bg-blue-500/10',
+  critical: 'bg-critical/10',
+  serious: 'bg-serious/10',
+  moderate: 'bg-moderate/10',
+  minor: 'bg-minor/10',
 };
 
 export const SEVERITY_TEXT: Record<Severity, string> = {
-  critical: 'text-red-500',
-  serious: 'text-orange-500',
-  moderate: 'text-yellow-700',
-  minor: 'text-blue-500',
+  critical: 'text-critical',
+  serious: 'text-serious',
+  moderate: 'text-moderate',
+  minor: 'text-minor',
 };
 
 export const WCAG_LEVELS = ['A', 'AA', 'AAA'] as const;
@@ -26,10 +26,10 @@ export const WCAG_CATEGORIES = ['perceivable', 'operable', 'understandable', 'ro
 
 export function getSeverityBadge(severity: Severity) {
   const styles: Record<Severity, string> = {
-    critical: 'bg-red-500/10 text-red-500 border-red-500/20 dark:text-red-400',
-    serious: 'bg-orange-500/10 text-orange-500 border-orange-500/20 dark:text-orange-400',
-    moderate: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20 dark:text-yellow-300',
-    minor: 'bg-blue-500/10 text-blue-500 border-blue-500/20 dark:text-blue-400',
+    critical: 'bg-critical/10 text-critical border-critical/20',
+    serious: 'bg-serious/10 text-serious border-serious/20',
+    moderate: 'bg-moderate/10 text-moderate border-moderate/20',
+    minor: 'bg-minor/10 text-minor border-minor/20',
   };
   return styles[severity];
 }
@@ -45,17 +45,17 @@ export function getStatusBadge(status: ViolationStatus) {
 }
 
 export function getRiskColor(score: number): string {
-  if (score >= 80) return 'text-emerald-500';
-  if (score >= 60) return 'text-yellow-500';
-  if (score >= 40) return 'text-orange-500';
-  return 'text-red-500';
+  if (score >= 80) return 'text-emerald';
+  if (score >= 60) return 'text-moderate';
+  if (score >= 40) return 'text-serious';
+  return 'text-critical';
 }
 
 export function getRiskGradient(score: number): string {
-  if (score >= 80) return 'from-emerald-500 to-emerald-600';
-  if (score >= 60) return 'from-yellow-500 to-yellow-600';
-  if (score >= 40) return 'from-orange-500 to-orange-600';
-  return 'from-red-500 to-red-600';
+  if (score >= 80) return 'from-emerald to-emerald';
+  if (score >= 60) return 'from-moderate to-moderate';
+  if (score >= 40) return 'from-serious to-serious';
+  return 'from-critical to-critical';
 }
 
 export function getRiskLabel(score: number): string {

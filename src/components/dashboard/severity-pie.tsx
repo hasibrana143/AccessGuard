@@ -30,7 +30,7 @@ export function SeverityPie({ stats }: SeverityPieProps) {
           <ResponsiveContainer width="100%" height="100%">
             <RechartsPieChart role="img" aria-label={t('pieAria')}>
               <Pie
-                data={pieData.length > 0 ? pieData : [{ name: t('none'), value: 1, color: '#888' }]}
+                data={pieData.length > 0 ? pieData : [{ name: t('none'), value: 1, color: 'var(--muted)' }]}
                 cx="50%"
                 cy="50%"
                 innerRadius={50}
@@ -38,7 +38,7 @@ export function SeverityPie({ stats }: SeverityPieProps) {
                 paddingAngle={2}
                 dataKey="value"
               >
-                {(pieData.length > 0 ? pieData : [{ name: t('none'), value: 1, color: '#888' }]).map((entry) => (
+                {(pieData.length > 0 ? pieData : [{ name: t('none'), value: 1, color: 'var(--muted)' }]).map((entry) => (
                   <Cell key={entry.name} fill={entry.color} aria-label={`${entry.name}: ${entry.value}`} />
                 ))}
               </Pie>

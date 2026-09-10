@@ -72,7 +72,7 @@ export default async function PrivacyPage() {
             <h2 className="text-2xl font-semibold mb-4">4. Data Security</h2>
             <p className="text-muted-foreground">
               We implement industry-standard security measures including encryption in transit (TLS 1.3) and at rest (AES-256),
-              multi-factor authentication, regular security audits, and SOC 2 compliance. No system is 100% secure, but we
+              multi-factor authentication, and regular security audits. No system is 100% secure, but we
               work to protect your information.
             </p>
           </section>

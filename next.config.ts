@@ -42,12 +42,22 @@ let config: NextConfig = {
           },
         ],
       },
-      {
-        source: "/_next/static/:path*",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-        ],
-      },
+      // NOTE: no custom Cache-Control for /_next/static in dev. Turbopack
+      // chunk filenames are stable (no content hash), so `immutable` pins
+      // stale chunks in the browser for a year — every edit then looks
+      // broken until a hard reload. Next sets correct headers itself in
+      // production (hashed filenames), so this rule only ever helped prod
+      // and only ever hurt dev.
+      ...(process.env.NODE_ENV === 'production'
+        ? [
+            {
+              source: '/_next/static/:path*',
+              headers: [
+                { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+              ],
+            },
+          ]
+        : []),
       {
         source: "/favicon.ico",
         headers: [

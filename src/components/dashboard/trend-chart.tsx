@@ -17,9 +17,11 @@ interface TrendItem {
 
 interface TrendChartProps {
   trendData: TrendItem[];
+  days?: number;
+  onDaysChange?: (days: number) => void;
 }
 
-export function TrendChart({ trendData }: TrendChartProps) {
+export function TrendChart({ trendData, days = 30, onDaysChange }: TrendChartProps) {
   const t = useTranslations('dash');
   return (
     <Card className="lg:col-span-2">
@@ -27,9 +29,9 @@ export function TrendChart({ trendData }: TrendChartProps) {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-lg">{t('violationTrends')}</CardTitle>
-            <CardDescription>{t('violationHistory')}</CardDescription>
+            <CardDescription>{t('violationHistory', { days })}</CardDescription>
           </div>
-          <Select defaultValue="30">
+          <Select value={String(days)} onValueChange={(v) => onDaysChange?.(Number(v))}>
             <SelectTrigger className="w-32" aria-label={t('trendRangeLabel')}>
               <SelectValue />
             </SelectTrigger>
@@ -80,11 +82,11 @@ export function TrendChart({ trendData }: TrendChartProps) {
             <span className="text-muted-foreground">{t('total')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-0.5 bg-red-500" />
+            <div className="w-3 h-0.5 bg-critical" />
             <span className="text-muted-foreground">{t('critical')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-0.5 bg-orange-500" />
+            <div className="w-3 h-0.5 bg-serious" />
             <span className="text-muted-foreground">{t('serious')}</span>
           </div>
         </div>

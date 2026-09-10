@@ -24,8 +24,8 @@ export function Privacy() {
         <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
           <Card>
             <CardHeader>
-              <div className="p-3 rounded-xl bg-emerald-500/10 w-fit mb-3">
-                <Lock aria-hidden="true" className="h-6 w-6 text-emerald-500" />
+              <div className="p-3 rounded-xl bg-emerald/10 w-fit mb-3">
+                <Lock aria-hidden="true" className="h-6 w-6 text-emerald" />
               </div>
               <CardTitle>{t('encTitle')}</CardTitle>
               <CardDescription>
@@ -44,22 +44,22 @@ export function Privacy() {
               <div className="p-3 rounded-xl bg-coral/10 w-fit mb-3">
                 <Shield aria-hidden="true" className="h-6 w-6 text-coral" />
               </div>
-              <CardTitle>{t('socTitle')}</CardTitle>
+              <CardTitle>{t('auditTitle')}</CardTitle>
               <CardDescription>
-                {t('socDesc')}
+                {t('auditDesc')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                {t('socBody')}
+                {t('auditBody')}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <div className="p-3 rounded-xl bg-blue-500/10 w-fit mb-3">
-                <Users aria-hidden="true" className="h-6 w-6 text-blue-500" />
+              <div className="p-3 rounded-xl bg-minor/10 w-fit mb-3">
+                <Users aria-hidden="true" className="h-6 w-6 text-minor" />
               </div>
               <CardTitle>{t('gdprTitle')}</CardTitle>
               <CardDescription>

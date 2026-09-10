@@ -36,7 +36,7 @@ export function ProjectCard({ project, isScanning, onScan, onHtmlUpload, onSetti
             <CardTitle className="text-lg flex items-center gap-2">
               {project.name}
               {project.riskScore != null && project.riskScore < 50 && (
-                <Badge variant="outline" className="text-xs border-red-500/20 text-red-500">
+                <Badge variant="outline" className="text-xs border-critical/20 text-critical">
                   {t('highRisk')}
                 </Badge>
               )}
@@ -104,20 +104,20 @@ export function ProjectCard({ project, isScanning, onScan, onHtmlUpload, onSetti
         </div>
 
         <div className="grid grid-cols-4 gap-2 text-center">
-          <div className="p-2 rounded-lg bg-red-500/10">
-            <div className="text-lg font-bold text-red-500">{project.violations?.critical || 0}</div>
+          <div className="p-2 rounded-lg bg-critical/10">
+            <div className="text-lg font-bold text-critical">{project.violations?.critical || 0}</div>
             <div className="text-xs text-muted-foreground">{t('crit')}</div>
           </div>
-          <div className="p-2 rounded-lg bg-orange-500/10">
-            <div className="text-lg font-bold text-orange-500">{project.violations?.serious || 0}</div>
+          <div className="p-2 rounded-lg bg-serious/10">
+            <div className="text-lg font-bold text-serious">{project.violations?.serious || 0}</div>
             <div className="text-xs text-muted-foreground">{t('ser')}</div>
           </div>
-          <div className="p-2 rounded-lg bg-yellow-500/10">
-            <div className="text-lg font-bold text-yellow-500">{project.violations?.moderate || 0}</div>
+          <div className="p-2 rounded-lg bg-moderate/10">
+            <div className="text-lg font-bold text-moderate">{project.violations?.moderate || 0}</div>
             <div className="text-xs text-muted-foreground">{t('mod')}</div>
           </div>
-          <div className="p-2 rounded-lg bg-blue-500/10">
-            <div className="text-lg font-bold text-blue-500">{project.violations?.minor || 0}</div>
+          <div className="p-2 rounded-lg bg-minor/10">
+            <div className="text-lg font-bold text-minor">{project.violations?.minor || 0}</div>
             <div className="text-xs text-muted-foreground">{t('min')}</div>
           </div>
         </div>

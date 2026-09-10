@@ -1,23 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
-  <!-- Logo Mark - Shield with Accessibility Symbol -->
+  <!-- Logo Mark - Shield with Accessibility Symbol (coral brand) -->
   <g id="logo-mark">
-    <path d="M12 8C12 5.23858 14.2386 3 17 3H33C35.7614 3 38 5.23858 38 8V22C38 30.8366 31.8366 37 23 37C14.1634 37 8 30.8366 8 22V8Z" fill="#1e40af"/>
-    <path d="M12 8C12 5.23858 14.2386 3 17 3H33C35.7614 3 38 5.23858 38 8V22C38 30.8366 31.8366 37 23 37C14.1634 37 8 30.8366 8 22V8Z" stroke="#3b82f6" stroke-width="1.5"/>
+    <path d="M12 8C12 5.23858 14.2386 3 17 3H33C35.7614 3 38 5.23858 38 8V22C38 30.8366 31.8366 37 23 37C14.1634 37 8 30.8366 8 22V8Z" fill="#cc272e"/>
     <!-- Accessibility Person -->
-    <circle cx="23" cy="13" r="3" fill="white"/>
-    <path d="M23 17V27M18 21H28M19 27L20.5 31.5M27 27L25.5 31.5" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="23" cy="13" r="3" fill="#faf8f6"/>
+    <path d="M23 17V27M18 21H28M19 27L20.5 31.5M27 27L25.5 31.5" stroke="#faf8f6" stroke-width="2.5" stroke-linecap="round"/>
   </g>
-  
+
   <!-- Wordmark -->
   <g id="wordmark">
-    <text x="52" y="26" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="#0f172a">
-      Access
-    </text>
-    <text x="128" y="26" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="#3b82f6">
-      Guard
+    <text x="52" y="26" font-family="Geist, system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="currentColor">
+      AccessGuard
     </text>
     <!-- Tagline -->
-    <text x="52" y="44" font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="#64748b" letter-spacing="0.5">
+    <text x="52" y="44" font-family="Geist, system-ui, -apple-system, sans-serif" font-size="11" font-weight="500" fill="currentColor" opacity="0.6" letter-spacing="0.5">
       WEB ACCESSIBILITY PLATFORM
     </text>
   </g>

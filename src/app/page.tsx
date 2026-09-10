@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -10,18 +9,16 @@ import { Badge } from '@/components/ui/badge';
 import { Hero } from '@/components/landing/hero';
 import { TrustIndicators } from '@/components/landing/trust-indicators';
 import { Features } from '@/components/landing/features';
-import { Testimonials } from '@/components/landing/testimonials';
+import { HowItWorks } from '@/components/landing/how-it-works';
 import { Comparison } from '@/components/landing/comparison';
 import { Pricing } from '@/components/landing/pricing';
 import { FAQ } from '@/components/landing/faq';
 import { CTA } from '@/components/landing/cta';
 import { Privacy } from '@/components/landing/privacy';
 import { FooterSection } from '@/components/landing/footer-section';
-import { DemoModal } from '@/components/landing/demo-modal';
 
 export default function LandingPage() {
   const t = useTranslations('landing');
-  const [showDemo, setShowDemo] = useState(false);
   const router = useRouter();
   const { isAuthenticated } = useAuth();
 
@@ -31,6 +28,10 @@ export default function LandingPage() {
     } else {
       router.push('/auth/login');
     }
+  };
+
+  const scrollToHowItWorks = () => {
+    document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
@@ -60,17 +61,16 @@ export default function LandingPage() {
           </div>
         </div>
       </nav>
-      <Hero onGetStarted={handleGetStarted} onWatchDemo={() => setShowDemo(true)} />
+      <Hero onGetStarted={handleGetStarted} onWatchDemo={scrollToHowItWorks} />
       <TrustIndicators />
       <Features />
-      <Testimonials />
+      <HowItWorks />
       <Comparison />
       <Pricing onGetStarted={handleGetStarted} />
       <FAQ />
       <CTA onGetStarted={handleGetStarted} />
       <Privacy />
       <FooterSection />
-      <DemoModal open={showDemo} onOpenChange={setShowDemo} onGetStarted={handleGetStarted} />
     </div>
   );
 }
