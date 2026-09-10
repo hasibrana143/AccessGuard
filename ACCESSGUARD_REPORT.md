@@ -4,7 +4,7 @@
 **Report Date:** September 2026  
 **Version:** V22 (Post-V20 Complete)  
 **Status:** ✅ Production Ready  
-**All Checks:** Pass (349 tests, lint 0, typecheck 0)
+**All Checks:** Pass (383 tests, lint 0, typecheck 0, e2e smoke 13/13, npm audit 0)
 
 ---
 
@@ -27,13 +27,13 @@
 
 ### Git State
 - Branch: `main`
-- Commits ahead of `origin/main`: 5
+- Commits ahead of `origin/main`: 0 (in sync)
 - Last 5 commits:
-  - `f46e8d6` vol: plg-launch — V19: Dashboard usage meter + i18n consistency
-  - `2dfcb1b` vol: plg-launch — V19: Dashboard usage meter integration
-  - `beb0445` vol: plg-launch — V18: Free tier pricing, SEO, robots.txt
-  - `dcdca67` vol: plg-launch — V17: Legal pages, Mobile SDK, Quota, Email templates
-  - `9248de7` vol: plg-launch — V16: VS Code/MCP/GitHub/rate-limit
+  - `bd0928b` vol: engineering — V3: middleware-to-proxy deferral decision
+  - `f29aa41` vol: security — V6: seed prod-guard, health lockdown, parity tests, CSP enforce
+  - `6ba55a5` docs(volumes): V16/V17 de-scope status
+  - `899f1fb` vol: product — V16/V17: remove MCP/VSCode/GitHub-App/Mobile-SDK
+  - `1457f4d` docs(agents): gstack-first standing directive
 
 ---
 
@@ -93,7 +93,7 @@ Key Packages:
 - concurrently ✅
 ```
 
-### 19 Prisma Models
+### 16 Prisma Models
 1. **Organization** - Companies with plan, subscription, Stripe IDs
 2. **User** - Users with role, MFA, GitHub token
 3. **Project** - Websites being scanned
@@ -178,30 +178,21 @@ Key Packages:
 
 ## 5. DEVELOPER TOOLS
 
-### VS Code Extension
-- `vscode-extension/` ✅
-- Package.json + extension.ts + client.ts + diagnostics.ts + commands.ts
-- Commands: scan project, get violations, generate fix, generate VPAT
+> Sept 2026 owner de-scope: VS Code Extension, MCP Server, Probot GitHub App
+> and Mobile SDK were removed (`899f1fb` — 21 files). Core GitHub OAuth + PR
+> pipeline + `/api/github/webhook` in `src/` are unaffected.
 
-### MCP Server
-- `mcp-server/` ✅
-- 10 tools: scan_project, get_violations, generate_fix, generate_vpat, etc.
-- Used for AI agent tool access
-
-### GitHub App
-- `github-app/` ✅
-- Probot-based PR checks, annotations, auto-fix PRs
-- Permissions: Contents Read&Write, Checks Read&Write, PRs Read&Write, Metadata Read, Issues Write
+### ~~VS Code Extension~~ — removed
+### ~~MCP Server~~ — removed
+### ~~GitHub App (Probot)~~ — removed
+### ~~Mobile SDK~~ — removed
 
 ### GitHub Action
 - `github-action/` ✅
 - Marketplace action for CI/CD
 - Triggers on push, workflow_dispatch
 
-### Mobile SDK
-- `mobile-sdk/` ✅
-- React Native SDK with `useAccessGuard` hook
-- Types: sdk.ts, hooks.ts, types.ts
+### Mobile SDK — removed (see de-scope note above)
 
 ### CI/CD Workflow
 - `.github/workflows/accessguard.yml`
@@ -314,11 +305,11 @@ Key Packages:
 | Category | Status |
 |----------|--------|
 | Free tier & self-serve onboarding | ✅ |
-| VS Code Extension | ✅ |
-| MCP Server (10 tools) | ✅ |
-| GitHub App (PR checks + auto-fix) | ✅ |
+| VS Code Extension | ❌ removed (de-scope) |
+| MCP Server (10 tools) | ❌ removed (de-scope) |
+| GitHub App (PR checks + auto-fix) | ❌ removed Probot app (core GitHub OAuth intact) |
 | GitHub Action (marketplace) | ✅ |
-| Mobile SDK (React Native) | ✅ |
+| Mobile SDK (React Native) | ❌ removed (de-scope) |
 | Free tier pricing (5 plans) | ✅ |
 | Legal pages (/privacy, /terms) | ✅ |
 | SEO (sitemap + robots.txt) | ✅ |
@@ -326,17 +317,17 @@ Key Packages:
 | Billing portal flow | ✅ |
 | Dashboard usage meter | ✅ |
 | i18n EN+HI consistency | ✅ |
-| 349 tests passing | ✅ |
+| 383 tests passing (incl. i18n parity + guard parity) | ✅ |
 | Lint 0 errors | ✅ |
 | Typecheck 0 errors | ✅ |
 | Pushed to origin/main | ✅ |
 
 ### 📦 Recent Changes (last 5 commits)
-1. `f46e8d6` - i18n consistency + dashboard usage meter
-2. `2dfcb1b` - Dashboard usage meter integration
-3. `beb0445` - Free tier pricing, SEO, robots.txt
-4. `dcdca67` - Legal pages, Mobile SDK, Quota, Email templates
-5. `9248de7` - VS Code/MCP/GitHub App/Rate Limiting
+1. `bd0928b` - middleware-to-proxy deferral decision (codemod no-op, next-intl risk)
+2. `f29aa41` - seed prod-guard, health internals lockdown, timing-safe scheduler key, i18n + guard parity tests, CSP enforce
+3. `899f1fb` - de-scope: removed MCP server, VS Code extension, Probot GitHub App, Mobile SDK
+4. `1c1d2d1` - en admin dotted-key crash fix, client-nav cleanup, smoke 13/13
+5. `6d43053` - npm audit 13→0 (next 16.3.4 critical RCE fix, vitest, sharp/js-yaml/deepmerge overrides, dead puppeteer dropped)
 
 ### 🚀 Next Steps (Low Priority)
 - Update SPECS.md + VOLUMES.md with final status
