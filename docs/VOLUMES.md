@@ -59,6 +59,7 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V20 | Brand/icon hygiene: square `favicon.svg` for tab/manifest/push icons (`layout.tsx`, `manifest.json`, `push.ts`, middleware exclusion), `logo.svg` wordmark for brand surfaces · `tw-animate-css` import restored (dialog/popover/tooltip/select animations) · pino-pretty transport removed with rationale comment (Next standalone worker crash) · unused `deepmerge-ts` dep dropped · junk `testcount.txt` removed · verified lint 0, tsc 0, vitest 349/349, `next build` green | `425cd37` |
 | V6 | Dependency audit 13→0: `next` 16.2.12→16.3.4 (GHSA-p293 Windows RCE + GHSA-2xp9 image-opt, critical) · `vitest`+coverage 4.1.10→4.1.11 · overrides `sharp` ^0.35.4 (libheif), `js-yaml` ^4.3.2 (via eslint), `deepmerge-ts` ^8.0.0 (via @prisma/config, `prisma validate` green) · dead `puppeteer` 24.x removed (unused since Playwright switch; killed 4 HIGHs, avoided risky v25 ESM major) · verified lint 0 errors, tsc 0, vitest 349/349, `next build` green | `6d43053` |
 | V13 | i18n repair: `messages/en.json` admin had 8 dotted keys (`admin.idle`…) with no hi counterpart — next-intl threw INVALID_KEY in root layout, breaking every en page (e2e smoke 8 failed). Keys restored to plain form, en↔hi 1:1 (60/60). Client nav per new `no-location-assign` rule: Link in not-found + dashboard error, router.push in sidebar; justified hard-nav disables kept (global-error corrupt-router path, class error-boundary, post-delete session clear, OAuth API handshake). E2E smoke 8→13/13, lint 0/0, vitest 349/349 | `1c1d2d1` |
+| V16/V17 | De-scope (owner directive): deleted `mcp-server/` (10 tools), `vscode-extension/`, `github-app/` (Probot), `mobile-sdk/` — 21 files. No src/tests/workflow/README imports existed; core GitHub OAuth + PR pipeline + `/api/github/webhook` in `src/` untouched. Verified lint 0, tsc 0, vitest 349/349, `next build` green | `899f1fb` |
 
 ## Process (per volume)
 
@@ -89,8 +90,8 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | 13 | Global SaaS Hardening — Legal, Enterprise (SSO/SCIM/audit export), Compliance, FinOps, AI safety, i18n, data residency, customer success | `docs/legal/*`, `docs/enterprise/*`, `docs/compliance/*`, `docs/finops/*`, `docs/ai/AI_SAFETY_EU_AI_ACT.md` + code (audit export API) | ✅ Done (see upgrade log rows V13) |
 | 14 | Architecture Documentation — Full architecture review & documentation | `docs/engineering/*` | ✅ Done (commit f0b4013) |
 | 15 | Free Tier & Self-Serve — Free tier pricing, self-serve onboarding flow | Pricing, onboarding UI, quota logic | ✅ Done (commit a1c1cc7) |
-| 16 | Developer Ecosystem — VS Code Extension, MCP Server, GitHub App, Rate Limiting | Extensions, integrations, API rate limits | ✅ Done (commit 9248de7) |
-| 17 | Legal & SDK — Legal pages, Mobile SDK, Quota integration, Email templates | Legal UI, SDK, email templates | ✅ Done (commit dcdca67) |
+| 16 | Developer Ecosystem — Rate Limiting (VS Code Extension, MCP Server, GitHub App removed per owner de-scope) | API rate limits | ✅ Done (commit 9248de7; de-scope `899f1fb`) |
+| 17 | Legal & SDK — Legal pages, Quota integration, Email templates (Mobile SDK removed per owner de-scope) | Legal UI, email templates | ✅ Done (commit dcdca67; de-scope `899f1fb`) |
 | 18 | Pricing & SEO — Free tier pricing page, SEO optimization, robots.txt | Pricing, SEO, crawl config | ✅ Done (commit beb0445) |
 | 19 | Dashboard Meters — Dashboard usage meter integration | Usage meters, dashboard widgets | ✅ Done (commit 2dfcb1b) |
 | 20 | Housekeeping & Git Hygiene — Dead architecture pattern cleanup, git hygiene | Clean working tree, removal of unused libs | ✅ Done (commit f337829) |
