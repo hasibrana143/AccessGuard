@@ -2,6 +2,17 @@
 
 This repo is built in **12 volumes** (see `docs/VOLUMES.md`). Every change belongs to a volume.
 
+## gstack-first (standing user directive, Sept 2026)
+- EVERY development task in opencode runs through gstack — no ad-hoc workflows.
+- Always invoke the `/gstack` router skill first; follow wherever it routes:
+  health → `/health` · bug/error → `/investigate` · test/QA → `/qa` (`/qa-only` for report-only) ·
+  diff check → `/review` · ship/deploy/PR → `/ship` · post-ship docs → `/document-release` ·
+  new docs → `/document-generate` · security → `/cso` · perf → `/benchmark` ·
+  new idea → `/office-hours` · ticket → `/spec` · plan reviews → `/plan-ceo-review`/`/plan-eng-review`/`/plan-design-review` ·
+  save/resume → `/context-save`/`/context-restore`.
+- If the router matches no skill, say which gstack skill was considered and why none fit — then proceed.
+- This rule outranks convenience shortcuts; it never expires unless the user lifts it.
+
 ## Ground truth
 - `docs/` is the system of record: `product/`, `design/ux/`, `engineering/`, `security/`, `ai/`, `development/`.
 - Read the relevant docs BEFORE changing code — they encode decisions made in volumes 1–6.
