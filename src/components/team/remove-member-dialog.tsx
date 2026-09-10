@@ -21,9 +21,9 @@ export function RemoveMemberDialog({ open, onOpenChange, member, onConfirm, isRe
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t('removeMemberTitle')}</AlertDialogTitle>
+          <AlertDialogTitle>{t('removeDialogTitle')}</AlertDialogTitle>
           <AlertDialogDescription>
-            {t('removeMemberDesc', { name: member?.name || member?.email || '' })}
+            {t('removeDialogMsg', { email: member?.name || member?.email || '' })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

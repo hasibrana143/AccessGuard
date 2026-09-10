@@ -25,9 +25,9 @@ export function MemberList({ members, currentUserId, onRoleChange, onRemove, rol
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShieldCheck className="h-5 w-5 text-coral" />
-          {t('teamMembers')}
+          {t('teamMembers', { count: members.length })}
         </CardTitle>
-        <CardDescription>{t('membersDesc', { count: members.length })}</CardDescription>
+        <CardDescription>{t('membersDesc')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {members.map((member) => (
@@ -51,7 +51,7 @@ export function MemberList({ members, currentUserId, onRoleChange, onRemove, rol
             <div className="flex items-center gap-2 shrink-0">
               {member.role !== 'owner' ? (
                 <Select value={member.role} onValueChange={(role) => onRoleChange(member, role)}>
-                  <SelectTrigger className="w-28" aria-label={t('changeRoleAria', { name: member.name || member.email })}>
+                  <SelectTrigger className="w-28" aria-label={t('roleAria', { email: member.name || member.email })}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -64,7 +64,7 @@ export function MemberList({ members, currentUserId, onRoleChange, onRemove, rol
                 <Badge variant="outline" className="text-xs">{roleLabels.admin}</Badge>
               )}
               {member.role !== 'owner' && member.id !== currentUserId && (
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" aria-label={t('removeMemberAria', { name: member.name || member.email })} onClick={() => onRemove(member)}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" aria-label={t('removeAria', { email: member.name || member.email })} onClick={() => onRemove(member)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               )}

@@ -55,7 +55,7 @@ export default function TeamPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast({ title: t('roleUpdated'), description: t('roleUpdatedMsg', { name: member.name || member.email, role }) });
+        toast({ title: t('roleUpdated'), description: t('roleUpdatedMsg', { email: member.name || member.email, role }) });
         fetchData();
       } else {
         toast({ title: tc('error'), description: data.error || t('roleUpdateFailed'), variant: 'destructive' });
@@ -72,14 +72,14 @@ export default function TeamPage() {
       const res = await fetch(`/api/team/members?userId=${encodeURIComponent(memberToRemove.id)}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
-        toast({ title: t('memberRemoved'), description: t('memberRemovedMsg', { name: memberToRemove.name || memberToRemove.email }) });
+        toast({ title: t('memberRemoved'), description: t('memberRemovedMsg', { email: memberToRemove.name || memberToRemove.email }) });
         setMemberToRemove(null);
         fetchData();
       } else {
-        toast({ title: tc('error'), description: data.error || t('removeFailed'), variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('memberRemoveFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: tc('error'), description: t('removeFailed'), variant: 'destructive' });
+      toast({ title: tc('error'), description: t('memberRemoveFailed'), variant: 'destructive' });
     } finally {
       setRemoving(false);
     }
@@ -93,10 +93,10 @@ export default function TeamPage() {
         toast({ title: t('inviteCanceled'), description: t('inviteCanceledMsg') });
         fetchData();
       } else {
-        toast({ title: tc('error'), description: data.error || t('cancelFailed'), variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('inviteCancelFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: tc('error'), description: t('cancelFailed'), variant: 'destructive' });
+      toast({ title: tc('error'), description: t('inviteCancelFailed'), variant: 'destructive' });
     }
   };
 
@@ -135,9 +135,9 @@ export default function TeamPage() {
           {members.length === 0 && invites.length === 0 ? (
             <EmptyState
               icon={Users}
-              title={t('noMembersTitle')}
-              description={t('noMembersDesc')}
-              actionLabel={t('inviteFirstMember')}
+              title={t('noMembers')}
+              description={t('membersDesc')}
+              actionLabel={t('invite')}
               onAction={() => document.querySelector<HTMLInputElement>('[data-slot="input"]')?.focus()}
             />
           ) : (

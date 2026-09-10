@@ -59,12 +59,12 @@ export function PrivacySettings() {
         setMfaEnabled(true);
         setMfaSetupQr(null);
         setMfaSetupCode('');
-        toast({ title: t('mfaEnabledTitle'), description: t('mfaEnabledMsg') });
+        toast({ title: t('mfaEnabled'), description: t('mfaEnabledMsg') });
       } else {
-        toast({ title: tc('error'), description: data.error || t('mfaVerifyFailed'), variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('mfaEnableFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: tc('error'), description: t('mfaVerifyFailed'), variant: 'destructive' });
+      toast({ title: tc('error'), description: t('mfaEnableFailed'), variant: 'destructive' });
     } finally {
       setMfaLoading(false);
     }
@@ -82,7 +82,7 @@ export function PrivacySettings() {
       const data = await res.json();
       if (data.success) {
         setMfaEnabled(false);
-        toast({ title: t('mfaDisabledTitle'), description: t('mfaDisabledMsg') });
+        toast({ title: t('mfaDisabled'), description: t('mfaDisabledMsg') });
       } else {
         toast({ title: tc('error'), description: data.error || t('mfaDisableFailed'), variant: 'destructive' });
       }
@@ -286,8 +286,8 @@ export function PrivacySettings() {
           <div className="border-t border-border pt-6">
             <h3 className="font-medium mb-2">{t('legalDocuments')}</h3>
             <div className="flex gap-3">
-              <Button variant="ghost" onClick={() => window.open('/api/legal/privacy', '_blank')}>{t('privacyPolicy')}</Button>
-              <Button variant="ghost" onClick={() => window.open('/api/legal/tos', '_blank')}>{t('termsOfService')}</Button>
+              <Button variant="ghost" onClick={() => window.open('/privacy', '_blank', 'noopener')}>{t('privacyPolicy')}</Button>
+              <Button variant="ghost" onClick={() => window.open('/terms', '_blank', 'noopener')}>{t('termsOfService')}</Button>
             </div>
           </div>
         </CardContent>

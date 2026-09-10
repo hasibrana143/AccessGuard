@@ -63,7 +63,7 @@ export default function CookieConsent() {
     >
       <p className="m-0 max-w-[640px] text-sm leading-relaxed text-foreground">
         {t.rich('description', {
-          link: (chunks) => <a href="/api/legal/privacy" target="_blank" className="underline">{chunks}</a>,
+          link: (chunks) => <a href="/privacy" target="_blank" rel="noopener" className="underline">{chunks}</a>,
         })}
       </p>
       <div className="flex shrink-0 gap-2">

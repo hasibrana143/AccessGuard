@@ -25,7 +25,7 @@ export function PendingInvites({ invites, onCancel, onResend }: PendingInvitesPr
           <Mail className="h-5 w-5 text-coral" />
           {t('pendingInvites')}
         </CardTitle>
-        <CardDescription>{t('invitesDesc', { count: invites.length })}</CardDescription>
+        <CardDescription>{t('pendingDesc')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {invites.map((invite) => (
@@ -38,12 +38,12 @@ export function PendingInvites({ invites, onCancel, onResend }: PendingInvitesPr
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant="outline" className="text-xs">{invite.role}</Badge>
                 <span>•</span>
-                <span>{t('expires')} {new Date(invite.expiresAt).toLocaleDateString()}</span>
+                <span>{t('expires', { date: new Date(invite.expiresAt).toLocaleDateString() })}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="sm" onClick={() => onResend(invite)}>{t('resend')}</Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" aria-label={t('cancelInviteAria', { email: invite.email })} onClick={() => onCancel(invite.id)}>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" aria-label={t('removeAria', { email: invite.email })} onClick={() => onCancel(invite.id)}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>

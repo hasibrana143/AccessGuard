@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 
 export function ApiKeySettings() {
   const t = useTranslations('settings');
+  const tc = useTranslations('common');
   const { toast } = useToast();
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [maskedKey, setMaskedKey] = useState<string | null>(null);
@@ -35,12 +36,12 @@ export function ApiKeySettings() {
       if (data.success && data.data) {
         setApiKey(data.data.key);
         setMaskedKey(data.data.maskedKey || data.data.key?.slice(0, 8) + '...');
-        toast({ title: t('keyRegenerated'), description: t('keyRegeneratedMsg') });
+        toast({ title: t('apiKeyGenerated'), description: t('apiKeyGeneratedMsg') });
       } else {
-        toast({ title: t('error'), description: data.error || t('keyGenFailed'), variant: 'destructive' });
+        toast({ title: tc('error'), description: data.error || t('keyGenerateFailed'), variant: 'destructive' });
       }
     } catch {
-      toast({ title: t('error'), description: t('keyGenFailed'), variant: 'destructive' });
+      toast({ title: tc('error'), description: t('keyGenerateFailed'), variant: 'destructive' });
     } finally {
       setApiKeyLoading(false);
     }

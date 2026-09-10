@@ -5,6 +5,13 @@ let redis: Redis | null = null;
 let redisReady = false;
 
 export function getRedis(): Redis | null {
+  // A client stuck in 'end' status (e.g. after retryStrategy gave up) never
+  // reconnects on its own — drop it so a fresh client is created below.
+  if (redis && redis.status === 'end') {
+    redis.disconnect();
+    redis = null;
+    redisReady = false;
+  }
   if (redis) return redis;
 
   const url = process.env.REDIS_URL;

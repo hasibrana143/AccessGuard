@@ -58,7 +58,7 @@ export function InviteForm({ onInvited }: InviteFormProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <UserPlus className="h-5 w-5 text-coral" />
-          {t('inviteMember')}
+          {t('inviteTitle')}
         </CardTitle>
         <CardDescription>{t('inviteDesc')}</CardDescription>
       </CardHeader>
