@@ -3,6 +3,8 @@ import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { GET as ListGet, POST as UsersPost } from './Users/route';
 import { GET as UserGet, PATCH as UserPatch, DELETE as UserDelete } from './Users/[id]/route';
+import { POST as GroupsPost } from './Groups/route';
+import { PATCH as GroupPatch } from './Groups/[id]/route';
 import { GET as ConfigGet } from './ServiceProviderConfig/route';
 
 vi.mock('@/lib/scim', async (importOriginal) => {
@@ -175,5 +177,115 @@ describe('SCIM 2.0 endpoints (contract)', () => {
       { params: Promise.resolve({ id: 'missing' }) }
     );
     expect(response.status).toBe(404);
+  });
+
+  describe('Groups PATCH (RFC 7644 PatchOp)', () => {
+    let groupId: string;
+    const auth = { Authorization: 'Bearer ag_scim_valid', 'Content-Type': 'application/json' };
+    const patchBody = (Operations: unknown) =>
+      JSON.stringify({ schemas: ['urn:ietf:params:scim:api:messages:2.0:PatchOp'], Operations });
+
+    it('POST /Groups creates the fixture group', async () => {
+      mockedResolve.mockResolvedValue(testOrgId);
+      const response = await GroupsPost(
+        scimRequest('/api/scim/v2/Groups', {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify({ displayName: 'Patch Eng', members: [] }),
+        })
+      );
+      expect(response.status).toBe(201);
+      const body = await response.json();
+      groupId = body.id;
+      expect(body.displayName).toBe('Patch Eng');
+    });
+
+    it('PATCH replace displayName renames the group', async () => {
+      mockedResolve.mockResolvedValue(testOrgId);
+      const response = await GroupPatch(
+        scimRequest(`/api/scim/v2/Groups/${groupId}`, {
+          method: 'PATCH',
+          headers: auth,
+          body: patchBody([{ op: 'replace', path: 'displayName', value: 'Patch Eng Renamed' }]),
+        })
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).displayName).toBe('Patch Eng Renamed');
+    });
+
+    it('PATCH add members appends without duplicates', async () => {
+      mockedResolve.mockResolvedValue(testOrgId);
+      const ops = [
+        { op: 'add', path: 'members', value: [{ value: 'user-1' }, { value: 'user-2' }] },
+        { op: 'add', path: 'members', value: [{ value: 'user-2' }] },
+      ];
+      const response = await GroupPatch(
+        scimRequest(`/api/scim/v2/Groups/${groupId}`, { method: 'PATCH', headers: auth, body: patchBody(ops) })
+      );
+      expect(response.status).toBe(200);
+      const members = (await response.json()).members.map((m: { value: string }) => m.value).sort();
+      expect(members).toEqual(['user-1', 'user-2']);
+    });
+
+    it('PATCH remove members[value eq] drops one member', async () => {
+      mockedResolve.mockResolvedValue(testOrgId);
+      const response = await GroupPatch(
+        scimRequest(`/api/scim/v2/Groups/${groupId}`, {
+          method: 'PATCH',
+          headers: auth,
+          body: patchBody([{ op: 'remove', path: 'members[value eq "user-1"]' }]),
+        })
+      );
+      expect(response.status).toBe(200);
+      const members = (await response.json()).members.map((m: { value: string }) => m.value);
+      expect(members).toEqual(['user-2']);
+    });
+
+    it('PATCH rejects unknown op and unknown path', async () => {
+      mockedResolve.mockResolvedValue(testOrgId);
+      const badOp = await GroupPatch(
+        scimRequest(`/api/scim/v2/Groups/${groupId}`, {
+          method: 'PATCH', headers: auth, body: patchBody([{ op: 'move', path: 'displayName', value: 'X' }]),
+        })
+      );
+      expect(badOp.status).toBe(400);
+      const badPath = await GroupPatch(
+        scimRequest(`/api/scim/v2/Groups/${groupId}`, {
+          method: 'PATCH', headers: auth, body: patchBody([{ op: 'replace', path: 'nope', value: 'X' }]),
+        })
+      );
+      expect(badPath.status).toBe(400);
+    });
+
+    it('PATCH rejects missing Operations and missing token', async () => {
+      mockedResolve.mockResolvedValue(testOrgId);
+      const noOps = await GroupPatch(
+        scimRequest(`/api/scim/v2/Groups/${groupId}`, { method: 'PATCH', headers: auth, body: JSON.stringify({}) })
+      );
+      expect(noOps.status).toBe(400);
+      mockedResolve.mockResolvedValue(null);
+      const noAuth = await GroupPatch(
+        scimRequest(`/api/scim/v2/Groups/${groupId}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: patchBody([]),
+        })
+      );
+      expect(noAuth.status).toBe(401);
+    });
+
+    it('PATCH duplicate displayName returns 409', async () => {
+      mockedResolve.mockResolvedValue(testOrgId);
+      await GroupsPost(
+        scimRequest('/api/scim/v2/Groups', {
+          method: 'POST', headers: auth, body: JSON.stringify({ displayName: 'Patch Taken' }),
+        })
+      );
+      const response = await GroupPatch(
+        scimRequest(`/api/scim/v2/Groups/${groupId}`, {
+          method: 'PATCH', headers: auth,
+          body: patchBody([{ op: 'replace', path: 'displayName', value: 'Patch Taken' }]),
+        })
+      );
+      expect(response.status).toBe(409);
+    });
   });
 });

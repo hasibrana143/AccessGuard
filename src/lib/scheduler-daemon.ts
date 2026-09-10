@@ -5,6 +5,7 @@ import { db } from './db';
 import { logger } from './error-logger';
 import { getNextRunForSchedule } from './cron';
 import { computeChurnScores } from './churn';
+import { maybeRunRetentionSweep } from './retention';
 import { validateTargetUrl } from './url-validation';
 
 const TICK_INTERVAL_MS = 60 * 1000;
@@ -213,6 +214,7 @@ export function startSchedulerDaemon() {
       await processDueScheduledScans();
       await pruneWebhookEvents();
       await computeChurnScoresWeekly();
+      await maybeRunRetentionSweep();
     },
     {
       connection: { url: process.env.REDIS_URL || 'redis://localhost:6379' },

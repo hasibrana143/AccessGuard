@@ -1442,12 +1442,17 @@ const paths: Record<string, PathItem> = {
     }),
     patch: op({
       tags: ['SCIM'],
-      summary: 'Update a group (SCIM 2.0 PATCH - not implemented)',
+      summary: 'Partially update a group (SCIM 2.0 PatchOp: displayName, members)',
+      description:
+        'Applies RFC 7644 Operations (add/remove/replace) to displayName and members. Emits scim_group_updated audit event.',
       security: [{ bearerAuth: [] }],
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
       responses: {
-        '501': { description: 'PATCH not implemented' },
+        '200': { description: 'Group updated' },
+        '400': { description: 'Invalid op, path, or value' },
         '401': { description: 'Missing or invalid SCIM token' },
+        '404': { description: 'Group not found' },
+        '409': { description: 'displayName already exists' },
       },
     }),
     delete: op({
