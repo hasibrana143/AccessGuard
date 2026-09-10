@@ -40,11 +40,41 @@ services:
       NEXTAUTH_URL: "http://localhost:3000"
       REDIS_URL: "redis://redis:6379"
       LOG_LEVEL: "info"
+      # Split mode: web serves traffic only; scans run on `worker` below.
+      # Single-container default keeps workers in-process — set this only
+      # when running worker service(s) alongside.
+      # DISABLE_BACKGROUND_WORKERS: "true"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # Dedicated scan workers: browser scans never compete with web traffic.
+  # Scale out: `docker compose up --scale worker=3` (plus SCAN_WORKER_CONCURRENCY
+  # per process). See docs/devops/SCALING.md. Profile-gated so the default
+  # `docker compose up` stays single-container: `docker compose --profile workers up`.
+  worker:
+    profiles: ["workers"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    environment:
+      DATABASE_URL: "postgresql://accessguard:accessguard@postgres:5432/accessguard"
+      REDIS_URL: "redis://redis:6379"
+      LOG_LEVEL: "info"
+      SCAN_WORKER_CONCURRENCY: "${SCAN_WORKER_CONCURRENCY:-6}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 4G
 
 volumes:
   postgres_data:

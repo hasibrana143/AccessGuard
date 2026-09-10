@@ -9,7 +9,8 @@ node_modules/
 .gitignore
 .eslintrc.json
 .prettierrc
-tsconfig.json
+# tsconfig.json MUST stay in build context: the runner stage COPYs it for
+# `npm run worker` (tsx resolves @/* paths via tsconfig). See Dockerfile.
 vitest.config.ts
 playwright.config.ts
 .dockerignore

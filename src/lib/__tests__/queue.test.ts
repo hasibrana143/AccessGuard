@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 const { processorRef, queueRef, FakeQueue } = vi.hoisted(() => {
   const processorRef: { current: ((job: unknown) => Promise<void>) | null } = { current: null };
@@ -75,7 +75,7 @@ import { getRedis } from '@/lib/redis';
 import { checkPagesLimit } from '@/lib/plan-limits';
 import { scanFromHTML } from '@/services/scanner';
 import { db } from '@/lib/db';
-import { enqueueScan, getQueueStatus, getScanQueue, startScanWorker, closeQueue } from '@/lib/queue';
+import { enqueueScan, getQueueStatus, getScanQueue, startScanWorker, closeQueue, scanWorkerConcurrency } from '@/lib/queue';
 
 const { mocked } = vi;
 
@@ -193,6 +193,31 @@ describe('queue', () => {
 
     it('closes and resets the queue', async () => {
       await expect(closeQueue()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('scanWorkerConcurrency', () => {
+    const original = process.env.SCAN_WORKER_CONCURRENCY;
+    afterEach(() => {
+      if (original === undefined) delete process.env.SCAN_WORKER_CONCURRENCY;
+      else process.env.SCAN_WORKER_CONCURRENCY = original;
+    });
+
+    it('defaults to 3 when unset', () => {
+      delete process.env.SCAN_WORKER_CONCURRENCY;
+      expect(scanWorkerConcurrency()).toBe(3);
+    });
+
+    it('accepts valid values within 1-32', () => {
+      process.env.SCAN_WORKER_CONCURRENCY = '8';
+      expect(scanWorkerConcurrency()).toBe(8);
+    });
+
+    it('falls back to 3 on garbage, zero, or oversize values', () => {
+      for (const bad of ['many', '0', '-2', '1.5', '64', '']) {
+        process.env.SCAN_WORKER_CONCURRENCY = bad;
+        expect(scanWorkerConcurrency()).toBe(3);
+      }
     });
   });
 });

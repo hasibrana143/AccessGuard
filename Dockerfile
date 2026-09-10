@@ -45,6 +45,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 # full dependency closure must be present — copy the builder node_modules)
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+# Standalone scan worker (`npm run worker` via compose `worker` service):
+# tsx runs scripts/scan-worker.ts + src/ directly, so the runner needs the
+# TS sources + tsconfig (for @/* path resolution). See docs/devops/SCALING.md.
+COPY --from=builder --chown=nextjs:nodejs /app/src ./src
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 
 # Copy migration entrypoint
 COPY docker-entrypoint.sh /usr/local/bin/

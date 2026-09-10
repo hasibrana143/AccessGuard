@@ -7,6 +7,17 @@ import { executeScan } from './scan-executor';
 let scanQueue: Queue | null = null;
 let scanWorker: Worker | null = null;
 
+// Concurrent browser scans per worker process. Browser scans are CPU/RAM
+// heavy — raise only with headroom (roughly 1–2 GB RAM per slot), or scale
+// out with more worker processes (`npm run worker` / compose --scale)
+// instead of raising this on the web process.
+export function scanWorkerConcurrency(): number {
+  const raw = process.env.SCAN_WORKER_CONCURRENCY;
+  if (raw === undefined || raw === '') return 3;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 && n <= 32 ? n : 3;
+}
+
 const connection = {
   connection: { url: process.env.REDIS_URL || 'redis://localhost:6379' },
 };
@@ -83,7 +94,7 @@ export function startScanWorker() {
     logger.info({ jobId: job.id, scanId: result.scanId, violations: result.violationsFound }, 'Scan job completed');
   }, {
     ...connection,
-    concurrency: 3,
+    concurrency: scanWorkerConcurrency(),
     removeOnComplete: { count: 100 },
     removeOnFail: { count: 50 },
   });
