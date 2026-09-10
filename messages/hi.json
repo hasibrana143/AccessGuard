@@ -1127,7 +1127,15 @@
     "assignmentUpdated": "निर्धारण अपडेट किया गया",
     "assignmentMsg": "{email} के पास अब {role} है",
     "updateFailed": "निर्धारण अपडेट करने में विफल",
-    "createRoleBtn": "भूमिका बनाएँ"
+    "createRoleBtn": "भूमिका बनाएँ",
+    "idle": "निष्क्रिय",
+    "liveScanStatus": "लाइव स्कैन स्थिति",
+    "noActiveScans": "अभी कोई सक्रिय स्कैन नहीं है।",
+    "pagesUnit": "पेज",
+    "queued": "कतार में",
+    "recentActivity": "हाल की गतिविधि",
+    "running": "चल रहा है",
+    "scanning": "स्कैन हो रहा है"
   },
   "landing": {
     "navFeatures": "विशेषताएँ",
@@ -1467,15 +1475,7 @@
     "tour5": "रिपोर्ट पेज से कार्यकारी सारांश और VPAT रिपोर्ट निर्यात करें।",
     "dashboard": "डैशबोर्ड",
     "skipTour": "टूर छोड़ें",
-    "startScanning": "स्कैनिंग शुरू करें",
-    "dash.idle": "Idle",
-    "dash.liveScanStatus": "Live scan status",
-    "dash.noActiveScans": "No active scans",
-    "dash.pagesUnit": "pages per unit",
-    "dash.queued": "Queued",
-    "dash.recentActivity": "Recent activity",
-    "dash.running": "Running",
-    "dash.scanning": "Scanning"
+    "startScanning": "स्कैनिंग शुरू करें"
   },
   "usageMeter": {
     "monthlyUsage": "मासिक उपयोग",

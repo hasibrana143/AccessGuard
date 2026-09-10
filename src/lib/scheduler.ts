@@ -75,3 +75,16 @@ export function formatScheduleDate(date: Date | null): string {
 export function getSchedulerApiKey(): string | null {
   return process.env.SCHEDULER_API_KEY ?? null;
 }
+
+// Timing-safe comparison for the scheduler key (route handlers must use this
+// instead of `!==` so key verification isn't measurable via response timing).
+export async function isSchedulerApiKeyValid(provided: string | null): Promise<boolean> {
+  const valid = getSchedulerApiKey();
+  if (!valid || !provided) return false;
+  const enc = new TextEncoder();
+  const a = enc.encode(provided);
+  const b = enc.encode(valid);
+  if (a.length !== b.length) return false;
+  const { timingSafeEqual } = await import('node:crypto');
+  return timingSafeEqual(a, b);
+}

@@ -115,6 +115,17 @@ const wcagRules = [
 ]
 
 async function main() {
+  // Fail-closed production guard: this seed creates a known-credential admin
+  // (test@accessguard.dev / testpass123) plus demo data. It must never run
+  // against a production database by accident (e.g. DATABASE_URL mix-up).
+  // Explicit opt-in only: ALLOW_SEED_IN_PRODUCTION=true.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED_IN_PRODUCTION !== 'true') {
+    throw new Error(
+      'Refusing to seed: NODE_ENV=production without ALLOW_SEED_IN_PRODUCTION=true. ' +
+      'This seed creates a known-credential test admin and demo data.'
+    )
+  }
+
   console.log('Seeding database...')
 
   // Create WCAG rules (reference data)

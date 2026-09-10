@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { getRequestId } from '@/lib/request-id';
+import { getCurrentUser } from '@/lib/auth-utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -11,9 +11,18 @@ const startTime = Date.now();
  * GET /api/health/performance
  * Returns comprehensive performance metrics: DB latency, Redis status,
  * memory usage, process uptime, and system load.
- * No auth required — used for internal monitoring.
+ * Admin-only: internals (memory, pid, error text) must not be public.
+ * External monitors should use /api/health/live + /api/health/ready.
  */
 export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
+  }
+  if (user.role !== 'admin' && user.role !== 'owner') {
+    return NextResponse.json({ success: false, error: 'Insufficient permissions' }, { status: 403 });
+  }
+
   const requestId = crypto.randomUUID();
   const checks: Record<string, { ok: boolean; latencyMs?: number; detail?: string }> = {};
 
@@ -26,11 +35,11 @@ export async function GET() {
       latencyMs: Date.now() - dbStart,
       detail: 'PostgreSQL connected',
     };
-  } catch (err) {
+  } catch {
     checks.database = {
       ok: false,
       latencyMs: Date.now() - dbStart,
-      detail: err instanceof Error ? err.message : 'Unknown error',
+      detail: 'Database unreachable',
     };
   }
 
@@ -52,10 +61,10 @@ export async function GET() {
       latencyMs: Date.now() - redisStart,
       detail: 'Redis connected',
     };
-  } catch (err) {
+  } catch {
     checks.redis = {
       ok: false,
-      detail: err instanceof Error ? err.message : 'Redis unavailable',
+      detail: 'Redis unavailable',
     };
   }
 

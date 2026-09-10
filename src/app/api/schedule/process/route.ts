@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { getSchedulerApiKey } from '@/lib/scheduler';
+import { getSchedulerApiKey, isSchedulerApiKeyValid } from '@/lib/scheduler';
 import { executeScan } from '@/lib/scan-executor';
 import { logger } from '@/lib/error-logger';
 
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
         { status: 503 }
       );
     }
-    if (!apiKey || apiKey !== validApiKey) {
+    if (!(await isSchedulerApiKeyValid(apiKey))) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
       { status: 503 }
     );
   }
-  if (!apiKey || apiKey !== validApiKey) {
+  if (!(await isSchedulerApiKeyValid(apiKey))) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 401 }

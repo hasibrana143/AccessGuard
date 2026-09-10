@@ -13,14 +13,14 @@ export async function GET() {
       timestamp: new Date().toISOString(),
       database: 'connected'
     });
-  } catch (error) {
+  } catch {
+    // Generic message on purpose: raw DB error text can leak connection details.
     return NextResponse.json({
       status: 'unhealthy',
       service: 'AccessGuard API',
       version: '1.0.0',
       timestamp: new Date().toISOString(),
-      database: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      database: 'disconnected'
     }, { status: 503 });
   }
 }
