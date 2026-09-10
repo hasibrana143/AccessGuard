@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, Home, ArrowLeft } from 'lucide-react';
 
@@ -23,10 +24,12 @@ export default function NotFound() {
         <CardFooter className="flex flex-col gap-2">
           <Button
             className="w-full bg-coral hover:bg-coral/90 text-coral-foreground"
-            onClick={() => (window.location.href = '/')}
+            asChild
           >
-            <Home className="h-4 w-4 mr-2" />
-            Go Home
+            <Link href="/">
+              <Home className="h-4 w-4 mr-2" />
+              Go Home
+            </Link>
           </Button>
           <Button
             variant="outline"

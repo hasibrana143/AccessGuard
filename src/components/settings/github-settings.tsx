@@ -24,6 +24,9 @@ export function GitHubSettings() {
           toast({ title: t('connected'), description: t('reposLinked', { count: repos.length }) });
         } else {
           toast({ title: t('noRepos'), description: t('connectGithub') });
+          // OAuth handshake via API route requires a full document load;
+          // client-side router navigation cannot start the flow.
+          // eslint-disable-next-line @next/next/no-location-assign-relative-destination
           window.location.href = '/api/github/connect';
         }
       } else {
@@ -56,6 +59,8 @@ export function GitHubSettings() {
               {githubLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('loading')}</> : t('manage')}
             </Button>
           </div>
+          {/* OAuth handshake via API route requires a full document load. */}
+          {/* eslint-disable-next-line @next/next/no-location-assign-relative-destination */}
           <Button className="bg-coral hover:bg-coral/90 text-coral-foreground" disabled={githubLoading} onClick={() => { window.location.href = '/api/github/connect'; }}>
             {githubLoading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('connecting')}</> : <><Plus className="h-4 w-4 mr-1" />{t('addRepository')}</>}
           </Button>

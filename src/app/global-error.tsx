@@ -41,6 +41,10 @@ export default function GlobalError({
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Try Again
               </Button>
+              {/* Hard navigation is load-bearing here: the router state may be
+                  corrupt on this critical-error path, and the copy above
+                  promises a full reload. */}
+              {/* eslint-disable-next-line @next/next/no-location-assign-relative-destination */}
               <Button variant="outline" onClick={() => window.location.href = '/'} className="w-full">
                 <Home className="h-4 w-4 mr-2" />
                 Go Home

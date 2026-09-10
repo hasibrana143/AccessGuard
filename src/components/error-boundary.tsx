@@ -36,6 +36,9 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleGoHome = () => {
+    // Class boundary has no router access; hard navigation also guarantees
+    // the crashed React tree is discarded instead of remounted.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/';
   };
 

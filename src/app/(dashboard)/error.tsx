@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import * as Sentry from '@sentry/nextjs';
 import { Shield, RefreshCw, Home, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function DashboardError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
@@ -40,9 +41,11 @@ export default function DashboardError({ error, reset }: { error: Error & { dige
               <ArrowLeft className="h-4 w-4 mr-2" />
               Go Back
             </Button>
-            <Button variant="outline" onClick={() => window.location.href = '/dashboard'} className="flex-1">
-              <Home className="h-4 w-4 mr-2" />
-              Dashboard
+            <Button variant="outline" asChild className="flex-1">
+              <Link href="/dashboard">
+                <Home className="h-4 w-4 mr-2" />
+                Dashboard
+              </Link>
             </Button>
           </div>
         </div>

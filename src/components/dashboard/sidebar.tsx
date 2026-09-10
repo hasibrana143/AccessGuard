@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ThemeToggle } from '@/components/dashboard/theme-toggle';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import type { View, User } from '@/types';
 
 interface SidebarProps {
@@ -21,6 +22,7 @@ interface SidebarProps {
 
 export function Sidebar({ activeView, onNavigate, isMobile, onClose, user, onLogout }: SidebarProps) {
   const t = useTranslations('nav');
+  const router = useRouter();
   const navItems = [
     { id: 'dashboard' as View, label: t('dashboard'), icon: BarChart3 },
     { id: 'projects' as View, label: t('projects'), icon: Globe },
@@ -80,7 +82,7 @@ export function Sidebar({ activeView, onNavigate, isMobile, onClose, user, onLog
               variant="ghost"
               className="w-full justify-start gap-3 text-sidebar-foreground hover:bg-sidebar-accent/50"
               onClick={() => {
-                window.location.href = '/pricing';
+                router.push('/pricing');
                 if (isMobile && onClose) onClose();
               }}
             >

@@ -169,6 +169,9 @@ export function PrivacySettings() {
       const data = await res.json();
       if (data.success) {
         toast({ title: t('accountDeleted'), description: t('redirecting') });
+        // Session is destroyed server-side; hard navigation clears all
+        // client auth state (query cache, context) that router.push would keep.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = '/';
       } else {
         toast({ title: t('deleteCanceled'), description: data.error || t('deleteFailedTry'), variant: 'destructive' });
