@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardNotFound } from '@/components/dashboard/not-found-card';
+import { ManualChecksTab } from '@/components/projects/manual-checks-tab';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   ArrowLeft,
@@ -154,6 +155,7 @@ export default function ProjectDetailPage() {
           <TabsTrigger value="overview">{t('tabOverview')}</TabsTrigger>
           <TabsTrigger value="scans">{t('tabScans', { count: scans.length })}</TabsTrigger>
           <TabsTrigger value="violations">{t('tabViolations', { count: violations.length })}</TabsTrigger>
+          <TabsTrigger value="manual">{t('tabManual')}</TabsTrigger>
           <TabsTrigger value="settings">{t('settings')}</TabsTrigger>
         </TabsList>
 
@@ -341,6 +343,11 @@ export default function ProjectDetailPage() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        {/* Manual Checks Tab */}
+        <TabsContent value="manual" className="space-y-4">
+          <ManualChecksTab projectId={projectId} />
         </TabsContent>
 
         {/* Settings Tab */}

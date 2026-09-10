@@ -356,6 +356,37 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/projects/{id}': {
+    get: authed(op({
+      tags: ['Projects'],
+      summary: 'Get a single project by ID',
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Project detail', { $ref: '#/components/schemas/Project' }),
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
+  '/projects/{id}/manual-checks': {
+    get: authed(op({
+      tags: ['Projects'],
+      summary: 'Guided manual-testing checklist with saved outcomes',
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': { description: 'Catalog merged with per-project results' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+    put: authed(op({
+      tags: ['Projects'],
+      summary: 'Save guided manual-testing outcomes (requires manage_violations)',
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': { description: 'Outcomes saved; emits manual_checks_updated audit event' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
   '/projects/verify': {
     get: authed(op({
       tags: ['Projects'],

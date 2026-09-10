@@ -9,6 +9,8 @@ import type {
   ViolationStats,
   Severity,
   ViolationStatus,
+  ManualCheckItem,
+  ManualCheckSaveItem,
 } from '@/types';
 
 const API_BASE = '/api';
@@ -149,6 +151,17 @@ class ApiService {
   // Health check
   async healthCheck(): Promise<ApiResponse<{ status: string; database: string }>> {
     return this.fetch(`${API_BASE}`);
+  }
+
+  async getManualChecks(projectId: string): Promise<ApiResponse<ManualCheckItem[]>> {
+    return this.fetch(`${API_BASE}/projects/${projectId}/manual-checks`);
+  }
+
+  async saveManualChecks(projectId: string, results: ManualCheckSaveItem[]): Promise<ApiResponse<unknown>> {
+    return this.fetch(`${API_BASE}/projects/${projectId}/manual-checks`, {
+      method: 'PUT',
+      body: JSON.stringify({ results }),
+    });
   }
 }
 

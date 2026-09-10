@@ -7,6 +7,7 @@ export const AUDIT_ACTIONS = [
   'project_created', 'project_updated', 'project_deleted',
   'scan_started', 'scan_completed', 'scan_failed',
   'violation_status_changed', 'violation_fixed',
+  'manual_checks_updated',
   'settings_updated',
   'subscription_changed', 'subscription_created', 'subscription_cancelled',
   'github_connected', 'github_disconnected', 'github_connection_sync', 'github_pr_created',

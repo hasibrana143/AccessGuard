@@ -153,3 +153,26 @@ export interface ViolationStats {
   topRules: Array<{ ruleId: string; count: number }>;
   recent: Violation[];
 }
+
+// Guided manual testing (checks automation cannot decide)
+export type ManualCheckStatus = 'pending' | 'pass' | 'fail' | 'na';
+
+export interface ManualCheckItem {
+  id: string;
+  wcag: string;
+  level: 'A' | 'AA' | 'AAA';
+  titleEn: string;
+  titleHi: string;
+  stepsEn: string[];
+  stepsHi: string[];
+  status: ManualCheckStatus;
+  notes: string | null;
+  checkedBy: string | null;
+  updatedAt: string | null;
+}
+
+export interface ManualCheckSaveItem {
+  checkId: string;
+  status: ManualCheckStatus;
+  notes?: string;
+}

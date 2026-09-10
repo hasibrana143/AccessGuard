@@ -7,4 +7,5 @@ export const queryKeys = {
   scans: (projectId?: string, limit?: number) => ['scans', projectId, limit] as const,
   stats: (projectId?: string, orgSlug?: string) => ['stats', projectId, orgSlug] as const,
   trends: (projectId?: string, days?: number) => ['trends', projectId, days] as const,
+  manualChecks: (projectId?: string) => ['manual-checks', projectId] as const,
 };

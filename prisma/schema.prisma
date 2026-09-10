@@ -103,6 +103,7 @@ model Project {
   organization      Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
   scans             Scan[]
   violations        Violation[]
+  manualChecks      ManualCheck[]
   complianceReports ComplianceReport[]
   scheduledScans    ScheduledScan[]
 
@@ -299,4 +300,22 @@ model WebhookEvent {
   id          String   @id
   type        String
   processedAt DateTime @default(now())
+}
+
+// Guided manual testing: per-project results for checks automation cannot
+// cover (keyboard flows, screen-reader walkthroughs, meaningful alt text…).
+// Catalog lives in src/lib/manual-checks.ts; this table stores outcomes.
+model ManualCheck {
+  id        String   @id @default(cuid())
+  projectId String
+  checkId   String
+  status    String   @default("pending") // pending | pass | fail | na
+  notes     String?
+  checkedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, checkId])
+  @@index([projectId])
 }
