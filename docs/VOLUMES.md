@@ -57,6 +57,7 @@ Docs are the spec; after all 12 volumes were written, code was re-audited agains
 | V13 | Consent: EU cookie consent persistence — `CookieConsent` model + `/api/consent` GET/POST + GDPR-compliant UI (i18n) | `73bc835` |
 | V13 | Compliance: Transfer Impact Assessment (`docs/legal/TRANSFER_IMPACT_ASSESSMENT.md`) + DATA_RESIDENCY DoDs updated (dataRegion field, data-export, TIA completed) | `9c22a9b` |
 | V20 | Brand/icon hygiene: square `favicon.svg` for tab/manifest/push icons (`layout.tsx`, `manifest.json`, `push.ts`, middleware exclusion), `logo.svg` wordmark for brand surfaces · `tw-animate-css` import restored (dialog/popover/tooltip/select animations) · pino-pretty transport removed with rationale comment (Next standalone worker crash) · unused `deepmerge-ts` dep dropped · junk `testcount.txt` removed · verified lint 0, tsc 0, vitest 349/349, `next build` green | `425cd37` |
+| V6 | Dependency audit 13→0: `next` 16.2.12→16.3.4 (GHSA-p293 Windows RCE + GHSA-2xp9 image-opt, critical) · `vitest`+coverage 4.1.10→4.1.11 · overrides `sharp` ^0.35.4 (libheif), `js-yaml` ^4.3.2 (via eslint), `deepmerge-ts` ^8.0.0 (via @prisma/config, `prisma validate` green) · dead `puppeteer` 24.x removed (unused since Playwright switch; killed 4 HIGHs, avoided risky v25 ESM major) · verified lint 0 errors, tsc 0, vitest 349/349, `next build` green | `6d43053` |
 
 ## Process (per volume)
 
