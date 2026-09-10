@@ -1,6 +1,18 @@
 import { withAuth } from 'next-auth/middleware';
 import { NextResponse } from 'next/server';
 
+// NOTE (decision, Sept 2026): Next 16.3 deprecates the `middleware` file
+// convention in favor of `proxy.ts`. Migration is DEFERRED, not skipped:
+//  1. `npx @next/codemod@canary middleware-to-proxy` is a no-op here (0 files
+//     changed — it does not handle the next-auth `withAuth` wrapper shape).
+//  2. Next's own codemod source warns the rename can break next-intl
+//     ("Couldn't find next-intl config file") without a proxy-compatible
+//     next-intl version; this repo runs next-intl 4.13 + next-auth v4.
+//  3. `middleware.ts` still fully works in 16.3 (build + e2e smoke green).
+// TRIGGER to migrate: Next removes middleware support, or next-auth/next-intl
+// document proxy-convention compatibility. Then re-run the codemod and
+// re-verify with `npx playwright test smoke` (login redirect is the canary).
+
 const DASHBOARD_PATHS = [
   '/dashboard',
   '/projects',
