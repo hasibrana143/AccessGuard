@@ -16,7 +16,7 @@ jobs:
     name: Accessibility Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run AccessGuard Scan
         uses: accessguard/action@v1
@@ -27,7 +27,7 @@ jobs:
 
       - name: Upload scan results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: accessguard-results
           path: accessguard-results.json
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Generate VPAT
         uses: accessguard/action@v1
@@ -48,7 +48,7 @@ jobs:
           format: pdf
 
       - name: Upload VPAT
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vpat-report
           path: vpat-*.pdf
