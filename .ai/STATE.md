@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | Manual checks v1 — guided scripts, evidence upload, tester role |
+| Current task | Agency workspace — client groups, white-label report branding, bulk scan |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score done; manual checks next |
+| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks done; agency workspace next |
 | Blocked | None |
-| Next action | Implement guided manual checks with evidence upload + tester role |
+| Next action | Implement agency workspace with client groups, white-label reports, bulk scan |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.

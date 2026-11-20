@@ -39,6 +39,8 @@ model Organization {
   customRoles          CustomRole[]
   scimGroups           ScimGroup[]
   apiKeys              ApiKey[]
+  clientGroups         ClientGroup[]
+  whiteLabelConfigs    WhiteLabelConfig[]
 }
 
 model User {
@@ -285,6 +287,46 @@ model ScimGroup {
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@unique([orgId, displayName])
+  @@index([orgId])
+}
+
+// Agency workspace: Client groups for multi-client management
+model ClientGroup {
+  id          String   @id @default(cuid())
+  orgId       String
+  name        String
+  slug        String
+  description String?
+  website     String?
+  logoUrl     String?
+  primaryColor String?
+  secondaryColor String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, slug])
+  @@index([orgId])
+}
+
+// Agency workspace: White-label report branding per client group
+model WhiteLabelConfig {
+  id              String   @id @default(cuid())
+  orgId           String
+  clientGroupId   String?  // null = org-wide default
+  logoUrl         String?
+  primaryColor    String?
+  secondaryColor  String?
+  fontFamily      String?
+  companyName     String?
+  companyUrl      String?
+  footerText      String?
+  showPoweredBy   Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  organization    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, clientGroupId])
   @@index([orgId])
 }
 
