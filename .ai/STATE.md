@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | VPAT/ACR v2 — WCAG 2.2 AA + EN 301 549 + Section 508, per-criterion remarks |
+| Current task | Onboarding — URL → scan → top 3 fixes in <5 min; sample report without signup |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace done; VPAT v2 next |
+| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace + VPAT v2 done; onboarding next |
 | Blocked | None |
-| Next action | Implement VPAT/ACR v2 with EN 301 549 + Section 508, remarks column |
+| Next action | Implement onboarding flow: URL input → instant scan → top 3 fixes preview → sample report |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.
