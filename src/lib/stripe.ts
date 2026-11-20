@@ -160,6 +160,7 @@ export async function createSubscription(customerId: string, priceId: string, or
     // Webhook handlers resolve the org via metadata.orgId — without this,
     // non-checkout subscriptions never downgrade/update/cancel correctly.
     metadata: { orgId, plan: getPlanFromPriceId(priceId) },
+    trial_period_days: 14,
     payment_behavior: 'default_incomplete',
     expand: ['latest_invoice.payment_intent'],
   });

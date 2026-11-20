@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
           orgId,
           plan,
         },
+        trial_period_days: 14,
       },
       allow_promotion_codes: true,
       billing_address_collection: 'required',

@@ -9,7 +9,7 @@ Source of record for execution. Full analysis: `.ai/PRODUCT-CRITIQUE.md`.
 - [x] **Customer API keys** — `ApiKey` model (hash, prefix, scopes, lastUsedAt, revoke), create/revoke UI, auth on `/api/v1`.
 - [x] **GitHub Action repair** — point to `/api/v1/scans` + `/api/v1/reports/vpat`; PR gate on new critical/serious; publish `dist/index.js`.
   - Acceptance: Action runs on a sample repo, fails a PR on a real violation, passes after fix.
-- [ ] **Trial** — `trial_period_days: 14` in checkout/subscription; verify Stripe price config; no charge before day 15.
+- [x] **Trial** — `trial_period_days: 14` in checkout/subscription; verify Stripe price config; no charge before day 15.
 - [x] **Migrations** — `ScimGroup`, `CookieConsent`, `ManualCheck`, `pagesQuota` default; migration created at `prisma/migrations/20261120231949_...`; verify `migrate deploy` on empty DB after Docker up.
 - [x] **Violation lifecycle** — fingerprint + reconciliation (new/persisting/fixed/regressed); write `fixedAt` on rescan.
 - [x] **Scanner truth** — bundle axe locally (no CDN), WCAG 2.2 tags, stop blocking images/fonts, mobile viewport, network-idle wait, store axe target array as JSON, `help` text not `helpUrl`, remove `--disable-web-security`.
