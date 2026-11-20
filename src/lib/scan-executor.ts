@@ -438,8 +438,10 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
       minor: result.violations.filter((v) => v.severity === 'minor').length,
     };
 
-    // Calculate risk score
-    const riskScore = Math.max(0, Math.min(100, 100 - severityCounts.critical * 10 - severityCounts.serious * 5 - severityCounts.moderate * 2 - severityCounts.minor));
+    // Transparent risk score: weighted severity (0-100, lower = better)
+    // Methodology: 100 - (critical*10 + serious*5 + moderate*2 + minor*1)
+    // Documented at: docs/engineering/RISK_SCORE_METHODOLOGY.md
+    const riskScore = Math.max(0, Math.min(100, 100 - severityCounts.critical * 10 - severityCounts.serious * 5 - severityCounts.moderate * 2 - severityCounts.minor * 1));
 
     // Update scan as completed
     await updateScanCompleted(scanId, {

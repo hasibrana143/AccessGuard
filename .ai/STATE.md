@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | Page inventory UI — coverage, per-page status, top fixes |
+| Current task | Risk score transparency — severity/trend or documented methodology |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts + pricing v2 done; page inventory UI next |
+| Status | GREEN — Regression + alerts + pricing v2 + page inventory done; risk score next |
 | Blocked | None |
-| Next action | Implement page inventory API + UI |
+| Next action | Replace arbitrary risk score with transparent severity-based methodology |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.
