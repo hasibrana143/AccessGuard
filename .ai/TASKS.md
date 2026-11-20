@@ -4,7 +4,7 @@ Source of record for execution. Full analysis: `.ai/PRODUCT-CRITIQUE.md`.
 
 ## P0 — Make the product true (weeks 1–2)
 
-- [ ] **Crawler v1** — sitemap + BFS + Playwright render; `maxPages` from `crawlConfig`; exclude paths/subdomains; per-page violations; page inventory; dedupe; quota per page.
+- [x] **Crawler v1** — sitemap + BFS + Playwright render; `maxPages` from `crawlConfig`; exclude paths/subdomains; per-page violations; page inventory; dedupe; quota per page.
   - Acceptance: 100-page site scanned end-to-end; per-page results; quota counts 100; p95 under 10 min.
 - [ ] **Customer API keys** — `ApiKey` model (hash, prefix, scopes, lastUsedAt, revoke), create/revoke UI, auth on `/api/v1`.
 - [ ] **GitHub Action repair** — point to `/api/v1/scans` + `/api/v1/reports/vpat`; PR gate on new critical/serious; publish `dist/index.js`.

@@ -2,8 +2,9 @@ import type { ScanConfig as InternalScanConfig, ScannerViolation, ScanResult, Sc
 import { axeCoreStrategy } from './strategies/axe-core';
 import { domAnalysisStrategy } from './strategies/dom-analysis';
 import { fetchAnalysisStrategy } from './strategies/fetch-analysis';
+import { crawlerStrategy } from './strategies/crawler';
 
-const strategies = [axeCoreStrategy, fetchAnalysisStrategy, domAnalysisStrategy];
+const strategies = [crawlerStrategy, axeCoreStrategy, fetchAnalysisStrategy, domAnalysisStrategy];
 
 export type {
   ScannerStrategy, ScanResult, ScannerViolation,
@@ -30,6 +31,11 @@ export function scanFromHTML(html: string, url: string): Promise<ScanResult> {
 export function scanUrlServer(url: string, html?: string, config?: InternalScanConfig | AdvancedScanConfig): Promise<ScanResult> {
   const strategy = html ? domAnalysisStrategy : fetchAnalysisStrategy;
   return strategy.scan(url, html || null, config as InternalScanConfig);
+}
+
+/** Full-site crawl: sitemap + BFS discovery, per-page axe scans, merged violations. */
+export function crawlSite(url: string, config?: InternalScanConfig): Promise<ScanResult> {
+  return crawlerStrategy.scan(url, null, config);
 }
 
 export function getAvailableStrategies(): { name: string; canHandle: boolean }[] {

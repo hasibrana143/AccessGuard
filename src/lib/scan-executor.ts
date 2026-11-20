@@ -1,5 +1,5 @@
 import { db } from './db';
-import { scanUrl, scanUrlServer, scanFromHTML, type ScannerViolation } from '@/services/scanner';
+import { scanUrl, scanUrlServer, scanFromHTML, crawlSite, type ScannerViolation } from '@/services/scanner';
 import { checkPagesLimit } from './plan-limits';
 import { getAlertSettings } from './notification-settings';
 import { sendWebhookNotification } from './notifications';
@@ -286,7 +286,7 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
     // Get project and org info
     const projectRecord = await db.project.findUnique({
       where: { id: projectId },
-      select: { id: true, url: true, orgId: true, name: true, isActive: true },
+      select: { id: true, url: true, orgId: true, name: true, isActive: true, crawlConfig: true },
     });
     if (!projectRecord) throw new Error('Project not found');
     if (!projectRecord.isActive) throw new Error('Project is inactive');
@@ -326,12 +326,44 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
     // Create scan record
     scanId = await createScanRecord(projectId);
 
+    // Parse crawlConfig from project
+    let crawlConfig: {
+      maxPages?: number;
+      excludePaths?: string[];
+      includeSubdomains?: boolean;
+      waitForSelector?: string;
+      waitTime?: number;
+      takeScreenshot?: boolean;
+      viewports?: Array<'desktop' | 'mobile'>;
+    } = {};
+    if (projectRecord.crawlConfig) {
+      try {
+        crawlConfig = JSON.parse(projectRecord.crawlConfig);
+      } catch {
+        logger.warn({ projectId }, 'Invalid crawlConfig JSON, using defaults');
+      }
+    }
+
+    // Determine if we should crawl (multi-page) or single-page scan
+    const shouldCrawl = !html && (crawlConfig.maxPages ?? 1) > 1;
+
     // Run the scan
     let result;
     if (html) {
       result = await scanFromHTML(html, url);
+    } else if (shouldCrawl) {
+      // Full-site crawl
+      result = await crawlSite(url, {
+        ...crawlConfig,
+        ...scanConfig,
+        viewports: crawlConfig.viewports ?? ['desktop', 'mobile'],
+      });
+      if (result.error && (result.error.includes('403') || result.error.includes('429'))) {
+        logger.info({ projectId, error: result.error }, 'Crawl blocked — falling back to single-page scan');
+        result = await scanUrl(url, { waitTime: 3000, viewports: ['desktop', 'mobile'] });
+      }
     } else if (useBrowser) {
-      result = await scanUrl(url, { waitTime: 3000 });
+      result = await scanUrl(url, { waitTime: 3000, viewports: ['desktop', 'mobile'] });
       if (result.error && (result.error.includes('403') || result.error.includes('429'))) {
         logger.info({ projectId, error: result.error }, 'Browser scan blocked — falling back to server scan');
         result = await scanUrlServer(url, undefined, {
