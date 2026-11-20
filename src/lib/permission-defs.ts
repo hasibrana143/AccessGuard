@@ -15,6 +15,7 @@ export const PERMISSIONS = {
   MANAGE_BILLING: 'manage_billing',
   API_KEYS_READ: 'api_keys_read',
   API_KEYS_WRITE: 'api_keys_write',
+  MANUAL_TESTS_RUN: 'manual_tests_run', // Tester role: run guided manual checks + upload evidence
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -37,4 +38,5 @@ export const PERMISSION_LABELS: Record<Permission, { label: string; description:
   [PERMISSIONS.MANAGE_BILLING]: { label: 'Manage billing', description: 'Change plans and payment details' },
   [PERMISSIONS.API_KEYS_READ]: { label: 'View API keys', description: 'List and view API keys' },
   [PERMISSIONS.API_KEYS_WRITE]: { label: 'Manage API keys', description: 'Create and revoke API keys' },
+  [PERMISSIONS.MANUAL_TESTS_RUN]: { label: 'Run manual tests', description: 'Execute guided manual checks and upload evidence' },
 };

@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | Risk score transparency — severity/trend or documented methodology |
+| Current task | Manual checks v1 — guided scripts, evidence upload, tester role |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts + pricing v2 + page inventory done; risk score next |
+| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score done; manual checks next |
 | Blocked | None |
-| Next action | Replace arbitrary risk score with transparent severity-based methodology |
+| Next action | Implement guided manual checks with evidence upload + tester role |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.

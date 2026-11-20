@@ -20,6 +20,7 @@ const saveSchema = z.object({
         checkId: z.string(),
         status: z.enum(MANUAL_CHECK_STATUSES),
         notes: z.string().max(2000).optional(),
+        evidence: z.array(z.string().url()).max(10).optional(), // evidence file URLs
       })
     )
     .min(1)
@@ -43,7 +44,9 @@ export async function GET(request: NextRequest, { params }: Params) {
           ...c,
           status: s?.status ?? 'pending',
           notes: s?.notes ?? null,
+          evidence: s?.evidence ? JSON.parse(s.evidence) : null,
           checkedBy: s?.checkedBy ?? null,
+          checkedAt: s?.checkedAt ?? null,
           updatedAt: s?.updatedAt ?? null,
         };
       }),
@@ -63,7 +66,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 
   const { id: projectId } = await params;
-  const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.MANAGE_VIOLATIONS });
+  const access = await requireProjectAccess(request, projectId, { permission: PERMISSIONS.MANUAL_TESTS_RUN });
   if (access instanceof NextResponse) return access;
 
   try {
@@ -86,13 +89,21 @@ export async function PUT(request: NextRequest, { params }: Params) {
       parsed.data.results.map((r) =>
         db.manualCheck.upsert({
           where: { projectId_checkId: { projectId, checkId: r.checkId } },
-          update: { status: r.status, notes: r.notes ?? null, checkedBy: access.user.id },
+          update: { 
+            status: r.status, 
+            notes: r.notes ?? null, 
+            evidence: r.evidence ? JSON.stringify(r.evidence) : null,
+            checkedBy: access.user.id,
+            checkedAt: new Date(),
+          },
           create: {
             projectId,
             checkId: r.checkId,
             status: r.status,
             notes: r.notes ?? null,
+            evidence: r.evidence ? JSON.stringify(r.evidence) : null,
             checkedBy: access.user.id,
+            checkedAt: new Date(),
           },
         })
       )

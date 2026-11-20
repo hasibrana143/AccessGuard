@@ -319,7 +319,9 @@ model ManualCheck {
   checkId   String
   status    String   @default("pending") // pending | pass | fail | na
   notes     String?
+  evidence  String?   // JSON array of evidence file URLs
   checkedBy String?
+  checkedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
