@@ -34,6 +34,12 @@ export interface ExecuteScanResult {
     moderate: number;
     minor: number;
   };
+  regression?: {
+    new: number;
+    fixed: number;
+    regressed: number;
+    persisting: number;
+  };
   riskScore?: number;
   errorMessage?: string;
 }
@@ -52,6 +58,7 @@ async function updateScanCompleted(
     violations: ScannerViolation[];
     severityCounts: { critical: number; serious: number; moderate: number; minor: number };
     riskScore: number;
+    regression?: { new: number; fixed: number; regressed: number; persisting: number };
   }
 ): Promise<void> {
   await db.scan.update({
@@ -61,7 +68,10 @@ async function updateScanCompleted(
       completedAt: new Date(),
       pagesScanned: result.pagesScanned,
       violationsFound: result.violations.length,
-      summary: JSON.stringify(result.severityCounts),
+      summary: JSON.stringify({
+        severity: result.severityCounts,
+        regression: result.regression,
+      }),
     },
   });
 }
@@ -78,8 +88,13 @@ async function updateScanFailed(scanId: string, errorMessage: string): Promise<v
   });
 }
 
-async function createViolations(scanId: string, projectId: string, violations: ScannerViolation[]): Promise<void> {
-  if (violations.length === 0) return;
+async function createViolations(scanId: string, projectId: string, violations: ScannerViolation[]): Promise<{
+  new: number;
+  fixed: number;
+  regressed: number;
+  persisting: number;
+}> {
+  if (violations.length === 0) return { new: 0, fixed: 0, regressed: 0, persisting: 0 };
 
   // Generate fingerprints for new violations
   const violationsWithFingerprint = violations.map((v) => ({
@@ -193,6 +208,13 @@ async function createViolations(scanId: string, projectId: string, violations: S
       });
     }
   });
+
+  return {
+    new: newViolations.length,
+    fixed: fixed.length,
+    regressed: regressed.length,
+    persisting: persisting.length,
+  };
 }
 
 async function updateProjectRiskScore(projectId: string, riskScore: number): Promise<void> {
@@ -385,7 +407,7 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
     if (result.error) throw new Error(result.error);
 
     // Create violations
-    await createViolations(scanId, projectId, result.violations);
+    const regression = await createViolations(scanId, projectId, result.violations);
 
     // Calculate severity counts
     const severityCounts = {
@@ -404,6 +426,7 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
       violations: result.violations,
       severityCounts,
       riskScore,
+      regression,
     });
 
     // Update project's risk score and last scan time
@@ -440,7 +463,7 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
       },
     });
 
-    logger.info({ scanId, violations: result.violations.length }, 'Scan executed successfully');
+    logger.info({ scanId, violations: result.violations.length, regression }, 'Scan executed successfully');
 
     return {
       success: true,
@@ -448,6 +471,7 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
       violationsFound: result.violations.length,
       pagesScanned: result.pagesScanned,
       severityCounts,
+      regression,
       riskScore,
     };
   } catch (err) {
