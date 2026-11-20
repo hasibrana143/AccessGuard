@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Current phase | AUDIT + PRODUCT CRITIQUE complete → P0 BUILD (crawler + CI + migrations) |
-| Current task | None in progress (analysis only, no code changed) |
+| Current phase | P0 BUILD — Scanner truth ✅ → Violation lifecycle ✅ → Migrations ✅ (file ready) → Crawler v1 (Task 4) 🔄 |
+| Current task | Crawler v1 — sitemap + BFS + Playwright render |
 | Owner | CTO agent |
-| Status | RED→AMBER — idea/market right; 3 load-bearing promises unimplemented |
+| Status | AMBER — Core scan engine fixed; migrations file ready; DB blocked on Docker |
 | Blocked | DB/Redis down (Docker Desktop service stopped) → vitest/e2e/dev server blocked |
-| Next action | P0: crawler v1 → API keys + GitHub Action repair → trial → migrations → green baseline |
+| Next action | Task 4: Crawler v1 implementation (sitemap discovery + BFS + per-page results) |
 | Last verification | 2026-11-20 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — scan is single-URL (not a crawler), GitHub Action calls dead endpoints, pricing "daily × pages" math impossible, no real trial. Fix these before selling. Execution plan: `.ai/TASKS.md`.

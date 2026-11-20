@@ -274,6 +274,8 @@ export const fetchAnalysisStrategy: ScannerStrategy = {
                 severity: rule.severity,
                 url: pageUrl,
                 elementSelector: null,
+                elementPath: null,
+                helpUrl: null,
                 elementHtml: matchResult.elementHtml,
                 description: matchResult.description,
                 remediationCode: matchResult.remediationCode,

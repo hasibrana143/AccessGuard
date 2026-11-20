@@ -5,6 +5,7 @@ import { getAlertSettings } from './notification-settings';
 import { sendWebhookNotification } from './notifications';
 import { sendScanCompleteEmail } from './email';
 import { logger } from './error-logger';
+import { generateFingerprint, reconcileViolations } from '@/services/scanner/strategies/fingerprint';
 
 export interface ExecuteScanOptions {
   projectId: string;
@@ -79,25 +80,119 @@ async function updateScanFailed(scanId: string, errorMessage: string): Promise<v
 
 async function createViolations(scanId: string, projectId: string, violations: ScannerViolation[]): Promise<void> {
   if (violations.length === 0) return;
-  const violationsToCreate = violations.map((v) => ({
+
+  // Generate fingerprints for new violations
+  const violationsWithFingerprint = violations.map((v) => ({
+    ...v,
+    fingerprint: generateFingerprint(v),
+  }));
+
+  // Fetch previous scan's violations for reconciliation
+  const previousScan = await db.scan.findFirst({
+    where: { projectId, status: 'completed', id: { not: scanId } },
+    orderBy: { completedAt: 'desc' },
+    select: { id: true },
+  });
+
+  let previousViolations: Array<{
+    id: string;
+    fingerprint: string | null;
+    ruleId: string;
+    url: string;
+    elementSelector: string | null;
+    elementHtml: string | null;
+    severity: string;
+    status: string;
+  }> = [];
+
+  if (previousScan) {
+    previousViolations = await db.violation.findMany({
+      where: { scanId: previousScan.id, deletedAt: null },
+      select: { id: true, fingerprint: true, ruleId: true, url: true, elementSelector: true, elementHtml: true, severity: true, status: true },
+    });
+  }
+
+  // Reconcile
+  const current = violationsWithFingerprint.map(v => ({ violation: v, fingerprint: v.fingerprint }));
+  const previous = previousViolations.map(v => ({ violation: v, fingerprint: v.fingerprint!, id: v.id }));
+  const { new: newViolations, persisting, fixed, regressed } = reconcileViolations(current, previous);
+
+  // Prepare violations to create (new + regressed)
+  const toCreate = [
+    ...newViolations.map(({ violation }) => violation),
+    ...regressed.map(({ current }) => current),
+  ].map((violation) => ({
     scanId,
     projectId,
-    ruleId: v.ruleId,
-    wcagCriteria: v.wcagCriteria,
-    severity: v.severity,
-    url: v.url,
-    elementSelector: v.elementSelector,
-    elementHtml: v.elementHtml,
-    description: v.description,
-    remediationCode: v.remediationCode,
-    aiExplanation: v.aiExplanation,
-    aiConfidenceScore: v.aiConfidenceScore,
+    ruleId: violation.ruleId,
+    wcagCriteria: violation.wcagCriteria,
+    severity: violation.severity,
+    url: violation.url,
+    elementSelector: violation.elementSelector,
+    elementPath: violation.elementPath ? JSON.stringify(violation.elementPath) : null,
+    helpUrl: violation.helpUrl,
+    elementHtml: violation.elementHtml,
+    description: violation.description,
+    remediationCode: violation.remediationCode,
+    aiExplanation: violation.aiExplanation,
+    aiConfidenceScore: violation.aiConfidenceScore,
+    fingerprint: violation.fingerprint,
     status: 'open' as const,
   }));
 
-  for (let i = 0; i < violationsToCreate.length; i += 10) {
-    await db.violation.createMany({ data: violationsToCreate.slice(i, i + 10) });
-  }
+  // Persisting violations keep their previous status (open/ignored/false_positive)
+  // const persistingIds = persisting.map(p => p.previous.id); // not used, we create new rows
+
+  // Fixed violations: mark as fixed, set fixedAt
+  const fixedIds = fixed.map(f => f.previous.id);
+
+  // Execute in transaction
+  await db.$transaction(async (tx) => {
+    // Create new + regressed violations
+    for (let i = 0; i < toCreate.length; i += 10) {
+      await tx.violation.createMany({ data: toCreate.slice(i, i + 10) });
+    }
+
+    // Update persisting violations to link to new scan (create new row for scan history)
+    for (let i = 0; i < persisting.length; i += 10) {
+      const batch = persisting.slice(i, i + 10).map(({ current, fingerprint }) => ({
+        scanId,
+        projectId,
+        ruleId: current.ruleId,
+        wcagCriteria: current.wcagCriteria,
+        severity: current.severity,
+        url: current.url,
+        elementSelector: current.elementSelector,
+        elementPath: current.elementPath ? JSON.stringify(current.elementPath) : null,
+        helpUrl: current.helpUrl,
+        elementHtml: current.elementHtml,
+        description: current.description,
+        remediationCode: current.remediationCode,
+        aiExplanation: current.aiExplanation,
+        aiConfidenceScore: current.aiConfidenceScore,
+        fingerprint,
+        status: current.status || 'open',
+      }));
+      await tx.violation.createMany({ data: batch });
+    }
+
+    // Mark fixed violations
+    if (fixedIds.length > 0) {
+      await tx.violation.updateMany({
+        where: { id: { in: fixedIds } },
+        data: { status: 'fixed', fixedAt: new Date() },
+      });
+    }
+
+    // Mark regressed violations' previous instances as fixed (they were fixed but came back)
+    const regressedPrevIds = regressed.map(r => r.previous.id);
+    if (regressedPrevIds.length > 0) {
+      await tx.violation.updateMany({
+        where: { id: { in: regressedPrevIds }, status: 'fixed' },
+        data: { status: 'open', fixedAt: null },
+      });
+    }
+  });
 }
 
 async function updateProjectRiskScore(projectId: string, riskScore: number): Promise<void> {

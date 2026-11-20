@@ -90,7 +90,7 @@ describe('queue', () => {
     mocked(scanFromHTML).mockResolvedValue({
       pagesScanned: 1,
       violations: [
-        { ruleId: 'image-alt', wcagCriteria: '1.1.1', severity: 'serious' as const, url: 'https://acme.dev', elementSelector: 'img', elementHtml: '<img src="a.jpg">', description: 'Missing alt', remediationCode: '<img src="a.jpg" alt="A">', aiExplanation: null, aiConfidenceScore: null, status: 'open' as const },
+        { ruleId: 'image-alt', wcagCriteria: '1.1.1', severity: 'serious' as const, url: 'https://acme.dev', elementSelector: 'img', elementPath: null, helpUrl: null, elementHtml: '<img src="a.jpg">', description: 'Missing alt', remediationCode: '<img src="a.jpg" alt="A">', aiExplanation: null, aiConfidenceScore: null, status: 'open' as const },
       ],
     });
   });

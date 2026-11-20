@@ -10,9 +10,9 @@ Source of record for execution. Full analysis: `.ai/PRODUCT-CRITIQUE.md`.
 - [ ] **GitHub Action repair** — point to `/api/v1/scans` + `/api/v1/reports/vpat`; PR gate on new critical/serious; publish `dist/index.js`.
   - Acceptance: Action runs on a sample repo, fails a PR on a real violation, passes after fix.
 - [ ] **Trial** — `trial_period_days: 14` in checkout/subscription; verify Stripe price config; no charge before day 15.
-- [ ] **Migrations** — `ScimGroup`, `CookieConsent`, `ManualCheck`, `pagesQuota` default; verify `migrate deploy` on empty DB.
-- [ ] **Violation lifecycle** — fingerprint + reconciliation (new/persisting/fixed/regressed); write `fixedAt` on rescan.
-- [ ] **Scanner truth** — bundle axe locally (no CDN), WCAG 2.2 tags, stop blocking images/fonts, mobile viewport, network-idle wait, store axe target array as JSON, `help` text not `helpUrl`, remove `--disable-web-security`.
+- [x] **Migrations** — `ScimGroup`, `CookieConsent`, `ManualCheck`, `pagesQuota` default; migration created at `prisma/migrations/20261120231949_...`; verify `migrate deploy` on empty DB after Docker up.
+- [x] **Violation lifecycle** — fingerprint + reconciliation (new/persisting/fixed/regressed); write `fixedAt` on rescan.
+- [x] **Scanner truth** — bundle axe locally (no CDN), WCAG 2.2 tags, stop blocking images/fonts, mobile viewport, network-idle wait, store axe target array as JSON, `help` text not `helpUrl`, remove `--disable-web-security`.
 - [ ] **AST patching** — ts-morph/Babel/PostCSS/parse5; occurrence-aware; reject placeholders; no-op detection (content unchanged ≠ fix).
 - [ ] **Fix verification** — apply patch to preview, re-run axe, only verified patches may open a PR; confidence from verification, template = `null`.
 - [ ] **Confidence gate fix** — `null` must not bypass `MIN_FIX_CONFIDENCE`.

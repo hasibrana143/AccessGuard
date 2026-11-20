@@ -6,7 +6,12 @@ export interface ScannerViolation {
   wcagCriteria: string;
   severity: Severity;
   url: string;
+  /** CSS selector for the element itself (last entry of axe's target path). */
   elementSelector: string | null;
+  /** Full axe target path (frame/shadow aware). Stored as-is for accurate matching. */
+  elementPath: string[] | null;
+  /** axe help URL, kept separate from the human description. */
+  helpUrl: string | null;
   elementHtml: string | null;
   description: string;
   remediationCode: string | null;
@@ -29,6 +34,8 @@ export interface ScanConfig {
   waitForSelector?: string;
   waitTime?: number;
   takeScreenshot?: boolean;
+  /** Viewports to evaluate. Defaults to desktop + mobile. */
+  viewports?: Array<'desktop' | 'mobile'>;
 }
 
 export interface ScannerStrategy {

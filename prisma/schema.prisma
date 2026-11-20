@@ -144,12 +144,18 @@ model Violation {
   severity          String
   url               String
   elementSelector   String?
+  /** Full axe target path (frame/shadow aware). Stored as JSON array. */
+  elementPath       String?   // JSON array of selectors
+  /** axe help URL, kept separate from the human description. */
+  helpUrl           String?
   elementHtml       String?
   description       String
   remediationCode   String?
   aiExplanation     String?
   aiConfidenceScore Float?
   status            String    @default("open")
+  /** Stable hash for deduplication across scans: ruleId|url|normalizedSelector|normalizedHtml */
+  fingerprint       String?   @unique
   githubPrUrl       String?
   createdAt         DateTime  @default(now())
   fixedAt         DateTime?
@@ -164,6 +170,7 @@ model Violation {
   @@index([deletedAt])
   @@index([projectId, status, severity])
   @@index([status, createdAt])
+  @@index([projectId, fingerprint])
 }
 
 model GithubConnection {
