@@ -13,6 +13,8 @@ export const PERMISSIONS = {
   MANAGE_TEAM: 'manage_team',
   MANAGE_SETTINGS: 'manage_settings',
   MANAGE_BILLING: 'manage_billing',
+  API_KEYS_READ: 'api_keys_read',
+  API_KEYS_WRITE: 'api_keys_write',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -33,4 +35,6 @@ export const PERMISSION_LABELS: Record<Permission, { label: string; description:
   [PERMISSIONS.MANAGE_TEAM]: { label: 'Manage team', description: 'Invite members and manage roles' },
   [PERMISSIONS.MANAGE_SETTINGS]: { label: 'Manage settings', description: 'Change organization settings and branding' },
   [PERMISSIONS.MANAGE_BILLING]: { label: 'Manage billing', description: 'Change plans and payment details' },
+  [PERMISSIONS.API_KEYS_READ]: { label: 'View API keys', description: 'List and view API keys' },
+  [PERMISSIONS.API_KEYS_WRITE]: { label: 'Manage API keys', description: 'Create and revoke API keys' },
 };

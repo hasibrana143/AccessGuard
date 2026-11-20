@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Current phase | P0 BUILD — Scanner truth ✅ → Violation lifecycle ✅ → Migrations ✅ → Crawler v1 ✅ → Customer API keys (Task 5) 🔄 |
-| Current task | Customer API keys — `ApiKey` model, create/revoke UI, `/api/v1` auth |
+| Current phase | P0 BUILD — Scanner truth ✅ → Violation lifecycle ✅ → Migrations ✅ → Crawler v1 ✅ → Customer API keys ✅ → GitHub Action repair (Task 6) 🔄 |
+| Current task | GitHub Action repair — point to `/api/v1/scans` + `/api/v1/reports/vpat`; PR gate |
 | Owner | CTO agent |
-| Status | AMBER — Core scan engine + crawler done; migrations file ready; DB blocked on Docker |
+| Status | AMBER — Core scan engine + crawler + API keys done; migrations file ready; DB blocked on Docker |
 | Blocked | DB/Redis down (Docker Desktop service stopped) → vitest/e2e/dev server blocked |
-| Next action | Task 5: ApiKey model + `/api/v1` endpoints + GitHub Action repair |
+| Next action | Task 6: GitHub Action repair + publish dist/index.js |
 | Last verification | 2026-11-20 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — scan is single-URL (not a crawler), GitHub Action calls dead endpoints, pricing "daily × pages" math impossible, no real trial. Fix these before selling. Execution plan: `.ai/TASKS.md`.

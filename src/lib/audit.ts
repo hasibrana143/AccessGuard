@@ -28,6 +28,7 @@ export const AUDIT_ACTIONS = [
   'eu_data_transfer_consent',
   'payment_failed', 'payment_succeeded',
   'vendor_review',
+  'api_key_created', 'api_key_revoked', 'api_scan_triggered',
 ] as const;
 
 interface AuditLogInput {

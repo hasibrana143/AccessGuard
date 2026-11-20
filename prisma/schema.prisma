@@ -38,6 +38,7 @@ model Organization {
   teamInvites          TeamInvite[]
   customRoles          CustomRole[]
   scimGroups           ScimGroup[]
+  apiKeys              ApiKey[]
 }
 
 model User {
@@ -325,4 +326,22 @@ model ManualCheck {
 
   @@unique([projectId, checkId])
   @@index([projectId])
+}
+
+// Customer API Keys for programmatic access
+model ApiKey {
+  id          String   @id @default(cuid())
+  orgId       String
+  name        String
+  prefix      String   // First 8 chars for display
+  hash        String   // bcrypt hash of the full key
+  scopes      String   @default("scans:read,scans:write,reports:read") // comma-separated
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([prefix])
 }

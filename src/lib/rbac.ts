@@ -10,6 +10,7 @@ export type AuthedUser = {
   role: string;
   orgId: string;
   orgSlug?: string | null;
+  customRole?: { permissions: string } | null;
 };
 
 interface GuardOptions {
@@ -84,25 +85,36 @@ export async function requireAuth(
   request: NextRequest
 ): Promise<{ user: AuthedUser } | NextResponse> {
   const session = await getServerSession(authOptions);
+  let userId: string | null = null;
   if (session?.user) {
     const su = session.user as unknown as AuthedUser;
-    if (su.id && su.role) {
-      return { user: { id: su.id, email: su.email ?? '', role: su.role, orgId: su.orgId, orgSlug: su.orgSlug } };
-    }
+    if (su.id) userId = su.id;
+  } else {
+    const token = extractTokenFromHeader(request.headers.get('Authorization'));
+    if (!token) return UNAUTHORIZED;
+    const payload = verifyToken(token);
+    if (!payload) return UNAUTHORIZED;
+    userId = payload.userId;
   }
 
-  const token = extractTokenFromHeader(request.headers.get('Authorization'));
-  if (!token) return UNAUTHORIZED;
-  const payload = verifyToken(token);
-  if (!payload) return UNAUTHORIZED;
+  if (!userId) return UNAUTHORIZED;
 
   const user = await db.user.findUnique({
-    where: { id: payload.userId },
-    select: { id: true, email: true, role: true, orgId: true },
+    where: { id: userId },
+    select: { id: true, email: true, role: true, orgId: true, organization: { select: { slug: true } }, customRole: { select: { permissions: true } } },
   });
   if (!user) return UNAUTHORIZED;
 
-  return { user: { id: user.id, email: user.email, role: user.role, orgId: user.orgId } };
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      orgId: user.orgId,
+      orgSlug: user.organization?.slug ?? null,
+      customRole: user.customRole ? { permissions: user.customRole.permissions } : null,
+    },
+  };
 }
 
 // Auth + optional permission + write-verification in one call.
