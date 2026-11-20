@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Current phase | P0 BUILD — Scanner truth ✅ → Violation lifecycle ✅ → Migrations ✅ → Crawler v1 ✅ → Customer API keys ✅ → GitHub Action repair ✅ → Trial ✅ → Green baseline (Task 8) 🔄 |
-| Current task | Green baseline — Docker up, vitest 401/401, lint 0, build 0; commit WIP |
+| Current phase | P0 BUILD — Scanner truth ✅ → Violation lifecycle ✅ → Migrations ✅ → Crawler v1 ✅ → Customer API keys ✅ → GitHub Action repair ✅ → Trial ✅ → **AWAITING DOCKER** |
+| Current task | **USER ACTION REQUIRED**: Start Docker Desktop → `docker compose up -d postgres redis` → run vitest/lint/build |
 | Owner | CTO agent |
-| Status | AMBER — All P0 code tasks done; migrations file ready; DB blocked on Docker |
-| Blocked | DB/Redis down (Docker Desktop service stopped) → vitest/e2e/dev server blocked |
-| Next action | Task 8: Start Docker, run vitest, lint, build; verify green baseline |
+| Status | AMBER — All P0 code tasks complete; blocked on Docker Desktop startup |
+| Blocked | Docker Desktop service not running (cannot start via CLI). User must open Docker Desktop app manually. |
+| Next action | User: Open Docker Desktop → wait for daemon → `docker compose up -d postgres redis` → then I'll run vitest/lint/build |
 | Last verification | 2026-11-20 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — scan is single-URL (not a crawler), GitHub Action calls dead endpoints, pricing "daily × pages" math impossible, no real trial. Fix these before selling. Execution plan: `.ai/TASKS.md`.

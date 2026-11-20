@@ -88,7 +88,8 @@ describe('scanner index', () => {
     it('returns all strategies', async () => {
       const { getAvailableStrategies } = await import('../index');
       const strategies = getAvailableStrategies();
-      expect(strategies).toHaveLength(3);
+      expect(strategies).toHaveLength(4);
+      expect(strategies.map(s => s.name)).toContain('crawler');
       expect(strategies.map(s => s.name)).toContain('axe-core');
       expect(strategies.map(s => s.name)).toContain('dom-analysis');
       expect(strategies.map(s => s.name)).toContain('fetch-analysis');

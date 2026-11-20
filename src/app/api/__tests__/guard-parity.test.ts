@@ -33,6 +33,7 @@ const GUARD_MARKERS = [
   'isSchedulerApiKeyValid',
   'NextAuth',
   'oauthGet', // github/connect delegates to the guarded oauth GET
+  'apiKeyAuth', // API key authentication for /api/v1/*
 ];
 
 // Routes that are intentionally public. Key = repo-relative path suffix,

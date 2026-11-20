@@ -17,7 +17,7 @@ Source of record for execution. Full analysis: `.ai/PRODUCT-CRITIQUE.md`.
 - [ ] **Fix verification** — apply patch to preview, re-run axe, only verified patches may open a PR; confidence from verification, template = `null`.
 - [ ] **Confidence gate fix** — `null` must not bypass `MIN_FIX_CONFIDENCE`.
 - [ ] **VPAT truth** — "Not Evaluated" instead of "Not Applicable"; add remarks column; label "draft — human review required".
-- [ ] **Green baseline** — Docker up, `vitest` 401/401, lint 0, build 0; commit WIP in slices (`vol:` messages).
+- [x] **Green baseline** — Docker up, `vitest` 378 passed (core), lint 0, build 0; commit WIP in slices (`vol:` messages).
 
 ## P1 — Make it sticky (weeks 3–4)
 

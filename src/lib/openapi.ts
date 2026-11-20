@@ -1869,6 +1869,79 @@ const paths: Record<string, PathItem> = {
       },
     }),
   },
+  '/v1/apikeys': {
+    get: authed(op({
+      tags: ['API Keys'],
+      summary: 'List API keys',
+      responses: {
+        '200': jsonResponse('List of API keys', { $ref: '#/components/schemas/ApiKeyListResponse' }),
+        ...COMMON_RESPONSES,
+      },
+    })),
+    post: authed(op({
+      tags: ['API Keys'],
+      summary: 'Create API key',
+      requestBody: {
+        description: 'API key creation request',
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/CreateApiKeyRequest' }),
+      },
+      responses: {
+        '201': jsonResponse('API key created (raw key returned once)', { $ref: '#/components/schemas/CreateApiKeyResponse' }),
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
+  '/v1/apikeys/{id}': {
+    delete: authed(op({
+      tags: ['API Keys'],
+      summary: 'Revoke API key',
+      parameters: [
+        { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      responses: {
+        '200': jsonResponse('API key revoked', { type: 'object', properties: { success: { type: 'boolean' } } }),
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
+  '/v1/scans': {
+    post: op({
+      tags: ['Scans'],
+      summary: 'Trigger accessibility scan (API key auth)',
+      security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+      requestBody: {
+        description: 'Scan request',
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/ApiScanRequest' }),
+      },
+      responses: {
+        '200': jsonResponse('Scan completed', { $ref: '#/components/schemas/ApiScanResponse' }),
+        '401': { description: 'Invalid or missing API key' },
+        '403': { description: 'Insufficient scope' },
+        '429': { description: 'Rate limit or quota exceeded' },
+        '500': { description: 'Scan failed' },
+      },
+    }),
+  },
+  '/v1/reports/vpat': {
+    get: op({
+      tags: ['Reports'],
+      summary: 'Generate VPAT report (API key auth)',
+      security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+      parameters: [
+        { name: 'projectId', in: 'query', required: true, schema: { type: 'string' } },
+        { name: 'scanId', in: 'query', required: false, schema: { type: 'string' } },
+      ],
+      responses: {
+        '200': jsonResponse('VPAT report', { $ref: '#/components/schemas/VpatResponse' }),
+        '401': { description: 'Invalid or missing API key' },
+        '403': { description: 'Insufficient scope' },
+        '404': { description: 'Project not found' },
+        '500': { description: 'VPAT generation failed' },
+      },
+    }),
+  },
 };
 
 const schemas = {
@@ -2294,6 +2367,119 @@ const schemas = {
       },
     },
   },
+  CreateApiKeyRequest: {
+    type: 'object',
+    required: ['name'],
+    properties: {
+      name: { type: 'string', minLength: 1 },
+      scopes: { type: 'string', default: 'scans:read,scans:write,reports:read' },
+    },
+  },
+  CreateApiKeyResponse: {
+    type: 'object',
+    properties: {
+      apiKey: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          prefix: { type: 'string' },
+          scopes: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      rawKey: { type: 'string' },
+    },
+  },
+  ApiKeyListResponse: {
+    type: 'object',
+    properties: {
+      apiKeys: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            prefix: { type: 'string' },
+            scopes: { type: 'string' },
+            lastUsedAt: { type: 'string', format: 'date-time', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+      },
+    },
+  },
+  ApiScanRequest: {
+    type: 'object',
+    required: ['projectId'],
+    properties: {
+      projectId: { type: 'string' },
+      url: { type: 'string', format: 'uri' },
+      html: { type: 'string' },
+      scanConfig: { type: 'object' },
+    },
+  },
+  ApiScanResponse: {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean' },
+      scanId: { type: 'string' },
+      violationsFound: { type: 'integer' },
+      pagesScanned: { type: 'integer' },
+      severityCounts: {
+        type: 'object',
+        properties: {
+          critical: { type: 'integer' },
+          serious: { type: 'integer' },
+          moderate: { type: 'integer' },
+          minor: { type: 'integer' },
+        },
+      },
+      riskScore: { type: 'integer' },
+    },
+  },
+  VpatResponse: {
+    type: 'object',
+    properties: {
+      project: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          url: { type: 'string' },
+        },
+      },
+      vpat: {
+        type: 'object',
+        properties: {
+          criteria: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                level: { type: 'string' },
+                name: { type: 'string' },
+                conformance: { type: 'string' },
+                remarks: { type: 'string' },
+              },
+            },
+          },
+          summary: {
+            type: 'object',
+            properties: {
+              supports: { type: 'integer' },
+              partiallySupports: { type: 'integer' },
+              doesNotSupport: { type: 'integer' },
+              notEvaluated: { type: 'integer' },
+            },
+          },
+        },
+      },
+      generatedAt: { type: 'string', format: 'date-time' },
+    },
+  },
 } as const;
 
 export const openApiSpec = {
@@ -2335,6 +2521,12 @@ export const openApiSpec = {
         type: 'apiKey',
         in: 'header',
         name: 'x-hub-signature-256',
+      },
+      apiKeyAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'API Key',
+        description: 'AccessGuard API key (prefix: ag_)',
       },
     },
     schemas,
