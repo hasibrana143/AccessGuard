@@ -232,6 +232,7 @@ async function dispatchNotifications({
   orgName,
   violations,
   severityCounts,
+  regression,
   riskScore,
   pagesScanned,
 }: {
@@ -242,6 +243,7 @@ async function dispatchNotifications({
   orgName: string;
   violations: ScannerViolation[];
   severityCounts: { critical: number; serious: number; moderate: number; minor: number };
+  regression?: { new: number; fixed: number; regressed: number; persisting: number };
   riskScore: number;
   pagesScanned: number;
 }): Promise<void> {
@@ -254,13 +256,32 @@ async function dispatchNotifications({
     const webhookUrl: string | undefined = orgSettings.slackWebhookUrl;
     const alerts = getAlertSettings(org?.settings ?? null);
 
-    if (webhookUrl && alerts.criticalViolations) {
-      const hasCritical = severityCounts.critical > 0;
+    // Count new/regressed critical and serious violations
+    const newCritical = violations.filter(v => v.severity === 'critical').length;
+    const newSerious = violations.filter(v => v.severity === 'serious').length;
+    const regressedCritical = regression ? violations.filter(v => v.severity === 'critical').length : 0;
+    const regressedSerious = regression ? violations.filter(v => v.severity === 'serious').length : 0;
+
+    // Alert on NEW critical violations (regression.new)
+    const shouldAlertCritical = (alerts.criticalViolations || alerts.newCritical) && 
+      (regression && regression.new > 0 && (newCritical > 0 || regressedCritical > 0));
+    
+    // Alert on NEW serious violations
+    const shouldAlertSerious = alerts.newSerious && 
+      (regression && regression.new > 0 && (newSerious > 0 || regressedSerious > 0));
+
+    if (webhookUrl && (shouldAlertCritical || shouldAlertSerious)) {
+      const newCriticalCount = regression ? regression.new : newCritical;
+      const hasCritical = shouldAlertCritical;
       await sendWebhookNotification(webhookUrl, {
-        title: `Scan Complete: ${projectName}`,
-        text: `Scan of ${projectName} found ${violations.length} violation(s).\nCritical: ${severityCounts.critical} • Serious: ${severityCounts.serious} • Moderate: ${severityCounts.moderate} • Minor: ${severityCounts.minor}`,
-        color: hasCritical ? 'red' : severityCounts.serious > 0 ? 'orange' : 'green',
+        title: `AccessGuard Alert: ${projectName}`,
+        text: `Scan found ${regression?.new || 0} new violation(s) (${newCriticalCount} critical, ${newSerious} serious).`,
+        color: hasCritical ? 'red' : 'orange',
         fields: [
+          { label: 'New Violations', value: String(regression?.new || 0) },
+          { label: 'Fixed', value: String(regression?.fixed || 0) },
+          { label: 'Regressed', value: String(regression?.regressed || 0) },
+          { label: 'Persisting', value: String(regression?.persisting || 0) },
           { label: 'Pages Scanned', value: String(pagesScanned) },
           { label: 'Risk Score', value: `${riskScore}/100` },
           { label: 'Project', value: projectName },
@@ -442,6 +463,7 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
         orgName: orgRecord.name,
         violations: result.violations,
         severityCounts,
+        regression,
         riskScore,
         pagesScanned: result.pagesScanned,
       });

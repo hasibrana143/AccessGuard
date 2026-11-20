@@ -5,13 +5,15 @@
 // the worker), which caused scan emails to fire by default and made toggles
 // silently ineffective. All reads/writes must go through these helpers.
 
-export type AlertKey = 'criticalViolations' | 'scanCompleted';
+export type AlertKey = 'criticalViolations' | 'scanCompleted' | 'newCritical' | 'newSerious';
 
-export const ALERT_KEYS: readonly AlertKey[] = ['criticalViolations', 'scanCompleted'];
+export const ALERT_KEYS: readonly AlertKey[] = ['criticalViolations', 'scanCompleted', 'newCritical', 'newSerious'];
 
 export const DEFAULT_ALERT_SETTINGS: Record<AlertKey, boolean> = {
   criticalViolations: true,
   scanCompleted: false,
+  newCritical: true,
+  newSerious: false,
 };
 
 export type AlertSettings = Record<AlertKey, boolean>;

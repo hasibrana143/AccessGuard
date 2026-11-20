@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | Regression detection — new/fixed/persisting vs previous scan |
+| Current task | Alerts — email + Slack + signed webhook (new critical only) |
 | Owner | CTO agent |
-| Status | GREEN — P0 complete; starting P1 |
+| Status | GREEN — Regression detection done; alerts next |
 | Blocked | None |
-| Next action | Implement regression detection in scan-executor + API/UI |
+| Next action | Implement alerting for new critical/serious violations via email, Slack, signed webhook |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.
