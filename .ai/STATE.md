@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | Agency workspace — client groups, white-label report branding, bulk scan |
+| Current task | VPAT/ACR v2 — WCAG 2.2 AA + EN 301 549 + Section 508, per-criterion remarks |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks done; agency workspace next |
+| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace done; VPAT v2 next |
 | Blocked | None |
-| Next action | Implement agency workspace with client groups, white-label reports, bulk scan |
+| Next action | Implement VPAT/ACR v2 with EN 301 549 + Section 508, remarks column |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.
