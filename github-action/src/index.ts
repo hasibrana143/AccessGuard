@@ -1,7 +1,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 
-const API_URL = 'https://api.accessguard.io';
+const API_URL = core.getInput('api-url') || 'https://api.accessguard.io';
 
 async function run(): Promise<void> {
   try {
@@ -10,7 +10,8 @@ async function run(): Promise<void> {
     const command = core.getInput('command') || 'scan';
     const failOn = core.getInput('fail-on') || 'critical';
     const standard = core.getInput('standard') || 'wcag22aa';
-    const format = core.getInput('format') || 'pdf';
+    const format = core.getInput('format') || 'json';
+    const url = core.getInput('url') || '';
 
     core.setSecret(apiKey);
 
@@ -23,55 +24,50 @@ async function run(): Promise<void> {
       core.info('Starting accessibility scan...');
 
       const scanResult = await apiRequest<{
+        success: boolean;
         scanId: string;
-        status: string;
-        summary: {
-          score: number;
-          critical: number;
-          serious: number;
-          moderate: number;
-          minor: number;
-        };
-        violations: Array<{
-          path: string;
-          line: number;
-          severity: string;
-          ruleId: string;
-          message: string;
-        }>;
-      }>(headers, '/api/scan', {
+        violationsFound: number;
+        pagesScanned: number;
+        severityCounts: { critical: number; serious: number; moderate: number; minor: number };
+        riskScore: number;
+        errorMessage?: string;
+      }>(headers, '/api/v1/scans', {
         method: 'POST',
-        body: JSON.stringify({ projectId, standard }),
+        body: JSON.stringify({ projectId, url: url || undefined }),
       });
 
-      core.setOutput('score', scanResult.summary.score);
-      core.setOutput('violations-count', scanResult.violations.length);
-      core.setOutput('critical-count', scanResult.summary.critical);
-
-      core.info(`Score: ${scanResult.summary.score}%`);
-      core.info(`Critical: ${scanResult.summary.critical}`);
-      core.info(`Serious: ${scanResult.summary.serious}`);
-      core.info(`Moderate: ${scanResult.summary.moderate}`);
-      core.info(`Minor: ${scanResult.summary.minor}`);
-
-      for (const violation of scanResult.violations) {
-        const annotation = `${violation.path}:${violation.line} - [${violation.severity}] ${violation.ruleId}: ${violation.message}`;
-        if (violation.severity === 'critical') {
-          core.error(annotation);
-        } else {
-          core.warning(annotation);
-        }
+      if (!scanResult.success) {
+        core.setFailed(`Scan failed: ${scanResult.errorMessage}`);
+        return;
       }
 
-      const severityOrder = ['minor', 'moderate', 'serious', 'critical'];
-      const failOnIndex = severityOrder.indexOf(failOn);
-      const maxSeverity = scanResult.violations.reduce((max, v) => {
-        const idx = severityOrder.indexOf(v.severity);
-        return idx > max ? idx : max;
-      }, 0);
+      core.setOutput('scan-id', scanResult.scanId);
+      core.setOutput('violations-found', scanResult.violationsFound.toString());
+      core.setOutput('pages-scanned', scanResult.pagesScanned.toString());
+      core.setOutput('risk-score', scanResult.riskScore.toString());
+      core.setOutput('critical-count', scanResult.severityCounts.critical.toString());
+      core.setOutput('serious-count', scanResult.severityCounts.serious.toString());
+      core.setOutput('moderate-count', scanResult.severityCounts.moderate.toString());
+      core.setOutput('minor-count', scanResult.severityCounts.minor.toString());
 
-      if (maxSeverity >= failOnIndex) {
-        core.setFailed(`Accessibility check failed: ${scanResult.summary.critical} critical violations`);
+      core.info(`Scan ID: ${scanResult.scanId}`);
+      core.info(`Pages scanned: ${scanResult.pagesScanned}`);
+      core.info(`Violations found: ${scanResult.violationsFound}`);
+      core.info(`Risk score: ${scanResult.riskScore}/100`);
+      core.info(`Critical: ${scanResult.severityCounts.critical}`);
+      core.info(`Serious: ${scanResult.severityCounts.serious}`);
+      core.info(`Moderate: ${scanResult.severityCounts.moderate}`);
+      core.info(`Minor: ${scanResult.severityCounts.minor}`);
+
+      const severityOrder = ['minor', 'moderate', 'serious', 'critical'];
+      const failOnIndex = severityOrder.indexOf(failOn.toLowerCase());
+      const maxSeverityIndex = severityOrder.findIndex((_, i) => {
+        const count = scanResult.severityCounts[severityOrder[i] as keyof typeof scanResult.severityCounts];
+        return count > 0;
+      });
+
+      if (maxSeverityIndex >= failOnIndex && maxSeverityIndex !== -1) {
+        core.setFailed(`Accessibility check failed: ${scanResult.severityCounts.critical} critical, ${scanResult.severityCounts.serious} serious violations`);
       } else {
         core.info('Accessibility check passed');
       }
@@ -79,30 +75,66 @@ async function run(): Promise<void> {
       core.info('Generating VPAT report...');
 
       const vpatResult = await apiRequest<{
-        downloadUrl: string;
-        expiresAt: string;
-      }>(headers, `/api/projects/${projectId}/vpat`, {
-        method: 'POST',
-        body: JSON.stringify({ format, standard }),
+        project: { id: string; name: string; url: string };
+        vpat: { criteria: Array<{ id: string; level: string; name: string; conformance: string; remarks: string }>; summary: { supports: number; partiallySupports: number; doesNotSupport: number; notEvaluated: number } };
+        generatedAt: string;
+      }>(headers, `/api/v1/reports/vpat?projectId=${encodeURIComponent(projectId)}`, {
+        method: 'GET',
       });
 
-      core.setOutput('vpat-url', vpatResult.downloadUrl);
-      core.info(`VPAT generated: ${vpatResult.downloadUrl}`);
+      core.setOutput('vpat-generated-at', vpatResult.generatedAt);
+      core.info(`VPAT generated at: ${vpatResult.generatedAt}`);
+      core.info(`Summary: ${vpatResult.vpat.summary.supports} supports, ${vpatResult.vpat.summary.partiallySupports} partially supports, ${vpatResult.vpat.summary.doesNotSupport} does not support, ${vpatResult.vpat.summary.notEvaluated} not evaluated`);
+
+      // Write VPAT to file if requested
+      if (format === 'json') {
+        const fs = await import('fs');
+        const path = await import('path');
+        const outputPath = path.resolve(process.cwd(), 'vpat-report.json');
+        fs.writeFileSync(outputPath, JSON.stringify(vpatResult, null, 2));
+        core.info(`VPAT written to ${outputPath}`);
+      }
     } else if (command === 'check-compliance') {
       core.info('Running compliance check...');
 
-      const checkResult = await apiRequest<{
-        score: number;
-        passed: number;
-        failed: number;
-      }>(headers, '/api/check', {
+      const scanResult = await apiRequest<{
+        success: boolean;
+        scanId: string;
+        violationsFound: number;
+        pagesScanned: number;
+        severityCounts: { critical: number; serious: number; moderate: number; minor: number };
+        riskScore: number;
+        errorMessage?: string;
+      }>(headers, '/api/v1/scans', {
         method: 'POST',
-        body: JSON.stringify({ projectId, standard }),
+        body: JSON.stringify({ projectId, url: url || undefined }),
       });
 
-      core.setOutput('score', checkResult.score);
-      core.info(`Compliance score: ${checkResult.score}%`);
-      core.info(`Passed: ${checkResult.passed}, Failed: ${checkResult.failed}`);
+      if (!scanResult.success) {
+        core.setFailed(`Scan failed: ${scanResult.errorMessage}`);
+        return;
+      }
+
+      core.setOutput('score', (100 - scanResult.riskScore).toString());
+      core.setOutput('violations-found', scanResult.violationsFound.toString());
+      core.setOutput('pages-scanned', scanResult.pagesScanned.toString());
+      core.setOutput('risk-score', scanResult.riskScore.toString());
+
+      const passed = scanResult.severityCounts.minor + scanResult.severityCounts.moderate;
+      const failed = scanResult.severityCounts.serious + scanResult.severityCounts.critical;
+
+      core.setOutput('passed', passed.toString());
+      core.setOutput('failed', failed.toString());
+
+      core.info(`Compliance score: ${100 - scanResult.riskScore}%`);
+      core.info(`Risk score: ${scanResult.riskScore}/100`);
+      core.info(`Passed (minor+moderate): ${passed}, Failed (serious+critical): ${failed}`);
+
+      if (failed > 0) {
+        core.setFailed(`Compliance check failed: ${failed} serious/critical violations`);
+      } else {
+        core.info('Compliance check passed');
+      }
     }
   } catch (error: any) {
     core.setFailed(error.message);

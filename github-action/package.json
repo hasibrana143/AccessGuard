@@ -1,0 +1,18 @@
+{
+  "name": "@accessguard/github-action",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "ncc build src/index.ts -o dist --source-map --license LICENSE.txt",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@actions/core": "^1.10.1",
+    "@actions/github": "^6.0.0"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.1",
+    "typescript": "^5.3.3"
+  }
+}

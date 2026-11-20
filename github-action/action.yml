@@ -24,7 +24,13 @@ inputs:
     default: 'wcag22aa'
   format:
     description: 'VPAT format (pdf, html, json)'
-    default: 'pdf'
+    default: 'json'
+  api-url:
+    description: 'AccessGuard API base URL'
+    default: 'https://api.accessguard.io'
+  url:
+    description: 'URL to scan (optional, overrides project URL)'
+    required: false
 
 runs:
   using: 'node20'

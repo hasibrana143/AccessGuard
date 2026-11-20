@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Current phase | P0 BUILD — Scanner truth ✅ → Violation lifecycle ✅ → Migrations ✅ → Crawler v1 ✅ → Customer API keys ✅ → GitHub Action repair (Task 6) 🔄 |
-| Current task | GitHub Action repair — point to `/api/v1/scans` + `/api/v1/reports/vpat`; PR gate |
+| Current phase | P0 BUILD — Scanner truth ✅ → Violation lifecycle ✅ → Migrations ✅ → Crawler v1 ✅ → Customer API keys ✅ → GitHub Action repair ✅ → Trial (Task 7) 🔄 |
+| Current task | Trial — 14-day trial_period_days in Stripe checkout; verify no charge before day 15 |
 | Owner | CTO agent |
-| Status | AMBER — Core scan engine + crawler + API keys done; migrations file ready; DB blocked on Docker |
+| Status | AMBER — Core scan engine + crawler + API keys + GitHub Action done; migrations file ready; DB blocked on Docker |
 | Blocked | DB/Redis down (Docker Desktop service stopped) → vitest/e2e/dev server blocked |
-| Next action | Task 6: GitHub Action repair + publish dist/index.js |
+| Next action | Task 7: Add trial_period_days to Stripe checkout/subscription; verify Stripe config |
 | Last verification | 2026-11-20 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — scan is single-URL (not a crawler), GitHub Action calls dead endpoints, pricing "daily × pages" math impossible, no real trial. Fix these before selling. Execution plan: `.ai/TASKS.md`.
