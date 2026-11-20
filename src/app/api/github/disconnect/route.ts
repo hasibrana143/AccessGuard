@@ -45,8 +45,7 @@ export async function POST(request: NextRequest) {
         orgId: verified.user.orgId,
         action: 'github_disconnected',
         metadata: JSON.stringify({
-          userId: verified.user.id,
-          isDemo: !isGitHubConfigured()
+          userId: verified.user.id
         })
       }
     });

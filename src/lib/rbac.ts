@@ -221,3 +221,29 @@ export async function requireScanAccess(
   if (permitted instanceof NextResponse) return permitted;
   return { user: auth.user, scan };
 }
+
+// Verify a violation belongs to a project in the authenticated user's org.
+export async function requireViolationAccess(
+  request: NextRequest,
+  violationId: string | null | undefined,
+  options: GuardOptions = {}
+): Promise<{ user: AuthedUser; violation: { id: string; projectId: string; scanId: string } } | NextResponse> {
+  if (!violationId) {
+    return NextResponse.json({ success: false, error: 'Violation ID is required' }, { status: 400 });
+  }
+  const auth = await requireAuth(request);
+  if (auth instanceof NextResponse) return auth;
+
+  const violation = await db.violation.findFirst({
+    where: { id: violationId, project: { orgId: auth.user.orgId } },
+    select: { id: true, projectId: true, scanId: true },
+  });
+  if (!violation) {
+    return NextResponse.json({ success: false, error: 'Violation not found' }, { status: 404 });
+  }
+  const verified = await enforceVerificationOnWrite(request, auth.user.id);
+  if (verified instanceof NextResponse) return verified;
+  const permitted = await enforcePermission(auth.user.id, options.permission);
+  if (permitted instanceof NextResponse) return permitted;
+  return { user: auth.user, violation };
+}

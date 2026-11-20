@@ -26,8 +26,9 @@ export function BillingSettings() {
   const [activeCoupon, setActiveCoupon] = useState<{ code: string; percentOff: number | null; description?: string } | null>(null);
   const [invoices, setInvoices] = useState<Array<{ id: string; number: string; amount: number; status: string; createdAt: string; url: string | null }>>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(true);
-  const [invoicesDemo, setInvoicesDemo] = useState(false);
-  const [usage, setUsage] = useState<{ websitesUsed: number; pagesScanned: number; scansRun: number; period: number } | null>(null);
+  const [invoicesError, setInvoicesError] = useState<string | null>(null);
+  const [usage, setUsage] = useState<{ websitesUsed: number; pagesScanned: number; scansRun: number; period: number; plan?: string; subscriptionStatus?: string } | null>(null);
+  const [subscription, setSubscription] = useState<{ plan: string; status: string; currentPeriodEnd?: string; usage?: { websites: number; websitesLimit: number; pagesScanned: number; pagesLimit: number } } | null>(null);
 
   useEffect(() => {
     const fetchUsage = async () => {
@@ -37,8 +38,36 @@ export function BillingSettings() {
         if (data.success) setUsage(data.data);
       } catch { /* ignore */ }
     };
-    if (user?.orgId) fetchUsage();
-  }, [user?.orgId]);
+    const fetchSubscription = async () => {
+      try {
+        const res = await fetch('/api/stripe/subscription');
+        const data = await res.json();
+        if (data.success) setSubscription({ ...data.data.subscription, plan: data.data.plan, usage: data.data.usage });
+      } catch { /* ignore */ }
+    };
+    const fetchInvoices = async () => {
+      setInvoicesLoading(true);
+      try {
+        const res = await fetch('/api/stripe/invoices');
+        const data = await res.json();
+        if (data.success) {
+          setInvoices(data.data || []);
+          setInvoicesError(null);
+        } else {
+          setInvoicesError(data.error || t('invoicesFailed'));
+        }
+      } catch {
+        setInvoicesError(t('invoicesFailed'));
+      } finally {
+        setInvoicesLoading(false);
+      }
+    };
+    if (user?.orgId) {
+      fetchUsage();
+      fetchSubscription();
+      fetchInvoices();
+    }
+  }, [user?.orgId, t]);
 
   const handleCheckout = async (plan: string) => {
     setBillingLoading(true);
@@ -136,19 +165,19 @@ export function BillingSettings() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between p-4 border border-border rounded-lg">
             <div>
-              <p className="font-medium">{t('growthPlan')}</p>
+              <p className="font-medium capitalize">{subscription?.plan ?? usage?.plan ?? t('growthPlan')} {t('planSuffix')}</p>
               <p className="text-sm text-muted-foreground">{t('billedMonthly')}</p>
             </div>
-            <Badge className="bg-emerald-700 text-white">{t('active')}</Badge>
+            <Badge className="bg-emerald-700 text-white">{subscription?.status ?? usage?.subscriptionStatus ?? t('active')}</Badge>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="p-4 border border-border rounded-lg">
               <p className="text-sm text-muted-foreground">{t('websites')}</p>
-              <p className="text-2xl font-bold">{usage?.websitesUsed ?? 0} <span className="text-sm font-normal text-muted-foreground">/ 10</span></p>
+              <p className="text-2xl font-bold">{usage?.websitesUsed ?? subscription?.usage?.websites ?? 0} <span className="text-sm font-normal text-muted-foreground">/ {subscription?.usage?.websitesLimit === 999 ? '∞' : (subscription?.usage?.websitesLimit ?? '—')}</span></p>
             </div>
             <div className="p-4 border border-border rounded-lg">
               <p className="text-sm text-muted-foreground">{t('pagesScanned30d')}</p>
-              <p className="text-2xl font-bold">{usage?.pagesScanned?.toLocaleString() ?? 0} <span className="text-sm font-normal text-muted-foreground">/ 1,000</span></p>
+              <p className="text-2xl font-bold">{usage?.pagesScanned?.toLocaleString() ?? subscription?.usage?.pagesScanned?.toLocaleString() ?? 0} <span className="text-sm font-normal text-muted-foreground">/ {subscription?.usage?.pagesLimit === 99999 ? '∞' : (subscription?.usage?.pagesLimit?.toLocaleString() ?? '—')}</span></p>
             </div>
           </div>
           <div className="p-4 border border-border rounded-lg">
@@ -196,20 +225,30 @@ export function BillingSettings() {
       <Card>
         <CardHeader>
           <CardTitle>{t('paymentMethod')}</CardTitle>
+          <CardDescription>{t('paymentMethodDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between p-4 border border-border rounded-lg">
-            <div className="flex items-center gap-3">
-              <CreditCard className="h-8 w-8 text-muted-foreground" />
-              <div>
-                <p className="font-medium">&bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; 4242</p>
-                <p className="text-sm text-muted-foreground">{t('expires')}</p>
+          {subscription ? (
+            <div className="flex items-center justify-between p-4 border border-border rounded-lg">
+              <div className="flex items-center gap-3">
+                <CreditCard className="h-8 w-8 text-muted-foreground" />
+                <div>
+                  <p className="font-medium">{t('cardOnFile')}</p>
+                  <p className="text-sm text-muted-foreground">{t('manageViaStripe')}</p>
+                </div>
               </div>
+              <Button variant="outline" size="sm" disabled={billingLoading} onClick={() => handleCheckout(subscription.plan)}>
+                {t('update')}
+              </Button>
             </div>
-            <Button variant="outline" size="sm" disabled={billingLoading} onClick={() => handleCheckout('growth')}>
-              {t('update')}
-            </Button>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between p-4 border border-dashed border-border rounded-lg">
+              <p className="text-sm text-muted-foreground">{t('noPaymentMethod')}</p>
+              <Button variant="outline" size="sm" disabled={billingLoading} onClick={() => handleCheckout('growth')}>
+                {t('addPaymentMethod')}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -248,16 +287,15 @@ export function BillingSettings() {
       <Card>
         <CardHeader>
           <CardTitle>{t('invoices')}</CardTitle>
-          <CardDescription>
-            {t('invoicesDesc')}
-            {invoicesDemo && <span className="ml-2 text-xs text-muted-foreground">{t('invoicesSample')}</span>}
-          </CardDescription>
+          <CardDescription>{t('invoicesDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {invoicesLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
+          ) : invoicesError ? (
+            <p className="text-sm text-muted-foreground text-center py-8">{invoicesError}</p>
           ) : invoices.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">{t('noInvoices')}</p>
           ) : (

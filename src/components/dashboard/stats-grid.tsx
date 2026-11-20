@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Target, AlertTriangle, AlertCircle, Globe, TrendingDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getRiskGradient, getRiskColor, getRiskLabel } from '@/lib/constants';
+import { getRiskGradient, getRiskColor, getRiskLabelKey } from '@/lib/constants';
 
 interface StatsGridProps {
   avgRiskScore: number;
@@ -17,6 +17,7 @@ interface StatsGridProps {
 
 export function StatsGrid({ avgRiskScore, stats, projectsCount, previousWeekTotal = null }: StatsGridProps) {
   const t = useTranslations('dash');
+  const tc = useTranslations('common');
   const delta = previousWeekTotal === null ? null : stats.total - previousWeekTotal;
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -30,7 +31,7 @@ export function StatsGrid({ avgRiskScore, stats, projectsCount, previousWeekTota
                 {avgRiskScore}<span className="text-lg text-muted-foreground">/100</span>
               </p>
               <Badge variant="outline" className={`mt-2 ${getRiskColor(avgRiskScore)}`}>
-                {getRiskLabel(avgRiskScore)}
+                {tc(getRiskLabelKey(avgRiskScore))}
               </Badge>
             </div>
             <div className={`p-3 rounded-xl ${avgRiskScore >= 60 ? 'bg-emerald/10' : 'bg-critical/10'}`}>

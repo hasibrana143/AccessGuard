@@ -20,6 +20,7 @@ const GUARD_MARKERS = [
   'requireOrgAccess',
   'requireProjectAccess',
   'requireScanAccess',
+  'requireViolationAccess',
   'enforcePermission',
   'getServerSession',
   'getToken',

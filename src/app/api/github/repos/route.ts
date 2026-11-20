@@ -3,38 +3,11 @@ import { getUserRepositories, isGitHubConfigured } from '@/lib/github';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 
-// GET /api/github/repos - List user's repositories
+// GET /api/github/repos - List user's repositories (GitHub OAuth connection required)
 export async function GET(request: NextRequest) {
   try {
-    // Check if GitHub is configured
     if (!isGitHubConfigured()) {
-      // Return demo repositories
-      return NextResponse.json({
-        success: true,
-        demoMode: true,
-        data: [
-          {
-            id: 'demo-1',
-            name: 'my-website',
-            fullName: 'acme-corp/my-website',
-            owner: 'acme-corp',
-            private: false,
-            description: 'Main company website',
-            defaultBranch: 'main',
-            htmlUrl: 'https://github.com/acme-corp/my-website',
-          },
-          {
-            id: 'demo-2',
-            name: 'docs',
-            fullName: 'acme-corp/docs',
-            owner: 'acme-corp',
-            private: true,
-            description: 'Internal documentation',
-            defaultBranch: 'main',
-            htmlUrl: 'https://github.com/acme-corp/docs',
-          },
-        ],
-      });
+      return NextResponse.json({ success: false, error: 'GitHub integration is not configured' }, { status: 503 });
     }
 
     // Resolve the token from the authenticated user's stored GitHub connection —

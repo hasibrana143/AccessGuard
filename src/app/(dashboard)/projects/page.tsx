@@ -76,6 +76,10 @@ export default function ProjectsPage() {
     }
   };
 
+  const handleExport = (projectId: string) => {
+    window.open(`/api/violations/export?projectId=${encodeURIComponent(projectId)}`, '_blank', 'noopener,noreferrer');
+  };
+
   const handleCheckVerification = async (projectId: string) => {
     try {
       const result = await verifyProject.checkStatus.mutateAsync(projectId);
@@ -121,9 +125,10 @@ export default function ProjectsPage() {
               isScanning={createScan.isPending}
               onScan={() => handleScan(project.id, project.name)}
               onHtmlUpload={() => { setHtmlUploadProject({ id: project.id, name: project.name }); setIsHtmlUploadOpen(true); }}
-              onSettings={() => setSettingsProject(project)}
+              onSettings={() => { setSettingsProject(project); setIsSettingsOpen(true); }}
               onEdit={() => { setEditingProject(project); setIsEditOpen(true); }}
               onDelete={() => { setDeleteProject({ id: project.id, name: project.name }); setIsDeleteOpen(true); }}
+              onExport={() => handleExport(project.id)}
             />
           ))}
           {(!projects || projects.length === 0) && (

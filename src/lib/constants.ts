@@ -58,31 +58,59 @@ export function getRiskGradient(score: number): string {
   return 'from-critical to-critical';
 }
 
-export function getRiskLabel(score: number): string {
-  if (score >= 80) return 'Low Risk';
-  if (score >= 60) return 'Medium Risk';
-  if (score >= 40) return 'High Risk';
-  return 'Critical Risk';
+export type RiskLabelKey = 'riskLow' | 'riskMedium' | 'riskHigh' | 'riskCritical';
+
+/** Returns a `common.*` i18n key — callers translate via `t(getRiskLabelKey(score))`. */
+export function getRiskLabelKey(score: number): RiskLabelKey {
+  if (score >= 80) return 'riskLow';
+  if (score >= 60) return 'riskMedium';
+  if (score >= 40) return 'riskHigh';
+  return 'riskCritical';
 }
 
-export function formatDate(date: string | Date | null): string {
+/** @deprecated Use getRiskLabelKey + next-intl instead (hardcoded English). */
+export function getRiskLabel(score: number): string {
+  const labels: Record<RiskLabelKey, string> = {
+    riskLow: 'Low Risk',
+    riskMedium: 'Medium Risk',
+    riskHigh: 'High Risk',
+    riskCritical: 'Critical Risk',
+  };
+  return labels[getRiskLabelKey(score)];
+}
+
+export function formatDate(date: string | Date | null, locale?: string): string {
   if (!date) return 'Never';
-  return new Date(date).toLocaleDateString('en-US', {
+  return new Date(date).toLocaleDateString(locale, {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
 }
 
-export function formatRelativeTime(date: string | Date): string {
+export interface RelativeTimeStrings {
+  justNow: string;
+  minutesAgo: (count: number) => string;
+  hoursAgo: (count: number) => string;
+  daysAgo: (count: number) => string;
+}
+
+const EN_RELATIVE: RelativeTimeStrings = {
+  justNow: 'Just now',
+  minutesAgo: (count) => `${count}m ago`,
+  hoursAgo: (count) => `${count}h ago`,
+  daysAgo: (count) => `${count}d ago`,
+};
+
+export function formatRelativeTime(date: string | Date, strings: RelativeTimeStrings = EN_RELATIVE, locale?: string): string {
   const now = new Date();
   const then = new Date(date);
   const diff = now.getTime() - then.getTime();
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  return formatDate(date);
+  if (minutes < 1) return strings.justNow;
+  if (minutes < 60) return strings.minutesAgo(minutes);
+  if (hours < 24) return strings.hoursAgo(hours);
+  if (days < 7) return strings.daysAgo(days);
+  return formatDate(date, locale);
 }

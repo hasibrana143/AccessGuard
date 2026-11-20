@@ -146,7 +146,7 @@ async function main() {
       name: 'Default Organization',
       slug: 'default-org',
       plan: 'free',
-      pagesQuota: 1000,
+      pagesQuota: 100,
       pagesUsedThisMonth: 0,
       settings: JSON.stringify({
         theme: 'system',

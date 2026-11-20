@@ -58,10 +58,11 @@ export async function POST(request: NextRequest) {
       await sendPasswordResetEmail(email, token, resetUrl);
     }
 
-    // In demo mode, return the token for testing (never in production)
+    // Local dev without email: expose the token so testing can proceed (never in production)
+    const { allowDevTokenExposure } = await import('@/lib/email');
     return NextResponse.json({
       success: true,
-      ...(isEmailConfigured() || process.env.NODE_ENV === 'production' ? {} : { demoToken: token })
+      ...(allowDevTokenExposure() ? { demoToken: token } : {})
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'Failed to process request' }, { status: 500 });

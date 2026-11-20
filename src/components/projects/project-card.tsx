@@ -18,9 +18,10 @@ interface ProjectCardProps {
   onSettings: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onExport?: () => void;
 }
 
-export function ProjectCard({ project, isScanning, onScan, onHtmlUpload, onSettings, onEdit, onDelete }: ProjectCardProps) {
+export function ProjectCard({ project, isScanning, onScan, onHtmlUpload, onSettings, onEdit, onDelete, onExport }: ProjectCardProps) {
   const t = useTranslations('projects');
   const tc = useTranslations('common');
 
@@ -78,7 +79,7 @@ export function ProjectCard({ project, isScanning, onScan, onHtmlUpload, onSetti
                 <Edit className="h-4 w-4 mr-2" />
                 {t('editProject')}
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={onExport}>
                 <Download className="h-4 w-4 mr-2" />
                 {t('exportReport')}
               </DropdownMenuItem>

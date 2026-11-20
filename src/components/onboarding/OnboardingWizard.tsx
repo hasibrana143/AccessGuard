@@ -9,6 +9,16 @@ import { Progress } from '@/components/ui/progress';
 
 export default function OnboardingWizard() {
   const t = useTranslations('onboarding');
+  const [step, setStep] = useState(0);
+  const [dismissed, setDismissed] = useState(true);
+  const [direction, setDirection] = useState(1);
+  const router = useRouter();
+
+  const finish = (destination?: string) => {
+    localStorage.setItem('onboarding-seen', 'true');
+    setDismissed(true);
+    if (destination) router.push(destination);
+  };
   const steps = [
     {
       title: t('step1Title'),
@@ -16,6 +26,7 @@ export default function OnboardingWizard() {
       icon: Sparkles,
       action: t('step1Action'),
       color: 'coral',
+      onAction: () => next(),
     },
     {
       title: t('step2Title'),
@@ -23,6 +34,7 @@ export default function OnboardingWizard() {
       icon: Globe,
       action: t('step2Action'),
       color: 'emerald',
+      onAction: () => finish('/projects?new=1'),
     },
     {
       title: t('step3Title'),
@@ -30,6 +42,7 @@ export default function OnboardingWizard() {
       icon: Github,
       action: t('step3Action'),
       color: 'blue',
+      onAction: () => finish('/settings'),
     },
     {
       title: t('step4Title'),
@@ -37,6 +50,7 @@ export default function OnboardingWizard() {
       icon: Search,
       action: t('step4Action'),
       color: 'coral',
+      onAction: () => finish('/projects'),
     },
   ];
 
@@ -47,11 +61,6 @@ export default function OnboardingWizard() {
     { icon: Bell, text: t('tour4'), highlight: false },
     { icon: FileText, text: t('tour5'), highlight: true },
   ];
-
-  const [step, setStep] = useState(0);
-  const [dismissed, setDismissed] = useState(true);
-  const [direction, setDirection] = useState(1);
-  const router = useRouter();
 
   useEffect(() => {
     const seen = localStorage.getItem('onboarding-seen');
@@ -178,11 +187,11 @@ export default function OnboardingWizard() {
               onClick={prev}
               className="flex-1 py-3 rounded-lg border border-border text-sm font-medium hover:bg-secondary transition-colors"
             >
-              Back
+              {t('back')}
             </button>
           )}
           <button
-            onClick={isTutorial ? skip : next}
+            onClick={isTutorial ? skip : current.onAction}
             className="flex-1 py-3 rounded-lg bg-coral text-coral-foreground text-sm font-semibold hover:bg-coral/90 flex items-center justify-center gap-2 transition-colors"
           >
             {isTutorial ? t('startScanning') : current.action}

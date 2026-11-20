@@ -59,16 +59,16 @@ export const PRICING_PLANS: PricingPlan[] = [
     price: 0,
     period: 'forever',
     description: 'Get started with basic accessibility testing',
-    features: ['1 website', '1,000 pages/month', 'Weekly scans', 'Basic reports', 'Community support'],
+    features: ['1 website', '100 pages/month', 'Weekly scans', 'Basic reports', 'Community support'],
     cta: 'Get Started Free',
     popular: false,
-    limits: { websites: 1, pagesPerMonth: 1000 },
+    limits: { websites: 1, pagesPerMonth: 100 },
   },
   {
     id: 'starter',
     name: 'Starter',
     price: 49,
-    priceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID || 'price_starter_demo',
+    priceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID || '',
     period: 'month',
     description: 'Perfect for small websites',
     features: ['1 website', '500 pages/month', 'Weekly scans', 'Email reports', 'Community support'],
@@ -80,7 +80,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     id: 'growth',
     name: 'Growth',
     price: 149,
-    priceId: process.env.NEXT_PUBLIC_STRIPE_GROWTH_PRICE_ID || 'price_growth_demo',
+    priceId: process.env.NEXT_PUBLIC_STRIPE_GROWTH_PRICE_ID || '',
     period: 'month',
     description: 'For growing teams and agencies',
     features: ['5 websites', '5,000 pages/month', 'Daily scans', 'AI remediation', 'GitHub auto-PR', 'Priority support'],
@@ -92,7 +92,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     id: 'agency',
     name: 'Agency',
     price: 399,
-    priceId: process.env.NEXT_PUBLIC_STRIPE_AGENCY_PRICE_ID || 'price_agency_demo',
+    priceId: process.env.NEXT_PUBLIC_STRIPE_AGENCY_PRICE_ID || '',
     period: 'month',
     description: 'For digital agencies managing clients',
     features: ['15 websites', '25,000 pages/month', 'White-label reports', 'Team seats', 'GitHub auto-PR', 'Dedicated support'],
@@ -129,7 +129,6 @@ export interface SubscriptionStatus {
     periodStart: string;
     periodEnd: string;
   };
-  isDemo: boolean;
 }
 
 // Check if Stripe is configured

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
-import { requireAuth, requireVerifiedEmail, requireOrgAccess, requireProjectAccess } from '@/lib/rbac';
+import { requireAuth, requireVerifiedEmail, requireOrgAccess, requireProjectAccess, requireScanAccess } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 
@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
+    const scanId = searchParams.get('scanId');
     const severity = searchParams.get('severity');
     const status = searchParams.get('status');
     const ruleId = searchParams.get('ruleId');
@@ -27,7 +28,11 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {};
 
-    if (projectId) {
+    if (scanId) {
+      const access = await requireScanAccess(request, scanId);
+      if (access instanceof NextResponse) return access;
+      where.scanId = access.scan.id;
+    } else if (projectId) {
       const access = await requireProjectAccess(request, projectId);
       if (access instanceof NextResponse) return access;
       where.projectId = projectId;

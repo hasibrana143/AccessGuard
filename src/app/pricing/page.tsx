@@ -12,7 +12,7 @@ export default function PricingPage() {
       price: '$0',
       period: '/forever',
       desc: t('pFreeDesc') || 'Get started with basic accessibility testing',
-      features: [t('pFreeF1') || '1 website', t('pFreeF2') || '1,000 pages/month', t('pFreeF3') || 'Weekly scans', t('pFreeF4') || 'Basic reports', t('pFreeF5') || 'Community support'],
+      features: [t('pFreeF1') || '1 website', t('pFreeF2') || '100 pages/month', t('pFreeF3') || 'Weekly scans', t('pFreeF4') || 'Basic reports', t('pFreeF5') || 'Community support'],
       cta: t('getStartedFree') || 'Get Started Free',
       popular: false,
       enterprise: false,
@@ -70,7 +70,7 @@ export default function PricingPage() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-5 gap-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {plans.map((plan) => (
             <div
               key={plan.name}

@@ -43,46 +43,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 404 });
     }
 
-    // Demo coupons (used when Stripe is not configured)
-    const DEMO_COUPONS: Record<string, { name: string; percentOff: number; description: string }> = {
-      WELCOME20: { name: 'WELCOME20', percentOff: 20, description: '20% off for the first 3 months' },
-      LAUNCH25: { name: 'LAUNCH25', percentOff: 25, description: '25% off launch special' },
-      ADA50: { name: 'ADA50', percentOff: 50, description: '50% off non-profit organizations' },
-    };
-
     const stripe = getStripeClient();
+    if (!stripe) {
+      return NextResponse.json({ success: false, error: 'Billing is not configured' }, { status: 503 });
+    }
+    if (!org.stripeSubscriptionId) {
+      return NextResponse.json({ success: false, error: 'No active subscription to apply a coupon to' }, { status: 400 });
+    }
+
+    const couponName = code.trim().toUpperCase();
     let percentOff: number | null = null;
-    let couponName = code.trim().toUpperCase();
     let description = 'Coupon applied';
 
-    if (stripe && org.stripeSubscriptionId) {
-      try {
-        const coupon = await stripe.coupons.retrieve(couponName);
-        if (!coupon) {
-          return NextResponse.json({ success: false, error: 'Invalid coupon code' }, { status: 400 });
-        }
-        percentOff = coupon.percent_off ?? null;
-        description = coupon.name || `Coupon ${couponName}`;
-        await stripe.subscriptions.update(org.stripeSubscriptionId, {
-          coupon: coupon.id,
-        } as Parameters<typeof stripe.subscriptions.update>[1]);
-      } catch (error) {
-        logger.error({ err: error }, '');
-        const demo = DEMO_COUPONS[couponName];
-        if (!demo) {
-          return NextResponse.json({ success: false, error: 'Invalid coupon code' }, { status: 400 });
-        }
-        percentOff = demo.percentOff;
-        description = demo.description;
-      }
-    } else {
-      const demo = DEMO_COUPONS[couponName];
-      if (!demo) {
+    try {
+      const coupon = await stripe.coupons.retrieve(couponName);
+      if (!coupon) {
         return NextResponse.json({ success: false, error: 'Invalid coupon code' }, { status: 400 });
       }
-      percentOff = demo.percentOff;
-      description = demo.description;
-      couponName = demo.name;
+      percentOff = coupon.percent_off ?? null;
+      description = coupon.name || `Coupon ${couponName}`;
+      await stripe.subscriptions.update(org.stripeSubscriptionId, {
+        coupon: coupon.id,
+      } as Parameters<typeof stripe.subscriptions.update>[1]);
+    } catch (error) {
+      logger.error({ err: error }, 'Stripe coupon apply failed');
+      return NextResponse.json({ success: false, error: 'Invalid coupon code' }, { status: 400 });
     }
 
     // Persist coupon in org settings

@@ -16,7 +16,14 @@ app.prepare().then(() => {
     const parsedUrl = parse(req.url, true);
     handle(req, res, parsedUrl);
   });
-  
+
+  // Forward WebSocket upgrades (/_next/hmr) to Next — without this HMR
+  // fails with ERR_INVALID_HTTP_RESPONSE on every edit.
+  const upgradeHandler = app.getUpgradeHandler();
+  server.on('upgrade', (req, socket, head) => {
+    upgradeHandler(req, socket, head);
+  });
+
   server.on('error', (err) => {
     console.error('Server error:', err);
   });

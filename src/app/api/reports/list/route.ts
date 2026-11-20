@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
+    const reportId = searchParams.get('id');
     const limit = parseInt(searchParams.get('limit') || '20', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
       if (auth instanceof NextResponse) return auth;
       where = { project: { orgId: auth.user.orgId } };
     }
+    if (reportId) where = { ...where, id: reportId };
 
     // Fetch reports with pagination
     const [reports, total] = await Promise.all([

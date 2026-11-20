@@ -466,6 +466,17 @@ const paths: Record<string, PathItem> = {
       },
     })),
   },
+  '/scans/{id}': {
+    get: authed(op({
+      tags: ['Scans'],
+      summary: 'Get a single scan with project info (org-scoped)',
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': { description: 'Scan detail' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
   '/schedule': {
     get: authed(op({
       tags: ['Schedules'],
@@ -557,6 +568,7 @@ const paths: Record<string, PathItem> = {
         { name: 'severity', in: 'query', schema: { type: 'string', enum: ['critical', 'serious', 'moderate', 'minor'] } },
         { name: 'status', in: 'query', schema: { type: 'string', enum: ['open', 'fixed', 'ignored', 'false_positive'] } },
         { name: 'projectId', in: 'query', schema: { type: 'string' } },
+        { name: 'scanId', in: 'query', schema: { type: 'string' } },
         { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
       ],
       responses: {
@@ -614,6 +626,17 @@ const paths: Record<string, PathItem> = {
       ],
       responses: {
         '200': { description: 'CSV download' },
+        ...COMMON_RESPONSES,
+      },
+    })),
+  },
+  '/violations/{id}': {
+    get: authed(op({
+      tags: ['Violations'],
+      summary: 'Get a single violation (org-scoped)',
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': { description: 'Violation detail' },
         ...COMMON_RESPONSES,
       },
     })),
@@ -709,6 +732,8 @@ const paths: Record<string, PathItem> = {
       parameters: [
         { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
         { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+        { name: 'id', in: 'query', schema: { type: 'string' } },
+        { name: 'projectId', in: 'query', schema: { type: 'string' } },
       ],
       responses: {
         '200': { description: 'Paginated report list' },

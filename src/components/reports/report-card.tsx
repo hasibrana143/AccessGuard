@@ -10,13 +10,18 @@ type ReportType = 'report' | 'vpat' | 'summary';
 interface ReportCardProps {
   type: ReportType;
   icon: React.ReactNode;
-  color: string;
   generating: ReportType | null;
   onGenerate: (type: ReportType) => void;
   onShare: (type: ReportType) => void;
 }
 
-export function ReportCard({ type, icon, color, generating, onGenerate, onShare }: ReportCardProps) {
+const CARD_STYLES: Record<ReportType, { cardHover: string; iconWrap: string }> = {
+  report: { cardHover: 'hover:border-coral/30', iconWrap: 'bg-coral/10' },
+  vpat: { cardHover: 'hover:border-blue-500/30', iconWrap: 'bg-blue-500/10' },
+  summary: { cardHover: 'hover:border-emerald-500/30', iconWrap: 'bg-emerald-500/10' },
+};
+
+export function ReportCard({ type, icon, generating, onGenerate, onShare }: ReportCardProps) {
   const t = useTranslations('reports');
 
   const config: Record<ReportType, { title: string; desc: string; body: string; btnClass: string; downloadLabel: string }> = {
@@ -26,12 +31,13 @@ export function ReportCard({ type, icon, color, generating, onGenerate, onShare 
   };
 
   const c = config[type];
+  const s = CARD_STYLES[type];
 
   return (
-    <Card className={`hover:border-${color}/30 transition-colors cursor-pointer`}>
+    <Card className={`${s.cardHover} transition-colors cursor-pointer`}>
       <CardHeader>
         <div className="flex items-center gap-3">
-          <div className={`p-3 rounded-xl bg-${color}/10`}>{icon}</div>
+          <div className={`p-3 rounded-xl ${s.iconWrap}`}>{icon}</div>
           <div>
             <CardTitle className="text-lg">{c.title}</CardTitle>
             <CardDescription>{c.desc}</CardDescription>

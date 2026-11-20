@@ -6,7 +6,6 @@ import {
   parsePrUrl,
   generatePrTitle,
   generatePrBody,
-  generateDemoPreview,
 } from '@/lib/github-pr';
 
 describe('validateRemediation', () => {
@@ -146,15 +145,4 @@ describe('generatePrTitle / generatePrBody failure paths', () => {
   });
 });
 
-describe('generateDemoPreview failure paths', () => {
-  it('falls back to index.html for unparseable urls', () => {
-    const preview = generateDemoPreview([
-      { id: '1', ruleId: 'image-alt', severity: 'serious', url: 'not-a-url', description: 'd' },
-    ]);
-    expect(preview.filesToModify).toContain('index.html');
-  });
 
-  it('returns an empty file list for empty violations', () => {
-    expect(generateDemoPreview([]).filesToModify).toEqual([]);
-  });
-});

@@ -38,11 +38,13 @@ export default function ViolationDetailPage() {
   const { data: violation, isLoading: violationLoading } = useQuery({
     queryKey: ['violation', violationId],
     queryFn: async (): Promise<Violation | null> => {
-      const result = await api.getViolations({ limit: 200 });
-      if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: Violation[] };
-      const violations = responseData?.data || [];
-      return violations.find((v) => v.id === violationId) || null;
+      const result = await api.getViolation(violationId);
+      if (!result.success) {
+        if (result.status === 404) return null;
+        throw new Error(result.error);
+      }
+      const responseData = result.data as { data?: Violation };
+      return responseData?.data || null;
     },
     retry: false,
   });

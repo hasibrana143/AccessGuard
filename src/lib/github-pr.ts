@@ -323,36 +323,4 @@ export function parsePrUrl(url: string): { owner: string; repo: string; pullNumb
   };
 }
 
-// Generate preview content for demo mode
-export function generateDemoPreview(violations: ViolationForPR[]): {
-  branchName: string;
-  prTitle: string;
-  prBody: string;
-  filesToModify: string[];
-} {
-  const branchName = createFixBranchName('accessibility-fixes');
-  const prTitle = generatePrTitle(violations);
-  const prBody = generatePrBody(violations);
-  
-  // Get unique file paths from element selectors (simplified)
-  const filesToModify = [...new Set(
-    violations
-      .map(v => v.url)
-      .filter(Boolean)
-      .map(url => {
-        try {
-          const path = new URL(url).pathname;
-          return path === '/' ? 'index.html' : `${path}.html`;
-        } catch {
-          return 'index.html';
-        }
-      })
-  )].slice(0, 5);
-  
-  return {
-    branchName,
-    prTitle,
-    prBody,
-    filesToModify,
-  };
-}
+

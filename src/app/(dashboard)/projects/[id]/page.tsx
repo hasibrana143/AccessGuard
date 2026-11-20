@@ -1,10 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useProject } from '@/hooks/useProjects';
-import { useScans } from '@/hooks/useScans';
+import { useScans, useCreateScan } from '@/hooks/useScans';
 import { useViolations } from '@/hooks/useViolations';
+import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,13 +31,36 @@ import { formatDistanceToNow } from 'date-fns';
 
 export default function ProjectDetailPage() {
   const t = useTranslations('pdetail');
+  const tp = useTranslations('projects');
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const projectId = params.id as string;
+  const [activeTab, setActiveTab] = useState('overview');
 
   const { data: project, isLoading: projectLoading } = useProject(projectId);
   const { data: scans = [], isLoading: scansLoading } = useScans(projectId, 10);
   const { data: violations = [], isLoading: violationsLoading } = useViolations({ projectId, limit: 20 });
+  const createScan = useCreateScan();
+
+  const handleRunScan = async () => {
+    try {
+      const result = await createScan.mutateAsync(projectId);
+      toast({
+        title: tp('scanCompleted'),
+        description: tp('scanCompletedMsg', {
+          count: result?.scan?.violationsFound ?? 0,
+          name: project?.name ?? '',
+        }),
+      });
+    } catch (error) {
+      toast({
+        title: tp('scanFailed'),
+        description: error instanceof Error ? error.message : tp('scanFailedStart'),
+        variant: 'destructive',
+      });
+    }
+  };
 
   if (projectLoading) {
     return <ProjectDetailSkeleton />;
@@ -90,11 +115,11 @@ export default function ProjectDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">{t('runScan')}</span>
+          <Button variant="outline" size="sm" onClick={handleRunScan} disabled={createScan.isPending}>
+            <RefreshCw className={`h-4 w-4 sm:mr-2 ${createScan.isPending ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">{createScan.isPending ? tp('scanning') : t('runScan')}</span>
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => setActiveTab('settings')}>
             <Settings className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">{t('settings')}</span>
           </Button>
@@ -150,7 +175,7 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Main Content Tabs */}
-      <Tabs defaultValue="overview" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">{t('tabOverview')}</TabsTrigger>
           <TabsTrigger value="scans">{t('tabScans', { count: scans.length })}</TabsTrigger>

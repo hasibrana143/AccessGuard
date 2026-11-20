@@ -46,19 +46,17 @@ export async function GET(request: NextRequest) {
         .filter(Boolean)
         .map(p => ({ owner: p!.owner, repo: p!.repo, prNumber: p!.pullNumber }));
 
-      if (!isGitHubConfigured() || parsedPrs.length === 0) {
-        const mockStatuses: Record<string, { state: string; merged: boolean }> = {};
-        for (const pr of parsedPrs) {
-          const url = `https://github.com/${pr.owner}/${pr.repo}/pull/${pr.prNumber}`;
-          mockStatuses[url] = { state: 'open', merged: false };
-        }
-        return NextResponse.json({ success: true, demoMode: true, data: mockStatuses });
+      if (!isGitHubConfigured()) {
+        return NextResponse.json({ success: false, error: 'GitHub integration is not configured' }, { status: 503 });
+      }
+      if (parsedPrs.length === 0) {
+        return NextResponse.json({ success: true, data: {} });
       }
 
       const githubToken = request.headers.get('x-github-token') || process.env.GITHUB_TOKEN;
 
       if (!githubToken) {
-        return NextResponse.json({ success: true, demoMode: true, data: {} });
+        return NextResponse.json({ success: false, error: 'GitHub not connected' }, { status: 401 });
       }
 
       const statuses = await getMultiplePRStatuses(githubToken, parsedPrs);
@@ -71,27 +69,14 @@ export async function GET(request: NextRequest) {
 
     // If specific PR URLs are provided
     if (prUrls && prUrls.length > 0) {
-      // Check if GitHub is configured
       if (!isGitHubConfigured()) {
-        const mockStatuses: Record<string, { state: string; merged: boolean }> = {};
-        for (const url of prUrls) {
-          mockStatuses[url] = { state: 'open', merged: false };
-        }
-        return NextResponse.json({
-          success: true,
-          demoMode: true,
-          data: mockStatuses,
-        });
+        return NextResponse.json({ success: false, error: 'GitHub integration is not configured' }, { status: 503 });
       }
 
       const githubToken = request.headers.get('x-github-token') || process.env.GITHUB_TOKEN;
-      
+
       if (!githubToken) {
-        return NextResponse.json({
-          success: true,
-          demoMode: true,
-          data: {},
-        });
+        return NextResponse.json({ success: false, error: 'GitHub not connected' }, { status: 401 });
       }
 
       const parsedPrUrls = (prUrls || [])
@@ -134,46 +119,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check if GitHub is configured
     if (!isGitHubConfigured()) {
-      const mockPRs = allPrUrls.map(url => ({
-        url,
-        state: 'open',
-        merged: false,
-      }));
-
-      const byViolationId: Record<string, { state: string; merged: boolean; url: string }> = {};
-      for (const v of violationsWithPRs) {
-        if (v.githubPrUrl) {
-          byViolationId[v.id] = {
-            state: 'open',
-            merged: false,
-            url: v.githubPrUrl,
-          };
-        }
-      }
-
-      return NextResponse.json({
-        success: true,
-        demoMode: true,
-        data: {
-          prs: mockPRs,
-          byViolationId,
-        },
-      });
+      return NextResponse.json({ success: false, error: 'GitHub integration is not configured' }, { status: 503 });
     }
 
     const githubToken = request.headers.get('x-github-token') || process.env.GITHUB_TOKEN;
-    
+
     if (!githubToken) {
-      return NextResponse.json({
-        success: true,
-        demoMode: true,
-        data: {
-          prs: allPrUrls.map(url => ({ url, state: 'open', merged: false })),
-          byViolationId: {},
-        },
-      });
+      return NextResponse.json({ success: false, error: 'GitHub not connected' }, { status: 401 });
     }
 
     const parsedAllPrs = allPrUrls
@@ -233,18 +186,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if GitHub is configured
     if (!isGitHubConfigured()) {
-      return NextResponse.json({
-        success: true,
-        demoMode: true,
-        data: {
-          number: pullNumber,
-          state: 'open',
-          merged: false,
-          htmlUrl: `https://github.com/${owner}/${repo}/pull/${pullNumber}`,
-        },
-      });
+      return NextResponse.json({ success: false, error: 'GitHub integration is not configured' }, { status: 503 });
     }
 
     // Whitelist the repository against the org's connected repositories
@@ -275,16 +218,7 @@ export async function POST(request: NextRequest) {
       select: { githubToken: true },
     });
     if (!user?.githubToken) {
-      return NextResponse.json({
-        success: true,
-        demoMode: true,
-        data: {
-          number: pullNumber,
-          state: 'open',
-          merged: false,
-          htmlUrl: `https://github.com/${owner}/${repo}/pull/${pullNumber}`,
-        },
-      });
+      return NextResponse.json({ success: false, error: 'GitHub not connected' }, { status: 401 });
     }
     const { decryptSecret, isEncrypted } = await import('@/lib/crypto');
     const githubToken = isEncrypted(user.githubToken) ? (decryptSecret(user.githubToken) ?? user.githubToken) : user.githubToken;

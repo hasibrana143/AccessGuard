@@ -14,6 +14,8 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  copied: boolean;
+  copyFailed: boolean;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -21,9 +23,11 @@ export class ErrorBoundary extends Component<Props, State> {
     hasError: false,
     error: null,
     errorInfo: null,
+    copied: false,
+    copyFailed: false,
   };
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error, errorInfo: null };
   }
 
@@ -42,7 +46,7 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.href = '/';
   };
 
-  private handleReportBug = () => {
+  private handleReportBug = async () => {
     const { error, errorInfo } = this.state;
     const bugReport = {
       error: error?.message,
@@ -53,8 +57,14 @@ export class ErrorBoundary extends Component<Props, State> {
       userAgent: navigator.userAgent,
     };
 
-    navigator.clipboard.writeText(JSON.stringify(bugReport, null, 2));
-    alert('Error details copied to clipboard. Please report to support.');
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(bugReport, null, 2));
+      this.setState({ copied: true });
+      window.setTimeout(() => this.setState({ copied: false }), 2500);
+    } catch {
+      this.setState({ copyFailed: true });
+      window.setTimeout(() => this.setState({ copyFailed: false }), 2500);
+    }
   };
 
   public render() {
@@ -97,7 +107,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 </Button>
                 <Button variant="outline" onClick={this.handleReportBug} className="flex-1">
                   <Bug className="h-4 w-4 mr-2" />
-                  Report Bug
+                  {this.state.copied ? 'Copied!' : this.state.copyFailed ? 'Copy failed' : 'Report Bug'}
                 </Button>
               </div>
             </CardFooter>

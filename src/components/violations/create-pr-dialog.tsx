@@ -23,34 +23,39 @@ export function CreatePrDialog({ open, onOpenChange, violationIds, totalCount }:
 
   const [repos, setRepos] = useState<{ fullName: string; name: string; description?: string | null; private?: boolean }[]>([]);
   const [reposLoading, setReposLoading] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
+  const [reposError, setReposError] = useState<string | null>(null);
   const [selectedRepo, setSelectedRepo] = useState('');
   const [prSubmitting, setPrSubmitting] = useState(false);
-  const [prResult, setPrResult] = useState<{ prUrl?: string; message?: string; demoMode?: boolean; violationsCount?: number; project?: { name: string } } | null>(null);
+  const [prResult, setPrResult] = useState<{ prUrl?: string; message?: string; violationsCount?: number; project?: { name: string } } | null>(null);
 
   useEffect(() => {
     if (open) {
       setPrResult(null);
       setSelectedRepo('');
+      setReposError(null);
       setReposLoading(true);
       fetch('/api/github/repos')
         .then(res => res.json())
         .then(data => {
           if (data.success) {
             setRepos(data.data || []);
-            setDemoMode(!!data.demoMode);
-            if (data.data?.length > 0 && data.demoMode) setSelectedRepo(data.data[0].fullName);
+          } else {
+            setReposError(data.error || t('fetchReposFailed'));
           }
         })
-        .catch(() => {})
+        .catch(() => setReposError(t('fetchReposFailed')))
         .finally(() => setReposLoading(false));
     }
-  }, [open]);
+  }, [open, t]);
 
   const handleCreate = async () => {
     if (prSubmitting) return;
     if (violationIds.length === 0) {
       toast({ title: t('noFixesAvailable'), description: t('noFixesAvailableDesc'), variant: 'destructive' });
+      return;
+    }
+    if (!selectedRepo) {
+      toast({ title: tc('error'), description: t('selectRepository'), variant: 'destructive' });
       return;
     }
     setPrSubmitting(true);
@@ -59,15 +64,15 @@ export function CreatePrDialog({ open, onOpenChange, violationIds, totalCount }:
       const res = await fetch('/api/github/create-pr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ violationIds, repository: selectedRepo || undefined }),
+        body: JSON.stringify({ violationIds, repository: selectedRepo }),
       });
       const data = await res.json();
       if (!data.success) {
         toast({ title: tc('error'), description: data.error || t('prCreateFailed'), variant: 'destructive' });
       } else {
         const info = data.data || {};
-        setPrResult({ prUrl: info.prUrl, message: info.message || t('prCreated'), demoMode: data.demoMode || false, violationsCount: info.violationsCount || violationIds.length, project: info.project });
-        toast({ title: data.demoMode ? t('previewGenerated') : t('prCreated'), description: data.demoMode ? t('githubNotConnected') : t('prCreated') });
+        setPrResult({ prUrl: info.prUrl, message: info.message || t('prCreated'), violationsCount: info.violationsCount || violationIds.length, project: info.project });
+        toast({ title: t('prCreated'), description: t('prCreated') });
       }
     } catch {
       toast({ title: tc('error'), description: t('prCreateFailed'), variant: 'destructive' });
@@ -99,8 +104,8 @@ export function CreatePrDialog({ open, onOpenChange, violationIds, totalCount }:
             </div>
           ) : (
             <>
-              {demoMode && (
-                <div className="p-3 rounded-lg border border-coral/20 bg-coral/5 text-sm text-muted-foreground">{t('githubNotConnected')}</div>
+              {reposError && (
+                <div className="p-3 rounded-lg border border-destructive/30 bg-destructive/5 text-sm text-muted-foreground">{reposError}</div>
               )}
               <div className="grid gap-2">
                 <Label htmlFor="pr-repo">{t('repository')}</Label>
@@ -114,15 +119,15 @@ export function CreatePrDialog({ open, onOpenChange, violationIds, totalCount }:
                     </SelectContent>
                   </Select>
                 ) : (
-                  <p className="text-sm text-muted-foreground">{t('noRepositories')}</p>
+                  <p className="text-sm text-muted-foreground">{reposError ?? t('noRepositories')}</p>
                 )}
               </div>
 
               {prResult && (
                 <div className="p-4 rounded-lg border bg-muted/50 space-y-2">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className={`h-4 w-4 ${prResult.demoMode ? 'text-coral' : 'text-emerald-500'}`} />
-                    <span className="text-sm font-medium">{prResult.demoMode ? t('previewGenerated') : t('prCreated')}</span>
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    <span className="text-sm font-medium">{t('prCreated')}</span>
                   </div>
                   <p className="text-sm text-muted-foreground">{prResult.message}</p>
                   {prResult.violationsCount != null && (

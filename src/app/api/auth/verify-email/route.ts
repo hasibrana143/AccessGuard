@@ -45,9 +45,10 @@ export async function POST(request: NextRequest) {
       await sendVerificationEmail(user.email, user.name || 'there', verifyUrl);
     }
 
+    const { allowDevTokenExposure } = await import('@/lib/email');
     return NextResponse.json({
       success: true,
-      ...(isEmailConfigured() || process.env.NODE_ENV === 'production' ? {} : { demoToken: token })
+      ...(allowDevTokenExposure() ? { demoToken: token } : {})
     });
   } catch (error) {
     return NextResponse.json({ success: false, error: 'Failed to process request' }, { status: 500 });

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { useToast } from '@/hooks/use-toast';
 
 interface Report {
   id: string;
@@ -47,19 +48,16 @@ export default function ReportDetailPage() {
   const t = useTranslations('rdetail');
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const reportId = params.id as string;
 
   const { data: report, isLoading } = useQuery({
     queryKey: ['report', reportId],
     queryFn: async (): Promise<Report | null> => {
-      const result = await api.getProjects();
-      if (!result.success) return null;
-      
-      // Fetch reports list and find this one
-      const reportsRes = await fetch(`/api/reports/list`);
+      const reportsRes = await fetch(`/api/reports/list?id=${encodeURIComponent(reportId)}&limit=1`);
       const reportsData = await reportsRes.json();
       if (!reportsData.success) return null;
-      
+
       const reports = reportsData.data || [];
       return reports.find((r: Report) => r.id === reportId) || null;
     },
@@ -131,11 +129,13 @@ export default function ReportDetailPage() {
       });
       const data = await res.json();
       if (data.success && data.data?.url) {
-        navigator.clipboard.writeText(data.data.url);
-        alert(t('shareCopied'));
+        await navigator.clipboard.writeText(data.data.url);
+        toast({ title: t('shareCopiedTitle'), description: t('shareCopiedMsg') });
+      } else {
+        toast({ title: t('shareFailedTitle'), description: data.error || t('shareFailedMsg'), variant: 'destructive' });
       }
     } catch {
-      alert(t('shareFailed'));
+      toast({ title: t('shareFailedTitle'), description: t('shareFailedMsg'), variant: 'destructive' });
     }
   };
 

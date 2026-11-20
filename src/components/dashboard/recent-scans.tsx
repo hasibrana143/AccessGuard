@@ -8,8 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScanProgressAnimation } from '@/components/ui/scan-progress-animation';
 import { formatRelativeTime } from '@/lib/constants';
-import { useToast } from '@/hooks/use-toast';
 import type { Scan } from '@/types';
+import { useRouter } from 'next/navigation';
 
 interface RecentScansProps {
   scans: Scan[];
@@ -17,7 +17,7 @@ interface RecentScansProps {
 
 export function RecentScans({ scans }: RecentScansProps) {
   const t = useTranslations('dash');
-  const { toast } = useToast();
+  const router = useRouter();
   return (
     <Card>
       <CardHeader>
@@ -26,7 +26,7 @@ export function RecentScans({ scans }: RecentScansProps) {
             <CardTitle className="text-lg">{t('recentScans')}</CardTitle>
             <CardDescription>{t('recentScansDesc')}</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={() => toast({ title: t('comingSoon'), description: t('fullHistorySoon') })}>
+          <Button variant="outline" size="sm" onClick={() => router.push('/scans')}>
             {t('viewAll')}
             <ChevronRight className="h-4 w-4 ml-1" />
           </Button>

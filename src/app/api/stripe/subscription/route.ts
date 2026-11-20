@@ -4,7 +4,7 @@ import { logger } from '@/lib/error-logger';
 import { requireAuth, requireVerifiedEmail } from '@/lib/rbac';
 import { checkRateLimit, getClientIdentifier, createRateLimitResponse, rateLimits } from '@/lib/rate-limit';
 import { PERMISSIONS } from '@/lib/permissions';
-import { PRICING_PLANS, getPlanFromPriceId, type PlanType } from '@/lib/stripe';
+import { PRICING_PLANS, getPlanFromPriceId, getStripePriceId, getStripeClient, isStripeConfigured, type PlanType } from '@/lib/stripe';
 
 // GET /api/stripe/subscription - Get the CALLER's org subscription + usage.
 // Guard chain: auth first.
@@ -71,7 +71,6 @@ export async function GET(request: NextRequest) {
           pagesLimit:
             planLimits.pagesPerMonth === -1 ? 99999 : planLimits.pagesPerMonth,
         },
-        isDemo: !process.env.STRIPE_SECRET_KEY,
       },
     });
   } catch (error) {
@@ -82,7 +81,9 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/stripe/subscription - Update caller's org plan (demo when Stripe unset)
+// POST /api/stripe/subscription - Create a real Stripe subscription for the caller's org.
+// Plan changes themselves arrive via the Stripe webhook (source of truth) —
+// this endpoint only creates the subscription object in Stripe.
 export async function POST(request: NextRequest) {
   try {
     const verified = await requireVerifiedEmail(request, {
@@ -90,19 +91,45 @@ export async function POST(request: NextRequest) {
     });
     if (verified instanceof NextResponse) return verified;
 
-    const { priceId } = await request.json();
-    const plan = getPlanFromPriceId(String(priceId ?? ''));
+    if (!isStripeConfigured()) {
+      return NextResponse.json({ success: false, error: 'Billing is not configured' }, { status: 503 });
+    }
 
-    await db.organization.update({
+    const { plan } = await request.json();
+    const priceId = getStripePriceId(String(plan ?? '') as PlanType);
+    if (!priceId) {
+      return NextResponse.json({ success: false, error: 'Unknown plan' }, { status: 400 });
+    }
+
+    const org = await db.organization.findUnique({
       where: { id: verified.user.orgId },
-      data: { plan, subscriptionStatus: 'active' },
+      select: { stripeCustomerId: true, stripeSubscriptionId: true },
+    });
+    if (!org) {
+      return NextResponse.json({ success: false, error: 'Organization not found' }, { status: 404 });
+    }
+    if (org.stripeSubscriptionId) {
+      return NextResponse.json({ success: false, error: 'Subscription already exists — manage it via checkout portal' }, { status: 409 });
+    }
+    if (!org.stripeCustomerId) {
+      return NextResponse.json({ success: false, error: 'No Stripe customer — start via checkout first' }, { status: 400 });
+    }
+
+    const stripe = getStripeClient()!;
+    const subscription = await stripe.subscriptions.create({
+      customer: org.stripeCustomerId,
+      items: [{ price: priceId }],
+      metadata: { orgId: verified.user.orgId, plan: getPlanFromPriceId(priceId) },
+      payment_behavior: 'default_incomplete',
+      expand: ['latest_invoice.payment_intent'],
     });
 
     return NextResponse.json({
       success: true,
-      data: { status: 'active', plan },
+      data: { status: subscription.status, plan: getPlanFromPriceId(priceId), subscriptionId: subscription.id },
     });
   } catch (error) {
+    logger.error({ err: error }, 'Stripe subscription create failed');
     return NextResponse.json(
       { success: false, error: 'Failed to create subscription' },
       { status: 500 }
@@ -110,7 +137,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE /api/stripe/subscription - Cancel caller's org subscription
+// DELETE /api/stripe/subscription - Cancel the caller's real Stripe subscription.
+// The org plan flips to free via the customer.subscription.deleted webhook.
 export async function DELETE(request: NextRequest) {
   try {
     const verified = await requireVerifiedEmail(request, {
@@ -118,12 +146,23 @@ export async function DELETE(request: NextRequest) {
     });
     if (verified instanceof NextResponse) return verified;
 
-    await db.organization.update({
+    if (!isStripeConfigured()) {
+      return NextResponse.json({ success: false, error: 'Billing is not configured' }, { status: 503 });
+    }
+
+    const org = await db.organization.findUnique({
       where: { id: verified.user.orgId },
-      data: { plan: 'starter', subscriptionStatus: 'canceled' },
+      select: { stripeSubscriptionId: true },
     });
+    if (!org?.stripeSubscriptionId) {
+      return NextResponse.json({ success: false, error: 'No active subscription' }, { status: 404 });
+    }
+
+    const stripe = getStripeClient()!;
+    await stripe.subscriptions.cancel(org.stripeSubscriptionId);
     return NextResponse.json({ success: true });
   } catch (error) {
+    logger.error({ err: error }, 'Stripe subscription cancel failed');
     return NextResponse.json(
       { success: false, error: 'Failed to cancel' },
       { status: 500 }

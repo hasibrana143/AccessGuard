@@ -27,15 +27,21 @@ export function UsageMeter({
   const [usage, setUsage] = useState(initialUsage);
   const [loading, setLoading] = useState(!initialUsage);
 
+  const [failed, setFailed] = useState(false);
+
   const fetchUsage = async () => {
     try {
       const res = await fetch(`/api/orgs/${orgId}/usage`);
       if (res.ok) {
         const data = await res.json();
         setUsage(data.data.usage);
+        setFailed(false);
+      } else {
+        setFailed(true);
       }
-    } catch (error) {
-      console.error('Failed to fetch usage:', error);
+    } catch {
+      // Network failure — keep last known usage, show stale state below.
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -59,11 +65,18 @@ export function UsageMeter({
     );
   }
 
-  if (!usage) return null;
+  if (!usage) {
+    if (failed && !loading) {
+      return (
+        <p className="text-xs text-muted-foreground">{t('usageUnavailable')}</p>
+      );
+    }
+    return null;
+  }
 
   const { pagesUsed, pagesQuota, usagePercentage, isOverQuota } = usage;
   const remainingPages = Math.max(0, pagesQuota - pagesUsed);
-  const isFreeTier = pagesQuota <= 1000;
+  const isFreeTier = pagesQuota <= 100;
 
   if (compact) {
     return (

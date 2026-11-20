@@ -33,11 +33,13 @@ export default function ScanDetailPage() {
   const { data: scan, isLoading: scanLoading } = useQuery({
     queryKey: ['scan', scanId],
     queryFn: async (): Promise<Scan | null> => {
-      const result = await api.getScans(undefined, undefined, 100);
-      if (!result.success) throw new Error(result.error);
-      const responseData = result.data as { data?: Scan[] };
-      const scans = responseData?.data || [];
-      return scans.find((s) => s.id === scanId) || null;
+      const result = await api.getScan(scanId);
+      if (!result.success) {
+        if (result.status === 404) return null;
+        throw new Error(result.error);
+      }
+      const responseData = result.data as { data?: Scan };
+      return responseData?.data || null;
     },
     retry: false,
   });
@@ -45,11 +47,10 @@ export default function ScanDetailPage() {
   const { data: violations = [], isLoading: violationsLoading } = useQuery({
     queryKey: ['violations', { scanId }],
     queryFn: async (): Promise<Violation[]> => {
-      const result = await api.getViolations({ limit: 100 });
+      const result = await api.getViolationsByScan(scanId, 100);
       if (!result.success) throw new Error(result.error);
       const responseData = result.data as { data?: Violation[] };
-      const allViolations = responseData?.data || [];
-      return allViolations.filter((v) => v.scanId === scanId);
+      return responseData?.data || [];
     },
     enabled: !!scanId,
     retry: false,

@@ -124,6 +124,15 @@ class ApiService {
     });
   }
 
+  async getScan(id: string): Promise<ApiResponse<Scan>> {
+    return this.fetch<Scan>(`${API_BASE}/scans/${id}`);
+  }
+
+  async getViolationsByScan(scanId: string, limit = 100): Promise<ApiResponse<Violation[]>> {
+    const searchParams = new URLSearchParams({ scanId, limit: String(limit) });
+    return this.fetch<Violation[]>(`${API_BASE}/violations?${searchParams}`);
+  }
+
   // Remediation
   async getRemediation(violationId: string, forceRegenerate = false): Promise<ApiResponse<RemediationResponse>> {
     return this.fetch(`${API_BASE}/remediate`, {

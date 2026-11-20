@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireOrgAccess } from '@/lib/rbac';
 import { logger } from '@/lib/error-logger';
+import { getPlanLimits as getCanonicalPlanLimits } from '@/lib/plan-limits';
 
 // GET /api/orgs/[id]/usage - Get current month usage
 export async function GET(
@@ -134,13 +135,10 @@ export async function POST(
   }
 }
 
+// Canonical limits live in src/lib/stripe.ts PRICING_PLANS (mirrors
+// docs/product/PRICING_STRATEGY.md). This helper delegates there so the
+// usage endpoint can never drift from billing enforcement again.
 function getPlanLimits(plan: string): { pagesPerMonth: number; websites: number } {
-  const limits: Record<string, { pagesPerMonth: number; websites: number }> = {
-    free: { pagesPerMonth: 1000, websites: 1 },
-    starter: { pagesPerMonth: 50000, websites: 10 },
-    growth: { pagesPerMonth: 500000, websites: 50 },
-    agency: { pagesPerMonth: 1000000, websites: 200 },
-    enterprise: { pagesPerMonth: -1, websites: -1 }, // unlimited
-  };
-  return limits[plan] || limits.free;
+  const limits = getCanonicalPlanLimits(plan);
+  return { pagesPerMonth: limits.pagesPerMonth, websites: limits.websites };
 }

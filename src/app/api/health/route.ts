@@ -31,6 +31,11 @@ export async function GET() {
     checks.redis = 'disabled';
   } else {
     try {
+      // Race on cold start: client exists but handshake not done yet.
+      // Attempt one connect before ping so first probe does not 503.
+      if (redis.status !== 'ready') {
+        await withTimeout(redis.connect().catch(() => null), PING_TIMEOUT_MS);
+      }
       await withTimeout(redis.ping(), PING_TIMEOUT_MS);
       checks.redis = 'connected';
     } catch {

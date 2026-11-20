@@ -2,7 +2,7 @@
 
 > **Date:** August 25, 2026
 > **Author:** Buffy (Frontend Engineer + Architect)
-> **Status:** Ready for implementation
+> **Status:** ⚠️ STALE (Sept 2026) — page splits, hooks refactor, and token cleanup described here are DONE (see `docs/VOLUMES.md` upgrade log). Kept for history; do not implement from this spec.
 > **Scope:** Full frontend upgrade — page splitting, hooks refactoring, token cleanup, SEO, Turbopack
 
 ---

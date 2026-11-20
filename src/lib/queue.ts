@@ -88,7 +88,13 @@ export function startScanWorker() {
     });
 
     if (!result.success) {
-      throw new Error(result.errorMessage ?? 'Scan failed');
+      const msg = result.errorMessage ?? 'Scan failed';
+      // Non-transient: project/org deleted or inactive — drain, do not retry.
+      if (/Project not found|Project is inactive|Organization not found/.test(msg)) {
+        logger.warn({ jobId: job.id, projectId, error: msg }, 'Dropping stale scan job — project/org gone');
+        return;
+      }
+      throw new Error(msg);
     }
 
     logger.info({ jobId: job.id, scanId: result.scanId, violations: result.violationsFound }, 'Scan job completed');

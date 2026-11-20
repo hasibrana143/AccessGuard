@@ -28,7 +28,7 @@ model Organization {
   currency             String             @default("usd")
   settings             String             @default("{}")
   pagesUsedThisMonth   Int                @default(0)
-  pagesQuota           Int                @default(1000)
+  pagesQuota           Int                @default(100)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   auditLogs            AuditLog[]

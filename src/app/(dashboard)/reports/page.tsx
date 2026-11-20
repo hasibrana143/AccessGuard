@@ -103,9 +103,9 @@ export default function ReportsPage() {
         />
       ) : (
       <div className="grid gap-6 md:grid-cols-2">
-        <ReportCard type="report" icon={<FileText className="h-6 w-6 text-coral" />} color="coral" generating={generating} onGenerate={generateReport} onShare={openShareDialog} />
-        <ReportCard type="vpat" icon={<Shield className="h-6 w-6 text-blue-500" />} color="blue-500" generating={generating} onGenerate={generateReport} onShare={openShareDialog} />
-        <ReportCard type="summary" icon={<BarChart3 className="h-6 w-6 text-emerald-500" />} color="emerald-500" generating={generating} onGenerate={generateReport} onShare={openShareDialog} />
+        <ReportCard type="report" icon={<FileText className="h-6 w-6 text-coral" />} generating={generating} onGenerate={generateReport} onShare={openShareDialog} />
+        <ReportCard type="vpat" icon={<Shield className="h-6 w-6 text-blue-500" />} generating={generating} onGenerate={generateReport} onShare={openShareDialog} />
+        <ReportCard type="summary" icon={<BarChart3 className="h-6 w-6 text-emerald-500" />} generating={generating} onGenerate={generateReport} onShare={openShareDialog} />
       </div>
       )}
 

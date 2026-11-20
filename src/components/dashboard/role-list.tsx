@@ -1,9 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Trash2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { PERMISSION_LABELS, type Permission } from '@/lib/permission-defs';
 
 interface CustomRole {
@@ -21,6 +32,8 @@ interface RoleListProps {
 
 export function RoleList({ roles, onDelete }: RoleListProps) {
   const t = useTranslations('dash');
+  const tc = useTranslations('common');
+  const [pendingDelete, setPendingDelete] = useState<CustomRole | null>(null);
 
   if (roles.length === 0) {
     return <p className="text-sm text-muted-foreground text-center py-4">{t('noCustomRoles')}</p>;
@@ -39,7 +52,7 @@ export function RoleList({ roles, onDelete }: RoleListProps) {
               {role.members.length > 0 && (
                 <Badge variant="outline" className="text-xs">{t('memberCount', { count: role.members.length })}</Badge>
               )}
-              <Button variant="ghost" size="icon" aria-label={t('deleteRoleAria', { name: role.name })} onClick={() => onDelete(role)}>
+              <Button variant="ghost" size="icon" aria-label={t('deleteRoleAria', { name: role.name })} onClick={() => setPendingDelete(role)}>
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             </div>
@@ -60,6 +73,25 @@ export function RoleList({ roles, onDelete }: RoleListProps) {
           )}
         </div>
       ))}
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteRoleTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete ? t('deleteConfirm', { name: pendingDelete.name }) : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { if (pendingDelete) onDelete(pendingDelete); setPendingDelete(null); }}
+            >
+              {tc('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

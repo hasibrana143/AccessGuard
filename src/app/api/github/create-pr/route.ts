@@ -16,7 +16,6 @@ import {
   createFixBranchName,
   generatePrTitle,
   generatePrBody,
-  generateDemoPreview,
   type ViolationForPR,
 } from '@/lib/github-pr';
 
@@ -66,7 +65,7 @@ function toViolationForPR(v: ViolationWithProject): ViolationForPR {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { violationIds, repository, branch: customBranch, demoMode = false } = body;
+    const { violationIds, repository, branch: customBranch } = body;
 
     if (!violationIds || !Array.isArray(violationIds) || violationIds.length === 0) {
       return NextResponse.json(
@@ -127,23 +126,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Demo mode - return preview without creating PR
-    if (demoMode || !isGitHubConfigured()) {
-      const preview = generateDemoPreview(violationsWithFixes.map(toViolationForPR));
-      
-      return NextResponse.json({
-        success: true,
-        demoMode: true,
-        data: {
-          preview: {
-            ...preview,
-            violationsCount: violationsWithFixes.length,
-            project: violations[0].project,
-          },
-          skippedLowConfidence,
-          message: 'Preview generated. Connect GitHub to create actual PRs.',
-        },
-      });
+    if (!isGitHubConfigured()) {
+      return NextResponse.json({ success: false, error: 'GitHub integration is not configured' }, { status: 503 });
     }
 
     // Real GitHub integration

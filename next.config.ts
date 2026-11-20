@@ -8,6 +8,8 @@ let config: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   turbopack: true,
+  // Custom server binds 127.0.0.1 — allow it for dev HMR (_next/hmr).
+  allowedDevOrigins: ["127.0.0.1"],
 
   async rewrites() {
     return [

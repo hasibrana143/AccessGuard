@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
 import { Github, Plus, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,16 +12,40 @@ export function GitHubSettings() {
   const tc = useTranslations('common');
   const { toast } = useToast();
   const [githubLoading, setGithubLoading] = useState(false);
+  const [repoCount, setRepoCount] = useState<number | null>(null);
+  const [reposError, setReposError] = useState<string | null>(null);
 
-  const handleManage = async () => {
-    setGithubLoading(true);
+  const fetchRepos = async (): Promise<number | null> => {
     try {
       const res = await fetch('/api/github/repos');
       const data = await res.json();
       if (data.success) {
-        const repos = data.data || [];
-        if (repos.length > 0) {
-          toast({ title: t('connected'), description: t('reposLinked', { count: repos.length }) });
+        setReposError(null);
+        return (data.data || []).length;
+      }
+      setReposError(data.error || t('reposFetchFailed'));
+      return null;
+    } catch {
+      setReposError(t('reposFetchFailed'));
+      return null;
+    }
+  };
+
+  // Load repo count on mount so the card shows real state, not a hardcoded number.
+  useEffect(() => {
+    fetchRepos().then((count) => {
+      if (count !== null) setRepoCount(count);
+    });
+  }, []);
+
+  const handleManage = async () => {
+    setGithubLoading(true);
+    try {
+      const count = await fetchRepos();
+      if (count !== null) {
+        setRepoCount(count);
+        if (count > 0) {
+          toast({ title: t('connected'), description: t('reposLinked', { count }) });
         } else {
           toast({ title: t('noRepos'), description: t('connectGithub') });
           // OAuth handshake via API route requires a full document load;
@@ -30,7 +54,7 @@ export function GitHubSettings() {
           window.location.href = '/api/github/connect';
         }
       } else {
-        toast({ title: tc('error'), description: t('reposFetchFailed'), variant: 'destructive' });
+        toast({ title: tc('error'), description: reposError || t('reposFetchFailed'), variant: 'destructive' });
       }
     } catch {
       toast({ title: tc('error'), description: t('githubNotConnected'), variant: 'destructive' });
@@ -52,7 +76,9 @@ export function GitHubSettings() {
               <Github className="h-8 w-8" />
               <div>
                 <p className="font-medium">{t('connectedToGithub')}</p>
-                <p className="text-sm text-muted-foreground">{t('reposLinked', { count: 3 })}</p>
+                <p className="text-sm text-muted-foreground">
+                  {reposError ?? (repoCount === null ? t('loading') : t('reposLinked', { count: repoCount }))}
+                </p>
               </div>
             </div>
             <Button variant="outline" size="sm" disabled={githubLoading} onClick={handleManage}>

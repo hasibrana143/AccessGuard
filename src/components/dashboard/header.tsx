@@ -38,6 +38,7 @@ const NOTIFICATION_ACTIONS = new Set([
 
 export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeaderProps) {
   const t = useTranslations('header');
+  const tc = useTranslations('common');
   const router = useRouter();
   const { user: authUser, isAdmin } = useAuth();
   const [notifications, setNotifications] = useState<AuditNotification[]>([]);
@@ -193,7 +194,7 @@ export function DashboardHeader({ onMenuClick, user, onLogout }: DashboardHeader
                     {user?.name?.charAt(0) || 'U'}
                   </AvatarFallback>
                 </Avatar>
-                <span className="hidden sm:inline text-sm">{user?.name || t('user')}</span>
+                <span className="hidden sm:inline text-sm">{user?.name || tc('fallbackUser')}</span>
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>

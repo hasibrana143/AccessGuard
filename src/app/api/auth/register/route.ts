@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
           name: organizationName,
           slug: `${slug}-${Date.now()}`,
           plan: 'free',
-          pagesQuota: 1000,
+          pagesQuota: 100,
           pagesUsedThisMonth: 0,
           settings: JSON.stringify({ theme: 'system', notifications: true })
         }
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
             name: 'Default Organization',
             slug: 'default-org',
             plan: 'free',
-            pagesQuota: 1000,
+            pagesQuota: 100,
             pagesUsedThisMonth: 0,
             settings: JSON.stringify({ theme: 'system', notifications: true })
           }
@@ -144,6 +144,7 @@ export async function POST(request: NextRequest) {
       await sendVerificationEmail(user.email, user.name || 'there', verifyUrl);
     }
 
+    const { allowDevTokenExposure } = await import('@/lib/email');
     return NextResponse.json({
       success: true,
       data: {
@@ -155,7 +156,7 @@ export async function POST(request: NextRequest) {
           organization: user.organization
         },
         token: `token-${user.id}-${Date.now()}`,
-        ...(isEmailConfigured() || process.env.NODE_ENV === 'production' ? {} : { demoVerificationToken: verificationToken })
+        ...(allowDevTokenExposure() ? { demoVerificationToken: verificationToken } : {})
       }
     });
 

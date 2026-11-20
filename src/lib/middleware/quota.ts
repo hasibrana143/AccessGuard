@@ -32,7 +32,7 @@ export async function checkUsageQuota(orgId: string): Promise<QuotaCheckResult> 
   }
 
   const pagesUsed = org.pagesUsedThisMonth ?? 0;
-  const pagesQuota = org.pagesQuota ?? 1000;
+  const pagesQuota = org.pagesQuota ?? 100;
   const remaining = Math.max(0, pagesQuota - pagesUsed);
   const overQuota = pagesUsed >= pagesQuota;
 
@@ -66,7 +66,7 @@ export async function incrementUsage(orgId: string, pageCount: number): Promise<
   }
 
   const pagesUsed = (org.pagesUsedThisMonth ?? 0) + pageCount;
-  const pagesQuota = org.pagesQuota ?? 1000;
+  const pagesQuota = org.pagesQuota ?? 100;
   const remaining = Math.max(0, pagesQuota - pagesUsed);
   const overQuota = pagesUsed >= pagesQuota;
 

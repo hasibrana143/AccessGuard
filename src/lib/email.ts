@@ -27,11 +27,18 @@ export function isEmailConfigured(): boolean {
   return !!process.env.RESEND_API_KEY;
 }
 
-// Send email
+// Dev-only token exposure: when email is NOT configured AND we're not in
+// production, auth routes may return the raw token so local dev can proceed
+// without an inbox. Never true in production or when Resend is configured.
+export function allowDevTokenExposure(): boolean {
+  return !isEmailConfigured() && process.env.NODE_ENV !== 'production';
+}
+
+// Send email (Resend only — no demo mode; unconfigured email fails loudly)
 export async function sendEmail(options: EmailOptions): Promise<{ success: boolean; error?: string }> {
   if (!resend) {
-    logger.info({ subject: options.subject, to: options.to }, '[EMAIL DEMO MODE] Would send');
-    return { success: true };
+    logger.error({ subject: options.subject, to: options.to }, 'Email not configured (RESEND_API_KEY missing)');
+    return { success: false, error: 'Email is not configured' };
   }
 
   try {

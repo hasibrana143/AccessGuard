@@ -9,6 +9,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 
@@ -25,6 +35,7 @@ export function PrivacySettings() {
   const [orgExporting, setOrgExporting] = useState(false);
   const [dataRegion, setDataRegion] = useState('us');
   const [regionSaving, setRegionSaving] = useState(false);
+  const [euConsentOpen, setEuConsentOpen] = useState(false);
 
   const handleSetupMfa = async () => {
     if (!user?.id) return;
@@ -131,9 +142,7 @@ export function PrivacySettings() {
     }
   };
 
-  const handleSaveRegion = async () => {
-    const consented = dataRegion === 'eu' ? window.confirm(t('euConsent')) : false;
-    if (dataRegion === 'eu' && !consented) return;
+  const persistRegion = async (consented: boolean) => {
     setRegionSaving(true);
     try {
       const res = await fetch('/api/settings/region', {
@@ -154,17 +163,21 @@ export function PrivacySettings() {
     }
   };
 
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
   const handleDeleteAccount = async () => {
-    const confirmed = window.prompt(t('deletePrompt'));
-    if (confirmed !== 'DELETE MY ACCOUNT') {
+    if (deleteConfirmText !== 'DELETE MY ACCOUNT') {
       toast({ title: t('deleteCanceled'), description: t('deleteConfirmHint') });
       return;
     }
+    setDeleting(true);
     try {
       const res = await fetch('/api/account/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmation: confirmed }),
+        body: JSON.stringify({ confirmation: deleteConfirmText }),
       });
       const data = await res.json();
       if (data.success) {
@@ -178,6 +191,8 @@ export function PrivacySettings() {
       }
     } catch {
       toast({ title: tc('error'), description: t('accountDeleteFailed'), variant: 'destructive' });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -266,21 +281,69 @@ export function PrivacySettings() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button variant="outline" disabled={regionSaving} onClick={handleSaveRegion}>
+              <Button
+                variant="outline"
+                disabled={regionSaving}
+                onClick={() => { if (dataRegion === 'eu') setEuConsentOpen(true); else persistRegion(false); }}
+              >
                 {regionSaving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('saving')}</> : t('saveRegion')}
               </Button>
             </div>
+            <AlertDialog open={euConsentOpen} onOpenChange={setEuConsentOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>{t('euConsentTitle')}</AlertDialogTitle>
+                  <AlertDialogDescription>{t('euConsent')}</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => { setEuConsentOpen(false); persistRegion(true); }}
+                  >
+                    {t('euConsentAgree')}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
 
           {/* Delete Account */}
           <div className="border-t border-border pt-6">
             <h3 className="font-medium mb-2 text-destructive">{t('deleteAccount')}</h3>
             <p className="text-sm text-muted-foreground mb-3">{t('deleteAccountDesc')}</p>
-            <Button variant="destructive" onClick={handleDeleteAccount}>
+            <Button variant="destructive" onClick={() => { setDeleteConfirmText(''); setDeleteOpen(true); }}>
               <Trash2 className="h-4 w-4 mr-2" />
               {t('deleteAccount')}
             </Button>
           </div>
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('deleteAccountTitle')}</AlertDialogTitle>
+                <AlertDialogDescription>{t('deletePrompt')}</AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="grid gap-2">
+                <Label htmlFor="delete-confirm">{t('deleteConfirmLabel')}</Label>
+                <Input
+                  id="delete-confirm"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE MY ACCOUNT"
+                  autoComplete="off"
+                />
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={deleting || deleteConfirmText !== 'DELETE MY ACCOUNT'}
+                  onClick={handleDeleteAccount}
+                >
+                  {deleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t('deleting')}</> : t('deleteAccount')}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Legal Documents */}
           <div className="border-t border-border pt-6">
