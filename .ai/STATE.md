@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | Alerts — email + Slack + signed webhook (new critical only) |
+| Current task | Pricing v2 — pages monitored meter; smart scheduling (daily critical, weekly long tail); overage |
 | Owner | CTO agent |
-| Status | GREEN — Regression detection done; alerts next |
+| Status | GREEN — Regression + alerts done; pricing v2 next |
 | Blocked | None |
-| Next action | Implement alerting for new critical/serious violations via email, Slack, signed webhook |
+| Next action | Implement pages-monitored pricing, smart scheduling, overage handling |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.

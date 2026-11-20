@@ -138,7 +138,7 @@ export async function POST(
 // Canonical limits live in src/lib/stripe.ts PRICING_PLANS (mirrors
 // docs/product/PRICING_STRATEGY.md). This helper delegates there so the
 // usage endpoint can never drift from billing enforcement again.
-function getPlanLimits(plan: string): { pagesPerMonth: number; websites: number } {
+function getPlanLimits(plan: string): { pagesMonitored: number; websites: number } {
   const limits = getCanonicalPlanLimits(plan);
-  return { pagesPerMonth: limits.pagesPerMonth, websites: limits.websites };
+  return { pagesMonitored: limits.pagesMonitored, websites: limits.websites };
 }

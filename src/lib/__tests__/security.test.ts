@@ -39,14 +39,14 @@ describe('mfa secret encryption', () => {
 
 describe('plan limits', () => {
   it('applies settings overrides', () => {
-    const limits = getPlanLimits('agency', JSON.stringify({ planLimits: { websites: 3, pagesPerMonth: 100 } }));
+    const limits = getPlanLimits('agency', JSON.stringify({ planLimits: { websites: 3, pagesMonitored: 100 } }));
     expect(limits.websites).toBe(3);
-    expect(limits.pagesPerMonth).toBe(100);
+    expect(limits.pagesMonitored).toBe(100);
   });
 
   it('falls back to plan defaults when settings are malformed', () => {
-    expect(getPlanLimits('agency', 'not-json').pagesPerMonth).toBe(25000);
-    expect(getPlanLimits('agency', null).pagesPerMonth).toBe(25000);
+    expect(getPlanLimits('agency', 'not-json').pagesMonitored).toBe(25000);
+    expect(getPlanLimits('agency', null).pagesMonitored).toBe(25000);
   });
 
   it('unlimited plan returns unlimited', async () => {
