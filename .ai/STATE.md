@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | Onboarding — URL → scan → top 3 fixes in <5 min; sample report without signup |
+| Current task | Jira/Linear + Slack/Teams integrations |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace + VPAT v2 done; onboarding next |
+| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace + VPAT v2 + onboarding done; integrations next |
 | Blocked | None |
-| Next action | Implement onboarding flow: URL input → instant scan → top 3 fixes preview → sample report |
+| Next action | Implement Jira/Linear issue creation + Slack/Teams notifications |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.

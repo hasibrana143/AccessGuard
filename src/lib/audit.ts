@@ -29,6 +29,7 @@ export const AUDIT_ACTIONS = [
   'payment_failed', 'payment_succeeded',
   'vendor_review',
   'api_key_created', 'api_key_revoked', 'api_scan_triggered',
+  'integration_created', 'integration_updated', 'integration_deleted',
 ] as const;
 
 interface AuditLogInput {

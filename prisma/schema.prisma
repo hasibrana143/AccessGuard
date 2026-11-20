@@ -41,6 +41,7 @@ model Organization {
   apiKeys              ApiKey[]
   clientGroups         ClientGroup[]
   whiteLabelConfigs    WhiteLabelConfig[]
+  integrations         Integration[]
 }
 
 model User {
@@ -350,6 +351,40 @@ model WebhookEvent {
   id          String   @id
   type        String
   processedAt DateTime @default(now())
+}
+
+// Integration configurations for external tools
+model Integration {
+  id            String   @id @default(cuid())
+  orgId         String
+  type          String   // 'jira' | 'linear' | 'slack' | 'teams'
+  name          String   // User-friendly name
+  config        String   // Encrypted JSON config (API tokens, webhook URLs, project keys, etc.)
+  isActive      Boolean  @default(true)
+  lastSyncAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  organization  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  integrationLogs IntegrationLog[]
+
+  @@unique([orgId, type, name])
+  @@index([orgId])
+}
+
+// Integration sync logs for audit
+model IntegrationLog {
+  id            String   @id @default(cuid())
+  integrationId String
+  action        String   // 'sync' | 'create_issue' | 'update_issue' | 'notify'
+  status        String   // 'success' | 'failed' | 'partial'
+  payload       String?  // JSON payload sent
+  response      String?  // JSON response received
+  error         String?
+  createdAt     DateTime @default(now())
+  integration   Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
+  @@index([createdAt])
 }
 
 // Guided manual testing: per-project results for checks automation cannot
