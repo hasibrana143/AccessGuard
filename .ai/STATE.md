@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | Pricing v2 — pages monitored meter; smart scheduling (daily critical, weekly long tail); overage |
+| Current task | Page inventory UI — coverage, per-page status, top fixes |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts done; pricing v2 next |
+| Status | GREEN — Regression + alerts + pricing v2 done; page inventory UI next |
 | Blocked | None |
-| Next action | Implement pages-monitored pricing, smart scheduling, overage handling |
+| Next action | Implement page inventory API + UI |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.
