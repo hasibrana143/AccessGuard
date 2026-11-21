@@ -82,8 +82,8 @@ describe('applyFixesToRepository', () => {
       'accessguard/fix-x',
       'main',
       [
-        { id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="First">' },
-        { id: 'v2', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="Second">' },
+        { id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="Photo">' },
+        { id: 'v2', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="Photo">' },
       ]
     );
 
@@ -96,8 +96,114 @@ describe('applyFixesToRepository', () => {
       mocks.createOrUpdateFileContents.mock.calls[0][0].content,
       'base64'
     ).toString('utf8');
-    expect(written).toContain('alt="First"');
-    expect(written).toContain('alt="Second"');
+    expect(written.match(/alt="Photo"/g)).toHaveLength(2);
+  });
+
+  it('does not swap the remediations of two selected copies of the same element', async () => {
+    tree(['index.html']);
+    fileContent('index.html', '<html><body><img src="same.jpg"><img src="same.jpg"></body></html>');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        { id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="same.jpg">', remediationCode: '<img src="same.jpg" alt="Second">' },
+        { id: 'v2', ruleId: 'image-alt', elementHtml: '<img src="same.jpg">', remediationCode: '<img src="same.jpg" alt="First">' },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+    expect(result.fixesAppliedTotal).toBe(0);
+  });
+
+  it('does not patch a file whose content the API could not inline', async () => {
+    // `encoding: none` means the API did not return the content: the element
+    // may live in that file, so no match can be proven unique.
+    tree(['a.html', 'b.html']);
+    mocks.getContent.mockImplementation(async ({ path: requested }: { path: string }) => {
+      if (requested === 'a.html') {
+        return { data: { content: '', encoding: 'none' } };
+      }
+      return {
+        data: {
+          content: Buffer.from('<html><body><img src="a.jpg"></body></html>', 'utf8').toString('base64'),
+          encoding: 'base64',
+        },
+      };
+    });
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('scans the source extensions a fix is never written into', async () => {
+    // A duplicate in a file that is not scanned makes the remaining match look
+    // unique, so the file has to be part of the scan.
+    tree(['index.html', 'app.mjs']);
+    fileContent('index.html', '<html><body><img src="a.jpg"></body></html>');
+    fileContent('app.mjs', 'const s = \'<img src="a.jpg">\';');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not write a fix into a file whose context cannot be proven', async () => {
+    // A TypeScript module can hold the element inside a string: the fix would
+    // become code there, so it stays a review suggestion.
+    tree(['app.ts']);
+    fileContent('app.ts', 'const s = "<img src=\\"a.jpg\\">";');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element that only exists inside a comment', async () => {
+    tree(['index.html']);
+    fileContent('index.html', '<html><body><!-- <img src="a.jpg"> --></body></html>');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+    expect(result.fixesAppliedTotal).toBe(0);
   });
 
   it('does not report a file as modified when the GitHub write fails', async () => {

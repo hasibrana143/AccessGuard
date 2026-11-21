@@ -50,6 +50,16 @@ describe('PR text escaping', () => {
     expect(escaped).toContain('\\@');
   });
 
+  it('neutralizes a bare URL, which GFM turns into a link', () => {
+    // GFM autolinks a bare URL even without any Markdown syntax, so the
+    // scheme of a URL has to be neutralized as well.
+    const escaped = escapeMarkdownText('see https://evil.test/phishing and www.evil.test');
+
+    expect(escaped).not.toContain('https://evil.test');
+    expect(escaped).not.toContain('www.evil.test');
+    expect(escaped).toContain('&#58;//evil.test/phishing');
+  });
+
   it('keeps a Markdown injected description out of the PR body', () => {
     const body = generatePrBody([
       {
@@ -183,6 +193,66 @@ describe('validateRemediation', () => {
     expect(result.reason).toContain('overlay-capable');
   });
 
+  it('rejects an overlay style hidden behind a named HTML entity', () => {
+    // The browser decodes the complete entity set before the CSS is parsed:
+    // `position&sol;&ast;x*&sol;:fixed` is `position/*x*/:fixed`, which is the
+    // declaration `position: fixed`.
+    const result = validateRemediation(
+      '<img id="overlay" src="x" alt="A" style="position&sol;&ast;x*&sol;:fixed;width:100%;height:100%">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('overlay-capable');
+  });
+
+  it('rejects a style value that carries an entity, an escape or a comment', () => {
+    expect(validateRemediation('<img src="x" alt="A" style="color:red&blue">').valid).toBe(false);
+    expect(validateRemediation('<img src="x" alt="A" style="color:red\\65">').valid).toBe(false);
+    expect(validateRemediation('<img src="x" alt="A" style="color:/*x*/red">').valid).toBe(false);
+  });
+
+  it('rejects a remediation that carries a brace', () => {
+    // In JSX a brace opens an expression, so the remediation would become
+    // executable code in the customer's source.
+    const result = validateRemediation(
+      '<div role="button">Hello{globalThis.__jsxInjection = true}</div>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('brace');
+  });
+
+  it('does not write a quote escape into a file whose context is not proven', () => {
+    // The payload is valid HTML, but in a TypeScript module it would close the
+    // string it sits in. A file without a proven context is not patched.
+    const result = applyFixesToFile(
+      'const s = "<img src=\\"a.jpg\\">";',
+      [
+        {
+          ruleId: 'image-alt',
+          elementHtml: '<img src="a.jpg">',
+          remediationCode: '<img src="a.jpg" alt="x\';globalThis.__tsInjection = true;//">',
+        },
+      ],
+      'app.ts'
+    );
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.content).toContain('AccessGuard Accessibility Fixes');
+  });
+
+  it('rejects plaintext, which swallows the rest of the document', () => {
+    const result = validateRemediation('<img src="x" alt="A"><plaintext></plaintext>');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('plaintext');
+  });
+
+  it('rejects the resource loaders', () => {
+    expect(validateRemediation('<video src="http://127.0.0.1:9/x"></video>').valid).toBe(false);
+    expect(validateRemediation('<audio src="http://127.0.0.1:9/x"></audio>').valid).toBe(false);
+    expect(validateRemediation('<source src="http://127.0.0.1:9/x">').valid).toBe(false);
+    expect(validateRemediation('<track src="http://127.0.0.1:9/x">').valid).toBe(false);
+    expect(validateRemediation('<input type="image" src="http://127.0.0.1:9/x">').valid).toBe(false);
+  });
+
   it('rejects portal and fencedframe elements', () => {
     expect(validateRemediation('<portal src="http://127.0.0.1:9/x"></portal>').valid).toBe(false);
     expect(validateRemediation('<fencedframe src="http://127.0.0.1:9/x"></fencedframe>').valid).toBe(false);
@@ -287,13 +357,27 @@ describe('applyFixesToFile', () => {
   it('patches the nth occurrence of the same element', () => {
     const original = '<html><body><img src="a.jpg"><img src="a.jpg"></body></html>';
     const result = applyFixesToFile(original, [
-      { ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="First">' },
-      { ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="Second">' },
+      { ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="Photo">' },
+      { ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="Photo">' },
     ], 'index.html');
 
     expect(result.fixesApplied).toBe(2);
-    expect(result.content).toContain('alt="First"');
-    expect(result.content).toContain('alt="Second"');
+    expect(result.content.match(/alt="Photo"/g)).toHaveLength(2);
+  });
+
+  it('does not swap the remediations of two selected copies of the same element', () => {
+    // The request order is not the occurrence order: two selected copies of the
+    // same element with different remediations cannot be mapped, so neither is
+    // written into the source.
+    const original = '<html><body><img src="same.jpg"><img src="same.jpg"></body></html>';
+    const result = applyFixesToFile(original, [
+      { ruleId: 'image-alt', elementHtml: '<img src="same.jpg">', remediationCode: '<img src="same.jpg" alt="Second">' },
+      { ruleId: 'image-alt', elementHtml: '<img src="same.jpg">', remediationCode: '<img src="same.jpg" alt="First">' },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.content).toContain('<img src="same.jpg"><img src="same.jpg">');
+    expect(result.content).toContain('AccessGuard Accessibility Fixes');
   });
 
   it('does not patch the first of two identical elements when only one was selected', () => {
@@ -320,6 +404,23 @@ describe('applyFixesToFile', () => {
 
     expect(result.fixesApplied).toBe(0);
     expect(result.content).not.toContain('--><script>');
+  });
+
+  it('neutralizes the alternate HTML comment terminator in untrusted text', () => {
+    // An HTML comment also ends at `--!>`; the text behind it would become
+    // active markup in the customer's file.
+    const result = applyFixesToFile('<html><body></body></html>', [
+      {
+        ruleId: 'image-alt',
+        elementHtml: '<img src="missing.jpg">',
+        remediationCode: '<img src="missing.jpg" alt="A">',
+        description: 'evil --!> <script>globalThis.__pwned = true</script>',
+      },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.content).not.toContain('--!>');
+    expect(result.content).toContain('AccessGuard Accessibility Fixes');
   });
 
   it('patches two different elements of the same rule independently', () => {
@@ -367,7 +468,7 @@ describe('applyFixesToFile', () => {
   it('discards a patch that would break the file', () => {
     const original = 'export const Card = () => <img src="hero.jpg" />;';
     const result = applyFixesToFile(original, [
-      { ruleId: 'image-alt', elementHtml: '<img src="hero.jpg">', remediationCode: '<img src="hero.jpg" alt="x">}' },
+      { ruleId: 'image-alt', elementHtml: '<img src="hero.jpg">', remediationCode: '<img src="hero.jpg" alt="x"></img>' },
     ], 'Card.tsx');
 
     expect(result.fixesApplied).toBe(0);
@@ -404,7 +505,10 @@ describe('applyFixesToFile', () => {
     expect(result.content).toContain('Read more');
   });
 
-  it('allows a patch that replaces the text with different text', () => {
+  it('rejects a patch that reduces the visible text', () => {
+    // The new text has to keep the old text: a fix that reduces the label to
+    // one character passes every rule check and still deletes what the user
+    // reads.
     const original = '<html><body><a href="/about">click here</a></body></html>';
     const result = applyFixesToFile(original, [
       {
@@ -414,8 +518,23 @@ describe('applyFixesToFile', () => {
       },
     ], 'index.html');
 
-    expect(result.fixesApplied).toBe(1);
-    expect(result.content).toContain('About our team');
+    expect(result.fixesApplied).toBe(0);
+    expect(result.errors[0]).toContain('visible text');
+    expect(result.content).toContain('click here');
+  });
+
+  it('rejects a patch that reduces the visible text to one character', () => {
+    const original = '<html><body><button>Read more</button></body></html>';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'button-name',
+        elementHtml: '<button>Read more</button>',
+        remediationCode: '<button>R</button>',
+      },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.content).toContain('Read more');
   });
 });
 

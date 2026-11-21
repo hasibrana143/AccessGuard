@@ -2,12 +2,16 @@ import { describe, it, expect } from 'vitest';
 import {
   buildReplacement,
   containsPlaceholder,
+  countElementOccurrences,
   elementTextContent,
   hasSyntaxErrors,
   htmlToJsx,
+  isPatchableFile,
+  liveTagStarts,
   locateElement,
   parseElementSignature,
   preservesVisibleContent,
+  visibleTextContent,
 } from '@/lib/ast-patch';
 
 const JSX_SOURCE = `export default function Card() {
@@ -109,7 +113,17 @@ describe('elementTextContent / preservesVisibleContent', () => {
 
   it('accepts a replacement that keeps text', () => {
     expect(preservesVisibleContent('<a href="/about">Read more</a>', '<a href="/about">Read more</a>')).toBe(true);
-    expect(preservesVisibleContent('<a href="/about">click here</a>', '<a href="/about">About us</a>')).toBe(true);
+  });
+
+  it('rejects a replacement that replaces the text with different text', () => {
+    // The new text has to keep the old text. "Read more" became "R" and the
+    // fix was reported as verified and applied.
+    expect(preservesVisibleContent('<a href="/about">click here</a>', '<a href="/about">About us</a>')).toBe(false);
+    expect(preservesVisibleContent('<button>Read more</button>', '<button>R</button>')).toBe(false);
+  });
+
+  it('accepts a replacement that keeps the text next to more text', () => {
+    expect(preservesVisibleContent('<button>Read more</button>', '<button>Read more about pricing</button>')).toBe(true);
   });
 
   it('accepts a replacement of an element that had no text', () => {
@@ -166,12 +180,43 @@ describe('elementTextContent / preservesVisibleContent', () => {
   });
 
   it('counts text that is visible next to hidden text', () => {
+    // The hidden text is not visible, so the visible text of the replacement is
+    // "Open" — and the original text is not kept, so the fix is rejected.
+    expect(
+      visibleTextContent('<a href="/about"><span hidden>Read more</span>Open</a>')
+    ).toBe('Open');
     expect(
       preservesVisibleContent(
         '<a href="/about">Read more</a>',
         '<a href="/about"><span hidden>Read more</span>Open</a>'
       )
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it('rejects a replacement that hides the text with opacity:0', () => {
+    // `opacity:0` keeps the text in the DOM, so the rendered-text check does
+    // not catch it; the static guard has to.
+    expect(
+      preservesVisibleContent(
+        '<button><span>Read more</span></button>',
+        '<button><span style="opacity:0">Read more</span></button>'
+      )
+    ).toBe(false);
+    expect(
+      preservesVisibleContent(
+        '<button><span>Read more</span></button>',
+        '<button><span style={{ opacity: \'0\' }}>Read more</span></button>'
+      )
+    ).toBe(false);
+  });
+
+  it('rejects a replacement whose own element hides its content', () => {
+    expect(
+      preservesVisibleContent(
+        '<button>Read more</button>',
+        '<button style="opacity:0">Read more</button>'
+      )
+    ).toBe(false);
   });
 });
 
@@ -189,6 +234,52 @@ describe('locateElement (HTML)', () => {
     const second = locateElement(html, 'index.html', '<img src="a.jpg">', 1);
     expect(first!.start).toBeLessThan(second!.start);
     expect(second!.end - second!.start).toBe('<img src="a.jpg">'.length);
+  });
+
+  it('does not match an element that only exists inside a comment', () => {
+    const commented = '<html><body><!-- <img src="a.jpg"> --></body></html>';
+    expect(locateElement(commented, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
+    expect(countElementOccurrences(commented, 'index.html', '<img src="a.jpg">')).toBe(0);
+  });
+
+  it('does not match an element that only exists inside a script block', () => {
+    const scripted = '<html><body><script>const s = "<img src=\\"a.jpg\\">";</script></body></html>';
+    expect(locateElement(scripted, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
+  });
+
+  it('does not match an element that only exists inside an attribute value', () => {
+    const nested = '<html><body><div data-markup="<img src=\'a.jpg\'>"></div></body></html>';
+    expect(locateElement(nested, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
+  });
+
+  it('matches the live element next to a commented one', () => {
+    const mixed = '<html><body><!-- <img src="a.jpg"> --><img src="a.jpg"></body></html>';
+    const location = locateElement(mixed, 'index.html', '<img src="a.jpg">', 0);
+    expect(location).not.toBeNull();
+    expect(countElementOccurrences(mixed, 'index.html', '<img src="a.jpg">')).toBe(1);
+  });
+
+  it('treats the tags of a raw-text element as not live', () => {
+    const content = '<script>var a = "<b>";</script><b>x</b>';
+    const starts = liveTagStarts(content);
+    expect(starts.has(0)).toBe(false);
+    expect(starts.has(content.indexOf('<b>x</b>'))).toBe(true);
+  });
+});
+
+describe('isPatchableFile', () => {
+  it('patches only the files whose context can be proven', () => {
+    expect(isPatchableFile('index.html')).toBe(true);
+    expect(isPatchableFile('Card.tsx')).toBe(true);
+    expect(isPatchableFile('Card.jsx')).toBe(true);
+    expect(isPatchableFile('app.js')).toBe(true);
+    // No proven context: the element text can sit inside a string or an
+    // expression there.
+    expect(isPatchableFile('app.ts')).toBe(false);
+    expect(isPatchableFile('app.mts')).toBe(false);
+    expect(isPatchableFile('Card.vue')).toBe(false);
+    expect(isPatchableFile('Card.svelte')).toBe(false);
+    expect(isPatchableFile('Page.astro')).toBe(false);
   });
 });
 

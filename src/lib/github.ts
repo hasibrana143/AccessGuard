@@ -209,8 +209,9 @@ export async function applyFixesToRepository(
   const appliedFixIds: string[] = [];
   let fixesAppliedTotal = 0;
 
-  const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate } = await import('@/lib/github-pr');
-  const { locateElement } = await import('@/lib/ast-patch');
+  const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate, conflictingRemediationKeys } =
+    await import('@/lib/github-pr');
+  const { locateElement, isPatchableFile } = await import('@/lib/ast-patch');
 
   // List source files in the default branch tree
   const { data: tree } = await octokit.git.getTree({ owner, repo, tree_sha: ref, recursive: '1' });
@@ -221,8 +222,11 @@ export async function applyFixesToRepository(
     return { filesModified, fixesAppliedTotal, appliedFixIds };
   }
 
+  // Every file that could hold the element is scanned, even the ones a fix is
+  // never written into: a duplicate in an omitted file would make the
+  // remaining match look unique.
   const sourceFiles = (tree.tree || []).filter(
-    t => t.type === 'blob' && t.path && /\.(html|htm|tsx|jsx|ts|js|vue|svelte|astro)$/.test(t.path)
+    t => t.type === 'blob' && t.path && /\.(html|htm|tsx|jsx|ts|js|mjs|cjs|mts|cts|vue|svelte|astro)$/.test(t.path)
   );
 
   // Every source file is scanned: uniqueness may only be decided on the
@@ -254,6 +258,13 @@ export async function applyFixesToRepository(
         scanIncomplete = true;
         return undefined;
       }
+      if (data.encoding === 'none') {
+        // The API could not inline the file (too large or binary). The empty
+        // content is not a scanned file: the element may be in it, so the scan
+        // is incomplete and nothing may be patched elsewhere.
+        scanIncomplete = true;
+        return undefined;
+      }
       const content = Buffer.from(data.content, 'base64').toString('utf8');
       if (scannedBytes + content.length > MAX_SOURCE_SCAN_BYTES) {
         // The budget is exhausted: the scan is incomplete, so no match can be
@@ -277,8 +288,13 @@ export async function applyFixesToRepository(
   // as review files). Keeps the number of repository reads and AST parses bounded.
   const candidates = violations.filter(v => v.remediationCode && v.elementHtml).slice(0, 10);
 
+  // Selected fixes for the same element with different remediations cannot be
+  // mapped to the occurrences of that element.
+  const conflictingKeys = conflictingRemediationKeys(violations);
+
   for (const violation of candidates) {
     if (!validateFixCandidate(violation).valid) continue;
+    if (conflictingKeys.has(fixOccurrenceKey(violation))) continue;
 
     // Find every file that contains the element. If it exists in more than one
     // file the match is ambiguous: the fix is left as a review suggestion instead
@@ -299,6 +315,12 @@ export async function applyFixesToRepository(
     }
 
     const path = containing[0];
+    // The destination context has to be provable. A TypeScript module or a
+    // component file that mixes markup and code has none: the element text can
+    // sit inside a string or an expression there, and the fix would become
+    // code. Such a fix ships as a review suggestion.
+    if (!isPatchableFile(path)) continue;
+
     const key = `${path}::${fixOccurrenceKey(violation)}`;
     const occurrence = localOccurrence.get(key) ?? 0;
     const original = contentCache.get(path);

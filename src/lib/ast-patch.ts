@@ -101,6 +101,94 @@ export function isJsxLikeFile(filePath: string): boolean {
   return /\.(tsx|jsx|js)$/i.test(filePath);
 }
 
+/**
+ * True when a fix may be written into the file at all.
+ *
+ * A fix is only written where the destination context can be proven: an HTML
+ * file (the element is live markup) or a JSX file (the element is located
+ * through the AST). A TypeScript module or a component file that mixes markup
+ * and code (`.ts`, `.vue`, `.svelte`, `.astro`) has no proven context — the
+ * element text can sit inside a string or an expression there — so the fix
+ * ships as a review suggestion instead of being written into the source.
+ */
+export function isPatchableFile(filePath: string): boolean {
+  return /\.(html|htm|tsx|jsx|js)$/i.test(filePath);
+}
+
+// Elements whose content the browser reads as raw text: markup inside them is
+// not live markup, and some of them (`plaintext`) swallow the rest of the
+// document.
+const RAW_TEXT_TAGS = new Set([
+  'script', 'style', 'textarea', 'title', 'xmp', 'listing', 'plaintext', 'noscript',
+]);
+
+/** The offset of the `>` that closes the tag starting at `start`. */
+function findTagEnd(content: string, start: number): number {
+  let i = start + 1;
+  let quote: string | null = null;
+  while (i < content.length) {
+    const ch = content[i] as string;
+    if (quote) {
+      if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '>') {
+      return i;
+    }
+    i++;
+  }
+  return content.length;
+}
+
+/**
+ * The offsets at which a live tag starts.
+ *
+ * Markup inside a comment, inside a raw-text element (a script or a style
+ * block) or inside another tag's attribute value is not live markup: the
+ * browser does not render it as an element, so a fix may not be written there.
+ * A fix inside a comment was reported as applied although no element existed.
+ */
+export function liveTagStarts(content: string): Set<number> {
+  const starts = new Set<number>();
+  let i = 0;
+
+  while (i < content.length) {
+    const lt = content.indexOf('<', i);
+    if (lt === -1) break;
+
+    if (content.startsWith('<!--', lt)) {
+      const ends = [content.indexOf('-->', lt + 4), content.indexOf('--!>', lt + 4)]
+        .filter(index => index !== -1);
+      i = ends.length ? Math.min(...ends) + 3 : content.length;
+      continue;
+    }
+
+    const tagMatch = /^<\s*([a-zA-Z][^\s/>]*)/.exec(content.slice(lt, lt + 64));
+    if (!tagMatch) {
+      i = lt + 1;
+      continue;
+    }
+
+    const tag = (tagMatch[1] as string).toLowerCase();
+    const openEnd = findTagEnd(content, lt);
+
+    if (RAW_TEXT_TAGS.has(tag)) {
+      if (tag === 'plaintext') {
+        i = content.length; // everything after it is raw text
+        continue;
+      }
+      const closeIdx = content.toLowerCase().indexOf(`</${tag}`, openEnd + 1);
+      i = closeIdx === -1 ? openEnd + 1 : closeIdx;
+      continue;
+    }
+
+    starts.add(lt);
+    i = openEnd + 1;
+  }
+
+  return starts;
+}
+
 function scriptKind(filePath: string): ts.ScriptKind {
   if (/\.tsx$/i.test(filePath)) return ts.ScriptKind.TSX;
   if (/\.(jsx|js)$/i.test(filePath)) return ts.ScriptKind.JSX;
@@ -208,6 +296,20 @@ function candidateMatches(candidate: JsxCandidate, signature: ElementSignature):
   return true;
 }
 
+/** The offsets of the live occurrences of `needle` in the content. */
+function liveOccurrences(content: string, needle: string): number[] {
+  const live = liveTagStarts(content);
+  const offsets: number[] = [];
+  let from = 0;
+  for (;;) {
+    const index = content.indexOf(needle, from);
+    if (index === -1) break;
+    from = index + needle.length;
+    if (live.has(index)) offsets.push(index);
+  }
+  return offsets;
+}
+
 /**
  * Locate the `occurrence`-th matching element (0 based) in the file.
  * JSX/JS files are matched through the AST; other files match the element text.
@@ -238,14 +340,9 @@ export function locateElement(
       : null;
   if (!needle) return null;
 
-  let index = -1;
-  let from = 0;
-  for (let i = 0; i <= occurrence; i++) {
-    index = content.indexOf(needle, from);
-    if (index === -1) return null;
-    from = index + needle.length;
-  }
-  return { start: index, end: index + needle.length };
+  const offsets = liveOccurrences(content, needle);
+  const index = offsets[occurrence];
+  return index === undefined ? null : { start: index, end: index + needle.length };
 }
 
 /**
@@ -276,15 +373,7 @@ export function countElementOccurrences(
       : null;
   if (!needle) return 0;
 
-  let count = 0;
-  let from = 0;
-  for (;;) {
-    const index = content.indexOf(needle, from);
-    if (index === -1) break;
-    count++;
-    from = index + needle.length;
-  }
-  return count;
+  return liveOccurrences(content, needle).length;
 }
 
 // A style value is emitted into a JS expression, so it must not be able to close
@@ -334,7 +423,13 @@ function transformAttributes(raw: string): string {
       parts.push(` style=${styleToJsx(value)}`);
       continue;
     }
-    parts.push(` ${name}="${value.replace(/"/g, '"')}"`);
+    // The value is written into a double-quoted JSX attribute: a quote in the
+    // value would close the attribute and turn the rest of it into markup.
+    // JSX decodes HTML entities in a string attribute, so the quote comes back
+    // as the character it was.
+    const amp = String.fromCharCode(38);
+    const escaped = value.split('&').join(`${amp}amp;`).split('"').join(`${amp}quot;`);
+    parts.push(` ${name}="${escaped}"`);
   }
   return parts.join('');
 }
@@ -382,13 +477,24 @@ export function elementTextContent(element: string): string {
  * user, so a fix that moves the text into a hidden element deletes it.
  */
 export function preservesVisibleContent(original: string, replacement: string): boolean {
-  const before = visibleTextContent(original);
+  const before = normalizeText(visibleTextContent(original));
   if (!before) return true;
-  return visibleTextContent(replacement).length > 0;
+  const after = normalizeText(visibleTextContent(replacement));
+  if (!after) return false;
+  // The new text has to keep the old text. A replacement that only has to be
+  // non-empty passes every rule check and still deletes what the user reads:
+  // "Read more" became "R" and the fix was reported as verified.
+  return after.toLowerCase().includes(before.toLowerCase());
+}
+
+/** Collapse whitespace so a text comparison is not decided by formatting. */
+function normalizeText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 /** True when an element's attributes keep its content from being seen. */
-function hidesContent(attributes: ParsedAttribute[]): boolean {
+function hidesContent(rawSection: string): boolean {
+  const attributes = parseTagAttributes(rawSection);
   for (const attribute of attributes) {
     // `hidden` and the two CSS properties below remove the content from the
     // rendering. `aria-hidden` does not: it only removes the content from the
@@ -400,7 +506,12 @@ function hidesContent(attributes: ParsedAttribute[]): boolean {
       if (style.includes('display:none') || style.includes('visibility:hidden')) return true;
     }
   }
-  return false;
+  // `opacity:0` keeps the text in the layout but makes it invisible. The
+  // rendered-text check does not catch it (the text is still in the DOM), so
+  // the static guard has to. The raw section is checked because the parsed
+  // attribute value stops at the first space, which is where the JSX object
+  // form (`style={{ opacity: '0' }}`) starts.
+  return /(?:^|[^\w-])opacity\s*[:=]\s*['"]?0(?:\.0+)?(?:['";,\s}]|$)/i.test(rawSection);
 }
 
 // Opening tag, closing tag or self-closing tag.
@@ -418,6 +529,9 @@ export function visibleTextContent(element: string): string {
   const tag = open[1].toLowerCase();
   if (VOID_TAGS.has(tag)) return '';
   if (/\/\s*$/.test(open[2] ?? '')) return '';
+  // The element may hide its own content (`opacity:0`, `display:none`). Its
+  // text is then not visible either.
+  if (hidesContent(open[2] ?? '')) return '';
   const close = new RegExp(`</${tag}\\s*>`, 'i');
   const closeIndex = element.search(close);
   if (closeIndex === -1) return '';
@@ -447,7 +561,7 @@ export function visibleTextContent(element: string): string {
       hiddenDepth++; // nested element inside the hidden subtree
       continue;
     }
-    if (hidesContent(parseTagAttributes(match[3] ?? ''))) hiddenDepth = 1;
+    if (hidesContent(match[3] ?? '')) hiddenDepth = 1;
   }
   if (hiddenDepth === 0) text += inner.slice(cursor);
 

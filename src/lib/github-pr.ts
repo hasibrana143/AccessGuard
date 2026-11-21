@@ -8,11 +8,11 @@ import {
   containsPlaceholder,
   countElementOccurrences,
   hasSyntaxErrors,
+  isPatchableFile,
   locateElement,
   preservesVisibleContent,
 } from '@/lib/ast-patch';
 import {
-  decodeHtmlEntities,
   isEventHandlerAttribute,
   normalizeUriValue,
   parseHtmlAttributes,
@@ -88,7 +88,13 @@ export function escapeMarkdownText(value: string): string {
   const withoutHtml = value.split('<').join(`${amp}lt;`).split('>').join(`${amp}gt;`);
   // Markdown syntax outside a code block: links, images, mentions, emphasis,
   // headings and lists. A backslash escapes it without changing the rendering.
-  return withoutHtml.replace(/([\\`*_{}[\]()#+\-=!|~@])/g, '\\$1');
+  const escaped = withoutHtml.replace(/([\\`*_{}[\]()#+\-=!|~@])/g, '\\$1');
+  // GFM turns a bare URL into a link even without any Markdown syntax, so the
+  // scheme of a URL is neutralized as well. The entity is decoded by the
+  // renderer, so the text still reads as the URL — it is just not a link.
+  return escaped
+    .replace(/\b(https?|ftp):\/\//gi, (_match, scheme: string) => `${scheme}${amp}#58;//`)
+    .replace(/\bwww\./gi, `www${amp}#46;`);
 }
 
 /** An inline code span that the value cannot break out of. */
@@ -241,36 +247,18 @@ function checkUriAttribute(name: string, value: string): string | null {
   return null;
 }
 
-/**
- * Decode CSS escape sequences the way a browser does: `\26` is a code point,
- * `\a` is the literal character, and a trailing backslash continues the line.
- * A style attribute that hides an overlay property behind an escape
- * (`p\6fsition:fixed`) is read by the browser as `position:fixed`.
- */
-export function decodeCssEscapes(value: string): string {
-  return value.replace(
-    /\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \n\r\t\f])?|([^\r\n\f0-9a-fA-F])|(\r\n|[\n\r\f]))/g,
-    (_match, hex: string | undefined, literal: string | undefined, newline: string | undefined) => {
-      if (hex) {
-        const code = parseInt(hex, 16);
-        if (code === 0 || code > 0x10ffff) return '\uFFFD';
-        return String.fromCodePoint(code);
-      }
-      if (literal) return literal;
-      if (newline) return '';
-      return '';
-    }
-  );
-}
-
 /** Check a style attribute for declarations that can take over the screen. */
 function checkStyleAttribute(value: string): string | null {
-  // The browser decodes the entities of the attribute value first, then treats
-  // a CSS comment as whitespace (`position/**/:fixed` is `position: fixed`) and
-  // then resolves the CSS escapes. The check follows the same order.
-  const withoutEntities = decodeHtmlEntities(value);
-  const withoutComments = withoutEntities.replace(/\/\*[\s\S]*?\*\//g, ' ');
-  const decoded = decodeCssEscapes(withoutComments);
+  // A browser decodes the entities of the attribute value, treats a CSS comment
+  // as whitespace (`position/**/:fixed` is `position: fixed`) and resolves the
+  // CSS escapes (`p\6fsition:fixed` is `position: fixed`) before it reads a
+  // declaration. A partial entity table cannot mirror that, so a style value
+  // that carries any of these is rejected instead of guessed.
+  if (/[&\\]|\/\*|\*\//.test(value)) {
+    return 'remediation code hides an overlay-capable style behind an entity, an escape or a comment';
+  }
+
+  const decoded = value;
 
   for (const declaration of decoded.split(';')) {
     const separator = declaration.indexOf(':');
@@ -318,14 +306,35 @@ export function validateRemediation(
   // customer's page, so they are rejected like every other embedding element;
   // `portal` and `fencedframe` load a document the same way, and `math` (like
   // `svg`) can carry foreign content that the HTML parser executes.
+  // `plaintext` (like `xmp` and `noscript`) makes the browser read the rest of
+  // the document as raw text, which removes the remaining UI; `video`, `audio`,
+  // `source` and `track` load remote resources from the customer's browser.
   const ACTIVE_TAGS = [
     'iframe', 'object', 'embed', 'applet', 'base', 'svg', 'style', 'link', 'meta',
     'frame', 'frameset', 'noframes', 'portal', 'fencedframe', 'math',
+    'plaintext', 'xmp', 'listing', 'noscript', 'noembed',
+    'video', 'audio', 'source', 'track',
   ];
   for (const tag of ACTIVE_TAGS) {
     if (new RegExp(`<\\s*/?\\s*${tag}\\b`, 'i').test(code)) {
       return { valid: false, reason: `remediation code introduces a <${tag}> element` };
     }
+  }
+
+  // An `<input type="image">` loads a remote resource from the customer's
+  // browser, like the other resource loaders above.
+  if (/<input\b/i.test(code)) {
+    const typeAttr = parseHtmlAttributes(code).find(a => a.name === 'type');
+    if (typeAttr && typeAttr.value.trim().toLowerCase() === 'image') {
+      return { valid: false, reason: 'remediation code introduces an <input type="image"> element' };
+    }
+  }
+
+  // No braces: in JSX they open an expression, and in a template file they
+  // open an interpolation. The remediation is validated as HTML and then
+  // written into the source, so a brace would become executable code there.
+  if (/[{}]/.test(code)) {
+    return { valid: false, reason: 'remediation code contains a brace, which becomes an expression in the target source' };
   }
 
   // No javascript:, vbscript: or data:text/html URIs — quoted or unquoted.
@@ -395,6 +404,30 @@ export function fixOccurrenceKey(v: { ruleId: string; elementHtml?: string | nul
   return `${v.ruleId}::${v.elementHtml ?? ''}`;
 }
 
+/**
+ * The element keys whose selected fixes carry different remediations.
+ *
+ * The fixes are matched to the occurrences of the element in the file in order,
+ * and the request order is not the occurrence order: two selected copies of the
+ * same element with different remediations would have their remediations
+ * swapped. Such a fix cannot be mapped, so it stays a review suggestion.
+ */
+export function conflictingRemediationKeys(
+  violations: Array<{ ruleId: string; elementHtml?: string | null; remediationCode?: string | null }>
+): Set<string> {
+  const remediations = new Map<string, Set<string>>();
+  for (const v of violations) {
+    if (!v.elementHtml) continue;
+    const key = fixOccurrenceKey(v);
+    const set = remediations.get(key) ?? new Set<string>();
+    set.add((v.remediationCode ?? '').trim());
+    remediations.set(key, set);
+  }
+  return new Set(
+    [...remediations.entries()].filter(([, set]) => set.size > 1).map(([key]) => key)
+  );
+}
+
 // Apply fixes to file content
 export function applyFixesToFile(
   originalContent: string,
@@ -418,6 +451,10 @@ export function applyFixesToFile(
     selectedByKey.set(key, (selectedByKey.get(key) ?? 0) + 1);
   }
 
+  // Selected fixes for the same element with different remediations cannot be
+  // mapped to the occurrences (the request order is not the occurrence order).
+  const conflictingKeys = conflictingRemediationKeys(violations);
+
   for (const v of violations) {
     if (!v.remediationCode) continue;
 
@@ -433,6 +470,18 @@ export function applyFixesToFile(
     }
 
     const key = fixOccurrenceKey(v);
+    if (conflictingKeys.has(key)) {
+      unmatched.push(v);
+      continue;
+    }
+
+    // The destination context has to be provable: an HTML file or a JSX
+    // element. In any other file the element text can sit inside a string or
+    // an expression, and the fix would become code.
+    if (!isPatchableFile(filePath)) {
+      unmatched.push(v);
+      continue;
+    }
     const occurrences = countElementOccurrences(originalContent, filePath, v.elementHtml);
     if (occurrences > (selectedByKey.get(key) ?? 0)) {
       unmatched.push(v);
@@ -498,9 +547,9 @@ export function applyFixesToFile(
  * turn the rest of the text into code in the customer's file.
  */
 function neutralizeCommentTerminator(value: string, terminator: string): string {
-  return terminator === '*/'
-    ? value.replace(/\*\//g, '*\\/')
-    : value.replace(/-->/g, '--\\>');
+  if (terminator === '*/') return value.replace(/\*\//g, '*\\/');
+  // An HTML comment ends at `-->` **and** at `--!>`; both have to be neutralized.
+  return value.replace(/-->/g, '--\\>').replace(/--!>/g, '--!\\>');
 }
 
 // Generate a fix comment block
