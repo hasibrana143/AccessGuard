@@ -13,10 +13,28 @@ Source of record for execution. Full analysis: `.ai/PRODUCT-CRITIQUE.md`.
 - [x] **Migrations** — `ScimGroup`, `CookieConsent`, `ManualCheck`, `pagesQuota` default; migration created at `prisma/migrations/20261120231949_...`; verify `migrate deploy` on empty DB after Docker up.
 - [x] **Violation lifecycle** — fingerprint + reconciliation (new/persisting/fixed/regressed); write `fixedAt` on rescan.
 - [x] **Scanner truth** — bundle axe locally (no CDN), WCAG 2.2 tags, stop blocking images/fonts, mobile viewport, network-idle wait, store axe target array as JSON, `help` text not `helpUrl`, remove `--disable-web-security`.
-- [ ] **AST patching** — ts-morph/Babel/PostCSS/parse5; occurrence-aware; reject placeholders; no-op detection (content unchanged ≠ fix).
-- [ ] **Fix verification** — apply patch to preview, re-run axe, only verified patches may open a PR; confidence from verification, template = `null`.
-- [ ] **Confidence gate fix** — `null` must not bypass `MIN_FIX_CONFIDENCE`.
-- [ ] **VPAT truth** — "Not Evaluated" instead of "Not Applicable"; add remarks column; label "draft — human review required".
+- [x] **AST patching** — ts-morph/Babel/PostCSS/parse5; occurrence-aware; reject placeholders; no-op detection (content unchanged ≠ fix).
+  - Acceptance: JSX/TSX patched through a real AST (TypeScript compiler API), nth occurrence matched, placeholder rejected, unchanged output rejected, patched file re-parses without syntax errors.
+- [x] **Fix verification** — apply patch to preview, re-run axe, only verified patches may open a PR; confidence from verification, template = `null`.
+  - Acceptance: axe re-run on the patched element; PR opens only for verified fixes; effective confidence comes from verification; template fixes carry `null` AI confidence; no browser = fail closed with a clear error.
+- [x] **Confidence gate fix** — `null` must not bypass `MIN_FIX_CONFIDENCE`.
+  - Acceptance: a fix with `null` confidence is skipped, never auto-applied; gate unit-tested.
+- [x] **VPAT truth** — "Not Evaluated" instead of "Not Applicable"; add remarks column; label "draft — human review required".
+  - Acceptance: PDF route reuses `generateVPATData` (`not-evaluated` + per-criterion remarks), no "Not Applicable"/"N/A" wording survives, draft label on cover and footer.
+
+## V23 — verified-fix engine (shipped)
+
+Scope: the four P0 truth gaps above, shipped as one volume. Dependency order: confidence semantics → VPAT truth → AST patching → verification → docs/copy.
+
+| # | Slice | Area | Status |
+|---|---|---|---|
+| 1 | Confidence semantics: template fixes carry `null`, gate reads effective (verification) confidence | ai | DONE |
+| 2 | VPAT PDF reuses the shared generator (`not-evaluated`, remarks, draft label) | engineering | DONE |
+| 3 | AST patching: JSX/TSX via TypeScript compiler API, occurrence-aware, placeholder + no-op rejection | engineering | DONE |
+| 4 | Fix verification: axe re-run on the patched element gates PR creation | ai | DONE |
+| 5 | Docs + marketing copy aligned with what the engine actually does | docs | DONE |
+
+Out of scope for V23 (recorded, not silently dropped): per-file patch persistence to the DB (verification results are reported in the PR + response, not stored on `Violation`), Vue/Svelte/Astro AST support, full-page re-scan verification (verification is rule-level on the patched element).
 - [x] **Green baseline** — Docker up, `vitest` 378 passed (core), lint 0, build 0; commit WIP in slices (`vol:` messages).
 
 ## P1 — Make it sticky (weeks 3–4)

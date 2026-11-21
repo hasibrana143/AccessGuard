@@ -2,15 +2,27 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **P1 — MAKE IT SELL** 🔄 |
-| Current task | Accessibility gate closed (AA-safe severity tokens, full Playwright suite green); design partners next |
+| Current phase | **P0 — MAKE THE PRODUCT TRUE** ✅ (V23 shipped) |
+| Current task | V23 verified-fix engine shipped: AST patching, axe verification, confidence gate, VPAT truth |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace + VPAT v2 + onboarding + integrations + authenticated scans + WCAG AA token pass done |
+| Status | GREEN — the four P0 truth gaps are closed; the auto-PR claim now matches the shipped engine |
 | Blocked | None |
-| Next action | 3 design partners + 2 case studies (P1 sell phase) |
+| Next action | P1 — regression detection + alerts (`.ai/TASKS.md`), then design partners |
 | Last verification | 2026-11-21 |
 
-**Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.
+**Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-21, V23 verified-fix engine)
+
+| Check | Result |
+|---|---|
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS (exit 0) |
+| `npm run lint` | PASS (0 errors) |
+| `npx vitest run` | PASS — 48 files, 449 tests, 0 failed (was 45/410) |
+| `npm run build` | PASS (exit 0) — Next standalone build |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
+| axe verification in a real browser (vitest) | PASS — verified / failed / link-name cases behave as specified |
 
 ## Evidence (2026-11-21, accessibility gate cycle)
 

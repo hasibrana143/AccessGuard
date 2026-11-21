@@ -2,12 +2,27 @@
 
 Last verification: 2026-11-21
 
+## Findings fixed in the V23 cycle
+
+| # | Finding | Severity | Status |
+|---|---|---|---|
+| 1 | The confidence gate treated `null` (unknown confidence, every template fix) as "good enough", so unverified fixes were written into customer repositories | High (trust) | FIXED — the gate reads verification confidence; `null` never passes (`src/lib/fix-verification.ts`) |
+| 2 | A "fix" identical to the original element counted as applied | Medium (trust) | FIXED — no-op detection in `applyFixesToFile` |
+| 3 | Fixes containing `TODO` / `{{…}}` / `YOUR_ALT_TEXT` were written into customer repositories | Medium | FIXED — placeholder rejection before patching |
+| 4 | Patches were exact-string replacements of axe DOM HTML into source files, so JSX was patched by accident or not at all | High (correctness) | FIXED — AST-aware location for JSX/JS, re-parse guard discards a patch that breaks the file |
+| 5 | `applyFixesToRepository` re-read the original file per violation, so a second fix in the same file overwrote the first | High (data loss in the PR) | FIXED — one fetch and one write per file |
+| 6 | The VPAT PDF declared untested criteria out of scope | High (legal) | FIXED — the PDF reuses `generateVPATData` (`not-evaluated` + remarks) and is labelled a draft |
+
 ## Dependency audit
 
 ```
 npm audit --audit-level=high   → exit 0
 Critical: 0 · High: 0 · Moderate: 15 (dev-toolchain only)
 ```
+
+V23 dependency change: `typescript` and `axe-core` were promoted to production
+dependencies (they are imported by runtime code; the lockfile diff is 9 lines, no new
+packages were downloaded).
 
 Upgrades applied for the published advisories:
 

@@ -1,8 +1,42 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-21 (authenticated scans cycle)
+Last run: 2026-11-21 (V23 verified-fix engine cycle)
 
 ## Vitest
+
+```
+Test Files  48 passed (48)
+Tests       449 passed (449)
+Duration    ~19.3s
+```
+
+New coverage in this cycle:
+
+- `src/lib/__tests__/ast-patch.test.ts` (17 tests) — AST location in JSX, occurrence
+  awareness, HTML exact match, HTML→JSX conversion (`class`→`className`, void
+  self-closing, `style` → object), placeholder rejection, parse guard.
+- `src/lib/__tests__/fix-verification.test.ts` (11 tests) — gate semantics (`null`
+  never passes), verdict mapping (verified / failed / unverified), runner failure
+  handling, and three **real browser** axe runs (verified fix, failing fix, link
+  without an accessible name). The browser block is skipped (visibly) when no
+  Chromium is reachable; CI installs Chromium before the unit suite for this reason.
+- `src/lib/__tests__/vpat-generator.test.ts` (5 tests) — conformance labels and a
+  source guard that the PDF route cannot claim a criterion is out of scope.
+- `src/lib/__tests__/github-pr.test.ts` (extended) — occurrence-aware patching,
+  independent elements of the same rule, placeholder rejection, no-op rejection,
+  JSX patching through the AST, syntax-guard discard.
+
+## Playwright
+
+```
+npx playwright test --project=chromium   → 79 passed, 0 failed (4.3m)
+```
+
+## Previous cycle
+
+Last run: 2026-11-21 (authenticated scans cycle)
+
+### Vitest
 
 ```
 Test Files  45 passed (45)
