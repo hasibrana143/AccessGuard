@@ -1,8 +1,9 @@
 # Volume 9 — API Reference
 
-> **Grounding**: All routes below were verified from source (`src/app/api/**/route.ts` — 63 route files).
-> **Live docs**: `/api/docs` serves Swagger UI (renders `src/lib/openapi.ts`). **Note**: the OpenAPI
-> spec currently documents only 9 of 63 paths — expanding it to full coverage is an open task (§6).
+> **Grounding**: All routes below were verified from source (`src/app/api/**/route.ts`).
+> **Live docs**: `/api/docs` serves Swagger UI (renders `src/lib/openapi.ts`). The OpenAPI spec
+> covers **every** route handler (112 paths, 70 schemas) and a parity test fails the build if it
+> drifts (§6).
 
 ## 1. Conventions
 - **Base URL**: `/api` (paths below are relative, e.g. `GET /api/projects`).
@@ -180,9 +181,11 @@ Query: ?page=1&limit=20&action=remediation.ai_cost
   (`/api/settings/api-key`) with `Authorization: Bearer <key>` (bearer support in OpenAPI spec).
 
 ## 6. OpenAPI spec status
-- `src/lib/openapi.ts` **now covers all 68 base paths** (every route handler: auth, account,
+- `src/lib/openapi.ts` **covers every route handler**: 112 documented paths (auth, account,
   projects, scans, schedule, violations, remediate, reports incl. share/download/exec-summary/vpat,
   roles, github incl. webhook, stripe, teams, settings, stats, audit, flags, admin, legal, health
-  live/ready). 37 schemas, 19 tags, bearer + session + scheduler + webhook security schemes.
-- Optional hardening: a CI script that fails when a route handler has no OpenAPI path entry
-  (spec-vs-routes parity check).
+  live/ready, agency workspace, integrations, onboarding, page inventory, regression, scan auth).
+  70 schemas, 22 tags, bearer + session + scheduler + webhook security schemes.
+- The parity check is enforced by `src/lib/__tests__/openapi-parity.test.ts`: it fails if a route
+  handler has no OpenAPI path entry, if the documented path count drops below the regression floor,
+  or if the schema count drifts from the spec.

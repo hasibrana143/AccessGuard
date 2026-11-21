@@ -51,7 +51,7 @@ describe('OpenAPI spec parity (docs/runbooks/API_REFERENCE.md §6)', () => {
     expect(specPaths.length).toBeGreaterThan(40);
   });
 
-it('has 41 schemas registered', () => {
-    expect(Object.keys(openApiSpec.components.schemas).length).toBe(41);
+  it('has 70 schemas registered', () => {
+    expect(Object.keys(openApiSpec.components.schemas).length).toBe(70);
   });
 });

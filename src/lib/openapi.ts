@@ -1942,6 +1942,415 @@ const paths: Record<string, PathItem> = {
       },
     }),
   },
+  '/agency/bulk-scan': {
+    post: op({
+      tags: ['Agency'],
+      summary: 'Queue bulk scans for agency projects',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/BulkScanRequest' }),
+      },
+      responses: {
+        '200': jsonResponse('Bulk scans queued', { $ref: '#/components/schemas/BulkScanResponse' }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to queue bulk scan' },
+      },
+    }),
+  },
+  '/agency/client-groups': {
+    get: op({
+      tags: ['Agency'],
+      summary: 'List agency client groups',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      responses: {
+        '200': jsonResponse('Client groups', {
+          type: 'object',
+          properties: {
+            clientGroups: { type: 'array', items: { $ref: '#/components/schemas/ClientGroup' } },
+          },
+          required: ['clientGroups'],
+        }),
+        ...COMMON_RESPONSES,
+      },
+    }),
+    post: op({
+      tags: ['Agency'],
+      summary: 'Create an agency client group',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/CreateClientGroupRequest' }),
+      },
+      responses: {
+        '201': jsonResponse('Client group created', {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            clientGroup: { $ref: '#/components/schemas/ClientGroup' },
+          },
+          required: ['success', 'clientGroup'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to create client group' },
+      },
+    }),
+  },
+  '/agency/client-groups/{id}': {
+    get: op({
+      tags: ['Agency'],
+      summary: 'Get an agency client group',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Client group detail', {
+          type: 'object',
+          properties: {
+            clientGroup: { $ref: '#/components/schemas/ClientGroup' },
+          },
+          required: ['clientGroup'],
+        }),
+        ...COMMON_RESPONSES,
+      },
+    }),
+    put: op({
+      tags: ['Agency'],
+      summary: 'Update an agency client group',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/UpdateClientGroupRequest' }),
+      },
+      responses: {
+        '200': jsonResponse('Client group updated', {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            clientGroup: { $ref: '#/components/schemas/ClientGroup' },
+          },
+          required: ['success', 'clientGroup'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to update client group' },
+      },
+    }),
+    delete: op({
+      tags: ['Agency'],
+      summary: 'Delete an agency client group',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Client group deleted', {
+          type: 'object',
+          properties: { success: { type: 'boolean' } },
+          required: ['success'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to delete client group' },
+      },
+    }),
+  },
+  '/agency/whitelabel': {
+    get: op({
+      tags: ['Agency'],
+      summary: 'List white-label configurations',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      responses: {
+        '200': jsonResponse('White-label configurations', {
+          type: 'object',
+          properties: {
+            configs: { type: 'array', items: { $ref: '#/components/schemas/WhiteLabelConfig' } },
+          },
+          required: ['configs'],
+        }),
+        ...COMMON_RESPONSES,
+      },
+    }),
+    post: op({
+      tags: ['Agency'],
+      summary: 'Create or update a white-label configuration',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/WhiteLabelConfigRequest' }),
+      },
+      responses: {
+        '200': jsonResponse('White-label configuration saved', {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            config: { $ref: '#/components/schemas/WhiteLabelConfig' },
+          },
+          required: ['success', 'config'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to save white-label configuration' },
+      },
+    }),
+  },
+  '/integrations': {
+    get: op({
+      tags: ['Integrations'],
+      summary: 'List integrations',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      responses: {
+        '200': jsonResponse('Integrations', {
+          type: 'object',
+          properties: {
+            integrations: { type: 'array', items: { $ref: '#/components/schemas/Integration' } },
+          },
+          required: ['integrations'],
+        }),
+        ...COMMON_RESPONSES,
+      },
+    }),
+    post: op({
+      tags: ['Integrations'],
+      summary: 'Create an integration',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/CreateIntegrationRequest' }),
+      },
+      responses: {
+        '201': jsonResponse('Integration created', {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            integration: { $ref: '#/components/schemas/Integration' },
+          },
+          required: ['success', 'integration'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to create integration' },
+      },
+    }),
+  },
+  '/integrations/{id}/actions': {
+    post: op({
+      tags: ['Integrations'],
+      summary: 'Execute an integration action',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/IntegrationActionRequest' }),
+      },
+      responses: {
+        '200': jsonResponse('Integration action result', { $ref: '#/components/schemas/IntegrationActionResponse' }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Integration action failed' },
+      },
+    }),
+  },
+  '/integrations/{id}': {
+    get: op({
+      tags: ['Integrations'],
+      summary: 'Get an integration',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Integration detail', {
+          type: 'object',
+          properties: {
+            integration: { $ref: '#/components/schemas/Integration' },
+          },
+          required: ['integration'],
+        }),
+        ...COMMON_RESPONSES,
+      },
+    }),
+    put: op({
+      tags: ['Integrations'],
+      summary: 'Update an integration',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/UpdateIntegrationRequest' }),
+      },
+      responses: {
+        '200': jsonResponse('Integration updated', {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            integration: { $ref: '#/components/schemas/Integration' },
+          },
+          required: ['success', 'integration'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to update integration' },
+      },
+    }),
+    delete: op({
+      tags: ['Integrations'],
+      summary: 'Delete an integration',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Integration deleted', {
+          type: 'object',
+          properties: { success: { type: 'boolean' } },
+          required: ['success'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to delete integration' },
+      },
+    }),
+  },
+  '/onboarding/scan': {
+    post: op({
+      tags: ['Onboarding'],
+      summary: 'Run an onboarding scan',
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/OnboardingScanRequest' }),
+      },
+      responses: {
+        '200': jsonResponse('Onboarding scan result', { $ref: '#/components/schemas/OnboardingScanResponse' }),
+        '400': { description: 'Invalid or unscannable URL' },
+        '429': { description: 'Rate limit exceeded (5/min per client)' },
+        '500': { description: 'Scan failed' },
+      },
+    }),
+  },
+  '/onboarding/vpat': {
+    get: op({
+      tags: ['Onboarding'],
+      summary: 'Generate a sample onboarding VPAT',
+      parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string', format: 'uri' } }],
+      responses: {
+        '200': jsonResponse('Sample VPAT', { $ref: '#/components/schemas/OnboardingVpatResponse' }),
+        '400': { description: 'Valid URL required' },
+        '429': { description: 'Rate limit exceeded (5/min per client)' },
+        '500': { description: 'VPAT generation failed' },
+      },
+    }),
+  },
+  '/page-inventory': {
+    get: op({
+      tags: ['Scans'],
+      summary: 'Get page inventory for a project',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [
+        { name: 'projectId', in: 'query', required: true, schema: { type: 'string' } },
+        { name: 'scanId', in: 'query', required: false, schema: { type: 'string' } },
+      ],
+      responses: {
+        '200': jsonResponse('Page inventory', { $ref: '#/components/schemas/PageInventoryResponse' }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to fetch page inventory' },
+      },
+    }),
+  },
+  '/regression': {
+    get: op({
+      tags: ['Stats'],
+      summary: 'Get regression summary for a project',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'projectId', in: 'query', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Regression summary', { $ref: '#/components/schemas/RegressionResponse' }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to fetch regression data' },
+      },
+    }),
+  },
+  '/scan-auth': {
+    get: op({
+      tags: ['Scans'],
+      summary: 'List scan authentication configurations',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'projectId', in: 'query', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Scan authentication configurations', {
+          type: 'object',
+          properties: {
+            authConfigs: { type: 'array', items: { $ref: '#/components/schemas/ScanAuthConfig' } },
+          },
+          required: ['authConfigs'],
+        }),
+        ...COMMON_RESPONSES,
+      },
+    }),
+    post: op({
+      tags: ['Scans'],
+      summary: 'Create a scan authentication configuration',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/CreateScanAuthConfigRequest' }),
+      },
+      responses: {
+        '201': jsonResponse('Scan authentication configuration created', {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            authConfig: { $ref: '#/components/schemas/ScanAuthConfig' },
+          },
+          required: ['success', 'authConfig'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to create scan authentication configuration' },
+      },
+    }),
+  },
+  '/scan-auth/{id}': {
+    get: op({
+      tags: ['Scans'],
+      summary: 'Get a scan authentication configuration',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Scan authentication configuration detail', {
+          type: 'object',
+          properties: {
+            authConfig: { $ref: '#/components/schemas/ScanAuthConfig' },
+          },
+          required: ['authConfig'],
+        }),
+        ...COMMON_RESPONSES,
+      },
+    }),
+    put: op({
+      tags: ['Scans'],
+      summary: 'Update a scan authentication configuration',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      requestBody: {
+        required: true,
+        content: JSON_CONTENT({ $ref: '#/components/schemas/UpdateScanAuthConfigRequest' }),
+      },
+      responses: {
+        '200': jsonResponse('Scan authentication configuration updated', {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            authConfig: { $ref: '#/components/schemas/ScanAuthConfig' },
+          },
+          required: ['success', 'authConfig'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to update scan authentication configuration' },
+      },
+    }),
+    delete: op({
+      tags: ['Scans'],
+      summary: 'Delete a scan authentication configuration',
+      security: [{ bearerAuth: [] }, { sessionAuth: [] }],
+      parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+      responses: {
+        '200': jsonResponse('Scan authentication configuration deleted', {
+          type: 'object',
+          properties: { success: { type: 'boolean' } },
+          required: ['success'],
+        }),
+        ...COMMON_RESPONSES,
+        '500': { description: 'Failed to delete scan authentication configuration' },
+      },
+    }),
+  },
 };
 
 const schemas = {
@@ -2480,6 +2889,503 @@ const schemas = {
       generatedAt: { type: 'string', format: 'date-time' },
     },
   },
+  BulkScanRequest: {
+    type: 'object',
+    required: ['projectIds'],
+    properties: {
+      projectIds: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'string' } },
+      priority: { type: 'string', enum: ['normal', 'high'] },
+    },
+  },
+  BulkScanResponse: {
+    type: 'object',
+    required: ['success', 'queued', 'jobIds', 'priority'],
+    properties: {
+      success: { type: 'boolean' },
+      queued: { type: 'integer' },
+      jobIds: { type: 'array', items: { type: 'string' } },
+      priority: { type: 'string', enum: ['normal', 'high'] },
+    },
+  },
+  ClientGroup: {
+    type: 'object',
+    required: ['id', 'orgId', 'name', 'slug', 'createdAt', 'updatedAt'],
+    properties: {
+      id: { type: 'string' },
+      orgId: { type: 'string' },
+      name: { type: 'string' },
+      slug: { type: 'string' },
+      description: { type: 'string', nullable: true },
+      website: { type: 'string', format: 'uri', nullable: true },
+      logoUrl: { type: 'string', format: 'uri', nullable: true },
+      primaryColor: { type: 'string', nullable: true },
+      secondaryColor: { type: 'string', nullable: true },
+      createdAt: { type: 'string', format: 'date-time' },
+      updatedAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  CreateClientGroupRequest: {
+    type: 'object',
+    required: ['name', 'slug'],
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 100 },
+      slug: { type: 'string', minLength: 1, maxLength: 50, pattern: '^[a-z0-9-]+$' },
+      description: { type: 'string', maxLength: 500 },
+      website: { type: 'string', format: 'uri' },
+      logoUrl: { type: 'string', format: 'uri' },
+      primaryColor: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+      secondaryColor: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+    },
+  },
+  UpdateClientGroupRequest: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 100 },
+      slug: { type: 'string', minLength: 1, maxLength: 50, pattern: '^[a-z0-9-]+$' },
+      description: { type: 'string', maxLength: 500, nullable: true },
+      website: { type: 'string', format: 'uri', nullable: true },
+      logoUrl: { type: 'string', format: 'uri', nullable: true },
+      primaryColor: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$', nullable: true },
+      secondaryColor: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$', nullable: true },
+    },
+  },
+  WhiteLabelConfig: {
+    type: 'object',
+    required: ['id', 'orgId', 'showPoweredBy', 'createdAt', 'updatedAt'],
+    properties: {
+      id: { type: 'string' },
+      orgId: { type: 'string' },
+      clientGroupId: { type: 'string', nullable: true },
+      logoUrl: { type: 'string', format: 'uri', nullable: true },
+      primaryColor: { type: 'string', nullable: true },
+      secondaryColor: { type: 'string', nullable: true },
+      fontFamily: { type: 'string', nullable: true },
+      companyName: { type: 'string', nullable: true },
+      companyUrl: { type: 'string', format: 'uri', nullable: true },
+      footerText: { type: 'string', nullable: true },
+      showPoweredBy: { type: 'boolean' },
+      createdAt: { type: 'string', format: 'date-time' },
+      updatedAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  WhiteLabelConfigRequest: {
+    type: 'object',
+    properties: {
+      clientGroupId: { type: 'string', nullable: true },
+      logoUrl: { type: 'string', format: 'uri', nullable: true },
+      primaryColor: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$', nullable: true },
+      secondaryColor: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$', nullable: true },
+      fontFamily: { type: 'string', maxLength: 50, nullable: true },
+      companyName: { type: 'string', maxLength: 100, nullable: true },
+      companyUrl: { type: 'string', format: 'uri', nullable: true },
+      footerText: { type: 'string', maxLength: 500, nullable: true },
+      showPoweredBy: { type: 'boolean' },
+    },
+  },
+  IntegrationConfig: {
+    type: 'object',
+    properties: {
+      baseUrl: { type: 'string', format: 'uri' },
+      email: { type: 'string', format: 'email' },
+      apiToken: { type: 'string' },
+      projectKey: { type: 'string' },
+      apiKey: { type: 'string' },
+      teamId: { type: 'string' },
+      webhookUrl: { type: 'string', format: 'uri' },
+      botToken: { type: 'string' },
+      channelId: { type: 'string' },
+      teamsWebhookUrl: { type: 'string', format: 'uri' },
+    },
+  },
+  Integration: {
+    type: 'object',
+    required: ['id', 'orgId', 'type', 'name', 'config', 'isActive', 'createdAt', 'updatedAt'],
+    properties: {
+      id: { type: 'string' },
+      orgId: { type: 'string' },
+      type: { type: 'string', enum: ['jira', 'linear', 'slack', 'teams'] },
+      name: { type: 'string' },
+      config: { $ref: '#/components/schemas/IntegrationConfig' },
+      isActive: { type: 'boolean' },
+      lastSyncAt: { type: 'string', format: 'date-time', nullable: true },
+      createdAt: { type: 'string', format: 'date-time' },
+      updatedAt: { type: 'string', format: 'date-time' },
+      integrationLogs: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            integrationId: { type: 'string' },
+            action: { type: 'string' },
+            status: { type: 'string' },
+            payload: { type: 'string', nullable: true },
+            response: { type: 'string', nullable: true },
+            error: { type: 'string', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+      },
+    },
+  },
+  CreateIntegrationRequest: {
+    type: 'object',
+    required: ['type', 'name'],
+    properties: {
+      type: { type: 'string', enum: ['jira', 'linear', 'slack', 'teams'] },
+      name: { type: 'string', minLength: 1, maxLength: 50 },
+      config: { $ref: '#/components/schemas/IntegrationConfig' },
+    },
+  },
+  UpdateIntegrationRequest: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 50 },
+      config: { $ref: '#/components/schemas/IntegrationConfig' },
+      isActive: { type: 'boolean' },
+    },
+  },
+  IntegrationActionRequest: {
+    oneOf: [
+      {
+        type: 'object',
+        required: ['type', 'violationIds'],
+        properties: {
+          type: { type: 'string', enum: ['create_issue'] },
+          violationIds: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'string' } },
+          projectKey: { type: 'string' },
+          teamId: { type: 'string' },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type', 'message'],
+        properties: {
+          type: { type: 'string', enum: ['notify'] },
+          message: { type: 'string', maxLength: 2000 },
+          severity: { type: 'string', enum: ['info', 'warning', 'critical'] },
+          channelId: { type: 'string' },
+        },
+      },
+      {
+        type: 'object',
+        required: ['type'],
+        properties: {
+          type: { type: 'string', enum: ['test'] },
+        },
+      },
+    ],
+  },
+  IntegrationActionResponse: {
+    type: 'object',
+    required: ['success'],
+    properties: {
+      success: { type: 'boolean' },
+      error: { type: 'string' },
+      issueUrl: { type: 'string', format: 'uri' },
+    },
+  },
+  OnboardingScanRequest: {
+    type: 'object',
+    required: ['url'],
+    properties: {
+      url: { type: 'string', format: 'uri' },
+      email: { type: 'string', format: 'email' },
+    },
+  },
+  OnboardingScanResponse: {
+    type: 'object',
+    required: ['success', 'url', 'scanSummary', 'topFixes', 'actions'],
+    properties: {
+      success: { type: 'boolean' },
+      url: { type: 'string', format: 'uri' },
+      scanSummary: {
+        type: 'object',
+        properties: {
+          pagesScanned: { type: 'integer' },
+          violationsFound: { type: 'integer' },
+          severityCounts: {
+            type: 'object',
+            properties: {
+              critical: { type: 'integer' },
+              serious: { type: 'integer' },
+              moderate: { type: 'integer' },
+              minor: { type: 'integer' },
+            },
+          },
+          riskScore: { type: 'integer' },
+        },
+      },
+      topFixes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            ruleId: { type: 'string' },
+            wcagCriteria: { type: 'string', nullable: true },
+            severity: { type: 'string', enum: ['critical', 'serious', 'moderate', 'minor'] },
+            description: { type: 'string' },
+            url: { type: 'string', format: 'uri' },
+            elementSelector: { type: 'string', nullable: true },
+            quickFix: { type: 'string' },
+          },
+        },
+      },
+      actions: {
+        type: 'object',
+        properties: {
+          viewFullReport: { type: 'string' },
+          signupForFullAccess: { type: 'string' },
+          downloadSampleVPAT: { type: 'string' },
+        },
+      },
+    },
+  },
+  OnboardingVpatResponse: {
+    type: 'object',
+    required: ['success', 'url', 'vpat', 'scanSummary', 'disclaimer'],
+    properties: {
+      success: { type: 'boolean' },
+      url: { type: 'string', format: 'uri' },
+      vpat: {
+        type: 'object',
+        properties: {
+          criteria: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                id: { type: 'string' },
+                level: { type: 'string' },
+                name: { type: 'string' },
+                conformance: { type: 'string', enum: ['supports', 'partially-supports', 'does-not-support', 'not-evaluated'] },
+                remarks: { type: 'string' },
+                en301549Refs: { type: 'array', items: { type: 'string' } },
+                section508Refs: { type: 'array', items: { type: 'string' } },
+                manualCheckId: { type: 'string' },
+              },
+            },
+          },
+          summary: {
+            type: 'object',
+            properties: {
+              supports: { type: 'integer' },
+              partiallySupports: { type: 'integer' },
+              doesNotSupport: { type: 'integer' },
+              notEvaluated: { type: 'integer' },
+            },
+          },
+          meta: {
+            type: 'object',
+            properties: {
+              generatedAt: { type: 'string', format: 'date-time' },
+              standard: { type: 'string', enum: ['WCAG 2.2 AA', 'WCAG 2.1 AA'] },
+              en301549: { type: 'boolean' },
+              section508: { type: 'boolean' },
+              projectId: { type: 'string' },
+              scanId: { type: 'string' },
+              isSample: { type: 'boolean' },
+              generatedFor: { type: 'string', format: 'uri' },
+            },
+          },
+        },
+      },
+      scanSummary: {
+        type: 'object',
+        properties: {
+          pagesScanned: { type: 'integer' },
+          violationsFound: { type: 'integer' },
+          severityCounts: {
+            type: 'object',
+            properties: {
+              critical: { type: 'integer' },
+              serious: { type: 'integer' },
+              moderate: { type: 'integer' },
+              minor: { type: 'integer' },
+            },
+          },
+        },
+      },
+      disclaimer: { type: 'string' },
+    },
+  },
+  PageInventoryResponse: {
+    type: 'object',
+    required: ['projectId', 'crawlConfig', 'pages', 'summary', 'topFixes'],
+    properties: {
+      projectId: { type: 'string' },
+      scanId: { type: 'string' },
+      scanCompletedAt: { type: 'string', format: 'date-time' },
+      crawlConfig: { type: 'object' },
+      pages: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', format: 'uri' },
+            violationsCount: { type: 'integer' },
+            critical: { type: 'integer' },
+            serious: { type: 'integer' },
+            moderate: { type: 'integer' },
+            minor: { type: 'integer' },
+            status: { type: 'string', enum: ['needs_attention', 'ok'] },
+          },
+        },
+      },
+      summary: {
+        type: 'object',
+        properties: {
+          totalPages: { type: 'integer' },
+          scannedPages: { type: 'integer' },
+          pendingPages: { type: 'integer' },
+          coverage: { type: 'integer' },
+        },
+      },
+      topFixes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            ruleId: { type: 'string' },
+            count: { type: 'integer' },
+            severity: { type: 'string', enum: ['critical', 'serious', 'moderate', 'minor'] },
+            wcagCriteria: { type: 'string', nullable: true },
+          },
+        },
+      },
+      lastScanAt: { type: 'string', format: 'date-time', nullable: true },
+    },
+  },
+  RegressionResponse: {
+    type: 'object',
+    required: ['projectId', 'scans'],
+    properties: {
+      projectId: { type: 'string' },
+      scans: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            scanId: { type: 'string' },
+            completedAt: { type: 'string', format: 'date-time' },
+            pagesScanned: { type: 'integer' },
+            violationsFound: { type: 'integer' },
+            severity: { type: 'object' },
+            regression: { type: 'object' },
+          },
+        },
+      },
+      trends: {
+        type: 'object',
+        nullable: true,
+        properties: {
+          violationsDelta: { type: 'integer' },
+          newViolations: { type: 'integer' },
+          fixedViolations: { type: 'integer' },
+          regressedViolations: { type: 'integer' },
+          persistingViolations: { type: 'integer' },
+        },
+      },
+    },
+  },
+  ScanAuthOptions: {
+    type: 'object',
+    properties: {
+      cookies: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            value: { type: 'string' },
+            domain: { type: 'string' },
+            path: { type: 'string' },
+          },
+        },
+      },
+      headers: { type: 'object', additionalProperties: { type: 'string' } },
+      script: {
+        type: 'string',
+        description: 'Login script executed in the page context. Encrypted at rest and never returned by the API.',
+      },
+      scriptConfig: {
+        type: 'object',
+        properties: {
+          loginUrl: { type: 'string', format: 'uri' },
+          usernameSelector: { type: 'string' },
+          passwordSelector: { type: 'string' },
+          submitSelector: { type: 'string' },
+          waitForSelector: { type: 'string' },
+          waitAfterLogin: { type: 'integer' },
+          username: { type: 'string', writeOnly: true, description: 'Encrypted at rest, never returned.' },
+          password: { type: 'string', writeOnly: true, description: 'Encrypted at rest, never returned.' },
+        },
+      },
+    },
+  },
+  ScanAuthPublicOptions: {
+    type: 'object',
+    description: 'Masked view: secret values are replaced with •••••••• and the login script is omitted.',
+    properties: {
+      cookies: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            value: { type: 'string', example: '••••••••' },
+            domain: { type: 'string' },
+            path: { type: 'string' },
+          },
+        },
+      },
+      headers: { type: 'object', additionalProperties: { type: 'string' } },
+      scriptConfig: {
+        type: 'object',
+        properties: {
+          loginUrl: { type: 'string', format: 'uri' },
+          usernameSelector: { type: 'string' },
+          passwordSelector: { type: 'string' },
+          submitSelector: { type: 'string' },
+          waitForSelector: { type: 'string' },
+          waitAfterLogin: { type: 'integer' },
+        },
+      },
+    },
+  },
+  ScanAuthConfig: {
+    type: 'object',
+    required: ['id', 'projectId', 'name', 'type', 'config', 'isActive', 'createdAt', 'updatedAt'],
+    properties: {
+      id: { type: 'string' },
+      projectId: { type: 'string' },
+      name: { type: 'string' },
+      type: { type: 'string', enum: ['cookie', 'header', 'script'] },
+      config: { $ref: '#/components/schemas/ScanAuthPublicOptions' },
+      isActive: { type: 'boolean' },
+      createdAt: { type: 'string', format: 'date-time' },
+      updatedAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  CreateScanAuthConfigRequest: {
+    type: 'object',
+    required: ['name', 'type', 'projectId'],
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 50 },
+      type: { type: 'string', enum: ['cookie', 'header', 'script'] },
+      projectId: { type: 'string' },
+      config: { $ref: '#/components/schemas/ScanAuthOptions' },
+    },
+  },
+  UpdateScanAuthConfigRequest: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 50 },
+      type: { type: 'string', enum: ['cookie', 'header', 'script'] },
+      config: { $ref: '#/components/schemas/ScanAuthOptions' },
+      isActive: { type: 'boolean' },
+    },
+  },
 } as const;
 
 export const openApiSpec = {
@@ -2488,7 +3394,7 @@ export const openApiSpec = {
     title: 'AccessGuard API',
     version: '1.0.0',
     description:
-      'REST API for automated WCAG compliance scanning, violation management, AI remediation, and team workflows. Full route inventory: 67 handler files under src/app/api. See docs/engineering/API_SPECIFICATION.md.',
+      'REST API for automated WCAG compliance scanning, violation management, AI remediation, and team workflows. Full route inventory: 112 handler files under src/app/api. See docs/engineering/API_SPECIFICATION.md.',
     contact: {
       name: 'AccessGuard Support',
       email: 'support@accessguard.dev',
@@ -2551,5 +3457,8 @@ export const openApiSpec = {
     { name: 'Admin', description: 'Feature flags and admin panel' },
     { name: 'Notifications', description: 'Alert channel notifications' },
     { name: 'Legal', description: 'Public legal documents' },
+    { name: 'Agency', description: 'Agency client management and white-label configuration' },
+    { name: 'Integrations', description: 'External issue tracking and notification integrations' },
+    { name: 'Onboarding', description: 'Public onboarding scans and sample VPATs' },
   ],
 };
