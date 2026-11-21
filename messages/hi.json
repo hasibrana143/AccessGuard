@@ -1027,7 +1027,16 @@
     "eu_data_transfer_consent": "EU डेटा स्थानांतरण सहमति",
     "payment_failed": "भुगतान विफल हुआ",
     "payment_succeeded": "भुगतान सफल हुआ",
-    "vendor_review": "विक्रेता समीक्षा"
+    "vendor_review": "विक्रेता समीक्षा",
+    "api_key_created": "API कुंजी बनाई गई",
+    "api_key_revoked": "API कुंजी रद्द की गई",
+    "api_scan_triggered": "API स्कैन ट्रिगर हुआ",
+    "integration_created": "इंटीग्रेशन बनाया गया",
+    "integration_updated": "इंटीग्रेशन अपडेट हुआ",
+    "integration_deleted": "इंटीग्रेशन हटाया गया",
+    "scan_auth_created": "स्कैन प्रमाणीकरण बनाया गया",
+    "scan_auth_updated": "स्कैन प्रमाणीकरण अपडेट हुआ",
+    "scan_auth_deleted": "स्कैन प्रमाणीकरण हटाया गया"
   }
   },
   "admin": {

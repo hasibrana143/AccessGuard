@@ -1027,7 +1027,16 @@
     "eu_data_transfer_consent": "EU Data Transfer Consented",
     "payment_failed": "Payment Failed",
     "payment_succeeded": "Payment Succeeded",
-    "vendor_review": "Vendor Review"
+    "vendor_review": "Vendor Review",
+    "api_key_created": "API Key Created",
+    "api_key_revoked": "API Key Revoked",
+    "api_scan_triggered": "API Scan Triggered",
+    "integration_created": "Integration Created",
+    "integration_updated": "Integration Updated",
+    "integration_deleted": "Integration Deleted",
+    "scan_auth_created": "Scan Authentication Created",
+    "scan_auth_updated": "Scan Authentication Updated",
+    "scan_auth_deleted": "Scan Authentication Deleted"
   }
   },
   "admin": {

@@ -3,6 +3,7 @@ import * as axeCore from 'axe-core';
 import type { ScannerStrategy, ScanResult, ScannerViolation, ScanConfig } from '../types';
 import { logger } from '@/lib/error-logger';
 import { validateTargetUrl } from '@/lib/url-validation';
+import type { AuthContext } from '@/lib/scan-auth';
 import { createViolation, mergeViolations } from './axe-utils';
 
 const AXE_SOURCE = (axeCore as unknown as { source?: string }).source;
@@ -39,6 +40,62 @@ async function ensureAxe(frame: Frame): Promise<void> {
     () => typeof (window as unknown as { axe?: unknown }).axe !== 'undefined'
   );
   if (!loaded) await frame.addScriptTag({ content: AXE_SOURCE });
+}
+
+async function applyAuthContext(page: Page, authContext: AuthContext | undefined): Promise<void> {
+  if (!authContext) return;
+
+  // Apply cookies
+  if (authContext.cookies && authContext.cookies.length > 0) {
+    await page.context().addCookies(authContext.cookies.map(c => ({
+      name: c.name,
+      value: c.value,
+      domain: c.domain,
+      path: c.path || '/',
+    })));
+  }
+
+  // Apply headers
+  if (authContext.headers && Object.keys(authContext.headers).length > 0) {
+    await page.setExtraHTTPHeaders(authContext.headers);
+  }
+
+  const scriptConfig = authContext.scriptConfig;
+  if (!scriptConfig) return;
+
+  if (scriptConfig.loginUrl) {
+    await page.goto(scriptConfig.loginUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  }
+
+  // Selector-based login using the credentials stored for this project.
+  if (
+    scriptConfig.usernameSelector &&
+    scriptConfig.passwordSelector &&
+    scriptConfig.submitSelector &&
+    scriptConfig.username &&
+    scriptConfig.password
+  ) {
+    await page.fill(scriptConfig.usernameSelector, scriptConfig.username);
+    await page.fill(scriptConfig.passwordSelector, scriptConfig.password);
+    await page.click(scriptConfig.submitSelector);
+  }
+
+  // Custom login script — runs in the page context (DOM/fetch APIs), so it
+  // works on sites the selector flow cannot express. The credentials are
+  // exposed to the page as window.__accessguardAuth for that purpose.
+  if (authContext.script) {
+    await page.evaluate((creds: { username?: string; password?: string }) => {
+      (window as unknown as { __accessguardAuth?: unknown }).__accessguardAuth = creds;
+    }, { username: scriptConfig.username, password: scriptConfig.password });
+    await page.evaluate(`(async () => {\n${authContext.script}\n})()`);
+  }
+
+  if (scriptConfig.waitForSelector) {
+    await page.waitForSelector(scriptConfig.waitForSelector, { timeout: 15_000 }).catch(() => {});
+  }
+  if (scriptConfig.waitAfterLogin) {
+    await page.waitForTimeout(scriptConfig.waitAfterLogin);
+  }
 }
 
 async function runAxeOnFrame(frame: Frame, fallbackUrl: string): Promise<ScannerViolation[]> {
@@ -107,7 +164,7 @@ async function scanViewport(
   browser: Browser,
   url: string,
   viewport: ViewportName,
-  config?: ScanConfig
+  config?: ScanConfig & { authContext?: AuthContext }
 ): Promise<{ violations: ScannerViolation[]; screenshot?: string; error?: string }> {
   const context = await browser.newContext({
     viewport: VIEWPORTS[viewport],
@@ -121,6 +178,11 @@ async function scanViewport(
     // CDP-injected, so it survives strict CSP and is present in child frames.
     if (AXE_SOURCE) await context.addInitScript({ content: AXE_SOURCE });
     const page = await context.newPage();
+
+    // Apply auth context before navigation
+    if (config?.authContext) {
+      await applyAuthContext(page, config.authContext);
+    }
 
     try {
       await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });

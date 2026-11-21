@@ -6,6 +6,7 @@ import { sendWebhookNotification } from './notifications';
 import { sendScanCompleteEmail } from './email';
 import { logger } from './error-logger';
 import { generateFingerprint, reconcileViolations } from '@/services/scanner/strategies/fingerprint';
+import { decryptScanAuthConfig, type AuthContext } from '@/lib/scan-auth';
 
 export interface ExecuteScanOptions {
   projectId: string;
@@ -387,6 +388,44 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
       }
     }
 
+    // Fetch active auth configs for this project
+    const authConfigs = await db.scanAuthConfig.findMany({
+      where: { projectId, isActive: true },
+      select: { type: true, config: true },
+    });
+
+    // Prepare auth context for the scanner. Every active config contributes
+    // (cookies + headers merge, the first login script wins).
+    let authContext: AuthContext | undefined;
+    if (authConfigs.length > 0) {
+      const merged: AuthContext = { cookies: [], headers: {} };
+      let hasAuth = false;
+      for (const cfg of authConfigs) {
+        const decrypted = decryptScanAuthConfig(cfg.config);
+        if (!decrypted) {
+          logger.warn({ projectId }, 'Failed to parse scan auth config');
+          continue;
+        }
+        if (decrypted.cookies?.length) {
+          merged.cookies = [...(merged.cookies ?? []), ...decrypted.cookies];
+          hasAuth = true;
+        }
+        if (decrypted.headers && Object.keys(decrypted.headers).length > 0) {
+          merged.headers = { ...(merged.headers ?? {}), ...decrypted.headers };
+          hasAuth = true;
+        }
+        if (!merged.script && decrypted.script) {
+          merged.script = decrypted.script;
+          hasAuth = true;
+        }
+        if (!merged.scriptConfig && decrypted.scriptConfig) {
+          merged.scriptConfig = decrypted.scriptConfig;
+          hasAuth = true;
+        }
+      }
+      if (hasAuth) authContext = merged;
+    }
+
     // Determine if we should crawl (multi-page) or single-page scan
     const shouldCrawl = !html && (crawlConfig.maxPages ?? 1) > 1;
 
@@ -400,13 +439,14 @@ export async function executeScan(options: ExecuteScanOptions): Promise<ExecuteS
         ...crawlConfig,
         ...scanConfig,
         viewports: crawlConfig.viewports ?? ['desktop', 'mobile'],
+        authContext,
       });
       if (result.error && (result.error.includes('403') || result.error.includes('429'))) {
         logger.info({ projectId, error: result.error }, 'Crawl blocked — falling back to single-page scan');
-        result = await scanUrl(url, { waitTime: 3000, viewports: ['desktop', 'mobile'] });
+        result = await scanUrl(url, { waitTime: 3000, viewports: ['desktop', 'mobile'], authContext });
       }
     } else if (useBrowser) {
-      result = await scanUrl(url, { waitTime: 3000, viewports: ['desktop', 'mobile'] });
+      result = await scanUrl(url, { waitTime: 3000, viewports: ['desktop', 'mobile'], authContext });
       if (result.error && (result.error.includes('403') || result.error.includes('429'))) {
         logger.info({ projectId, error: result.error }, 'Browser scan blocked — falling back to server scan');
         result = await scanUrlServer(url, undefined, {

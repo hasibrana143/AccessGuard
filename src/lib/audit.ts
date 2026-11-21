@@ -28,7 +28,7 @@ export const AUDIT_ACTIONS = [
   'eu_data_transfer_consent',
   'payment_failed', 'payment_succeeded',
   'vendor_review',
-  'api_key_created', 'api_key_revoked', 'api_scan_triggered',
+  'api_key_created', 'api_key_revoked', 'api_scan_triggered', 'scan_auth_created', 'scan_auth_updated', 'scan_auth_deleted',
   'integration_created', 'integration_updated', 'integration_deleted',
 ] as const;
 

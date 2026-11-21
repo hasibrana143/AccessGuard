@@ -13,7 +13,7 @@ export type AuthedUser = {
   customRole?: { permissions: string } | null;
 };
 
-interface GuardOptions {
+export interface GuardOptions {
   permission?: Permission;
 }
 
@@ -38,8 +38,9 @@ const WRITE_METHODS = ['POST', 'PATCH', 'PUT', 'DELETE'];
 // the verification banner can guide users toward confirming their inbox.
 export async function requireVerifiedEmail(
   request: NextRequest,
-  options: GuardOptions = {}
+  options?: GuardOptions
 ): Promise<{ user: AuthedUser } | NextResponse> {
+  const _options = options ?? {};
   const auth = await requireAuth(request);
   if (auth instanceof NextResponse) return auth;
 
@@ -48,7 +49,7 @@ export async function requireVerifiedEmail(
     select: { emailVerifiedAt: true },
   });
   if (!user || !user.emailVerifiedAt) return VERIFICATION_REQUIRED;
-  const permitted = await enforcePermission(auth.user.id, options.permission);
+  const permitted = await enforcePermission(auth.user.id, _options.permission);
   if (permitted instanceof NextResponse) return permitted;
   return auth;
 }

@@ -3,12 +3,15 @@ import { axeCoreStrategy } from './strategies/axe-core';
 import { domAnalysisStrategy } from './strategies/dom-analysis';
 import { fetchAnalysisStrategy } from './strategies/fetch-analysis';
 import { crawlerStrategy } from './strategies/crawler';
+import type { AuthContext } from '@/lib/scan-auth';
 
 const strategies = [crawlerStrategy, axeCoreStrategy, fetchAnalysisStrategy, domAnalysisStrategy];
 
 export type {
   ScannerStrategy, ScanResult, ScannerViolation,
 };
+
+export type { AuthContext };
 
 export type BrowserViolation = ScannerViolation;
 export type ServerViolation = ScannerViolation;
@@ -20,7 +23,7 @@ export interface AdvancedScanConfig {
   retryCount?: number;
 }
 
-export function scanUrl(url: string, config?: InternalScanConfig): Promise<ScanResult> {
+export function scanUrl(url: string, config?: InternalScanConfig & { authContext?: AuthContext }): Promise<ScanResult> {
   return axeCoreStrategy.scan(url, null, config);
 }
 
@@ -34,7 +37,7 @@ export function scanUrlServer(url: string, html?: string, config?: InternalScanC
 }
 
 /** Full-site crawl: sitemap + BFS discovery, per-page axe scans, merged violations. */
-export function crawlSite(url: string, config?: InternalScanConfig): Promise<ScanResult> {
+export function crawlSite(url: string, config?: InternalScanConfig & { authContext?: AuthContext }): Promise<ScanResult> {
   return crawlerStrategy.scan(url, null, config);
 }
 
