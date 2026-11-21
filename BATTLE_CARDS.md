@@ -23,7 +23,7 @@
 | Our Advantage | Proof Point |
 |---------------|-------------|
 | **AI Remediation Built-In** | "Deque tells you what's broken. We give you the fix." 90%+ fix acceptance |
-| **Dev-First UX** | VS Code inline fixes + GitHub auto-fix PRs + MCP Server. Deque = separate tools |
+| **Dev-First UX** | VS Code inline fixes + GitHub PRs with axe-verified fixes + MCP Server. Deque = separate tools |
 | **VPAT in 5 Min** | Deque: 40 hours manual. Us: 1-click with evidence links |
 | **Legal Shield™** | Deque has no legal guarantee. We offer audit trail + AI responses + financial cap |
 | **Outcome Pricing** | Deque: per-page/scan. Us: pay for fixes delivered |

@@ -83,7 +83,7 @@ The accessibility space splits into four segments:
 - Core scanning implemented: Playwright browser strategy + server-side fetch analysis, continuous monitoring via cron scheduler daemon.
 - Severity triage and violation management implemented (filtering, bulk status, evidence).
 - AI remediation implemented with confidence gating and WCAG-rule-aware validation — matches the "AI with guardrails" differentiator.
-- Fixes delivered in real source code via GitHub auto-PR (branch, PR summary, source edits) with HTML injection validation — differentiator #1 is live.
+- Fixes delivered in real source code via GitHub auto-PR (branch, PR summary, source edits) with AST-aware patching, injection validation and an axe verification pass before the PR opens — differentiator #1 is live.
 - Plan-based limits (starter/agency/enterprise) enforced via monthly pages quota; self-serve onboarding with trial implemented.
 - RBAC / team management implemented (owner/admin/member roles, invites) — differentiator #5 foundation live.
 - Compliance reporting implemented: WCAG 2.1 AA + VPAT PDF reports.

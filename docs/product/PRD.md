@@ -6,7 +6,7 @@
 ## 1. Overview
 
 **Product:** AccessGuard — AI-powered automated accessibility (WCAG) compliance platform.
-**One-liner:** Scan your site, get WCAG 2.1/2.2 AA violation evidence, and remediate with AI + GitHub auto-PRs, then keep monitoring continuously.
+**One-liner:** Scan your site, get WCAG 2.1/2.2 AA violation evidence, and remediate with AI fixes that are verified with axe and delivered as a GitHub PR, then keep monitoring continuously.
 **Category:** Web Accessibility Testing + Remediation SaaS (ADA/EAA/Section 508).
 **Primary problem solved:** companies get sued for inaccessible websites; existing tools over-promise (overlays) or under-deliver (no remediation loop). AccessGuard gives a defensible evidence trail **and** a fix loop.
 
