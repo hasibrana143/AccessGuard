@@ -33,7 +33,10 @@ A remediation is rejected before it can reach a browser or a repository when it:
 - contains a `<script>` tag in any spelling (`<script>`, `<script/x>`, `< script >`),
 - contains an active or embedding element (`iframe`, `object`, `embed`, `applet`,
   `base`, `svg`, `style`, `link`, `meta`, `frame`, `frameset`, `noframes`, `portal`,
-  `fencedframe`, `math`),
+  `fencedframe`, `math`, `plaintext`, `xmp`, `listing`, `noscript`, `noembed`,
+  `video`, `audio`, `source`, `track`, `input[type=image]`),
+- contains a **brace**: in JSX it opens an expression and in a template file an
+  interpolation, so the remediation would become executable code in the source,
 - contains **any** event handler attribute (`onerror`, `onclick`, …) — a handler is
   rejected even when the scanned element already carried one, because the handler
   code belongs to the scanned page, not to AccessGuard,
@@ -47,7 +50,9 @@ A remediation is rejected before it can reach a browser or a repository when it:
   is read the way the browser reads it: the HTML entities of the attribute value
   are decoded, a CSS comment is treated as whitespace (`position/**/:fixed` is
   `position: fixed`) and the CSS escapes are resolved (`p\6fsition:fixed` is
-  `position: fixed`),
+  `position: fixed`). A partial entity table cannot mirror that, so a style
+  value that carries an entity (`&`), an escape (`\`) or a comment (`/*`) is
+  rejected instead of guessed,
 - still contains a placeholder (`TODO`, `FIXME`, `{{…}}`, `YOUR_ALT_TEXT`),
 - does not address the rule it claims to fix (per-rule check),
 - is empty or longer than 20k characters.
@@ -65,12 +70,14 @@ spliced at AST-derived offsets, so the rest of the file is untouched.
 | Property | Behaviour |
 | --- | --- |
 | Location | JSX/JS: AST match on the tag and **every** identity attribute the report carries (`src`, `href`, `id`, `name`, `class`, `aria-label`, `role`, `data-testid`, and softly `type`/`alt`); a candidate that lacks a supplied identity attribute does not match. The class list is compared as a set, so two copies of the same image with different classes are never confused. HTML: exact element text. |
-| Occurrence aware | Occurrences are counted per rule **and** per element. Three copies of the same image are patched one by one; two different images are patched independently. A fix is only written when **every** occurrence of its element in the file is covered by a selected fix — the fixes are matched to the occurrences in order, so selecting one of two identical elements would otherwise patch the wrong one. Such a fix ships as a review suggestion. |
+| Live context | In an HTML file only a **live tag** counts: markup inside a comment, inside a raw-text element (`script`, `style`, `textarea`, `title`, `xmp`, `plaintext`, `noscript`) or inside another tag's attribute value is not an element the browser renders, so a fix is never written there. A file that holds the element only inside a comment is not patched and not counted. |
+| Patchable files | A fix is only written into a file whose destination context can be proven: an HTML file (`.html`, `.htm`) or a JSX file (`.tsx`, `.jsx`, `.js`). A TypeScript module or a component file that mixes markup and code (`.ts`, `.mts`, `.cts`, `.vue`, `.svelte`, `.astro`) has no proven context — the element text can sit inside a string or an expression there — so the fix ships as a review suggestion. Those files are still **scanned**, so a duplicate in one of them keeps the remaining match ambiguous. |
+| Occurrence aware | Occurrences are counted per rule **and** per element. Three copies of the same image are patched one by one; two different images are patched independently. A fix is only written when **every** occurrence of its element in the file is covered by a selected fix — the fixes are matched to the occurrences in order, so selecting one of two identical elements would otherwise patch the wrong one. Two selected copies of the same element with **different** remediations cannot be mapped at all (the request order is not the occurrence order), so they stay review suggestions too. |
 | Ambiguity | If the element exists in more than one file of the repository, the fix is **not** written to any file — it ships in the PR as a review suggestion. A wrong file is worse than no patch. |
 | Complete scan | The **whole** source tree is scanned, bounded by a byte budget (5 MB) instead of a file count. A tree that does not fit, a tree the API reports as `truncated`, or a source file that could not be read, never patches a file: an incomplete scan cannot prove uniqueness. |
 | Conversion | HTML attributes are renamed to JSX (`class` → `className`, `for` → `htmlFor`), void elements are self-closed, `style="…"` becomes a style object. Style values are allow-listed: braces, quotes, backslashes, `url()` and `expression()` are dropped so a style attribute cannot break out of the JS expression it is written into. |
 | No-op | A patch identical to the original element is not a fix and is not counted. |
-| Content loss | A patch that empties an element that had visible text (a link or a button) is rejected — an axe-verified fix must not delete what the user reads. Text inside a hidden element (`hidden`, `display:none`, `visibility:hidden`) is not visible text, so moving the label into a hidden element is a content loss too. `aria-hidden` removes content from the accessibility tree, **not** from the screen: its text counts as visible text, so a fix may not delete it. |
+| Content loss | A patch that empties an element that had visible text (a link or a button) is rejected — an axe-verified fix must not delete what the user reads. The new text has to **keep** the old text: a fix that reduces "Read more" to "R" passes every rule check and still deletes what the user reads. Text inside a hidden element (`hidden`, `display:none`, `visibility:hidden`, `opacity:0`) is not visible text, so moving the label into a hidden element is a content loss too. `aria-hidden` removes content from the accessibility tree, **not** from the screen: its text counts as visible text, so a fix may not delete it. |
 | Placeholder | `TODO`, `FIXME`, `{{…}}`, `YOUR_ALT_TEXT` are rejected before patching. |
 | Syntax guard | The patched file is re-parsed; a patch that breaks the file is discarded and reported. |
 
@@ -173,10 +180,12 @@ repository mutation without a trail.
 
 Descriptions, URLs and explanations come from a scanned page. They are escaped for
 Markdown as well as for HTML (`escapeMarkdownText`): a link, an image, a mention or a
-heading in a violation description would otherwise become part of the PR body. Code
+heading in a violation description would otherwise become part of the PR body. GFM
+also turns a **bare URL** into a link without any Markdown syntax, so the scheme of
+a URL is neutralized as well (the text still reads as the URL). Code
 samples are wrapped in a code fence that is sized to the content it holds, and an
 element selector is written as an inline code span that the value cannot break out of
 (the fence is longer than the longest backtick run in the value, and a value that
 starts or ends with a backtick is padded). The review comment that is written into a
-customer file neutralizes the comment terminator (`*/`, `-->`), so untrusted text
-cannot close the comment and become code.
+customer file neutralizes the comment terminator (`*/`, `-->` and the alternate
+HTML terminator `--!>`), so untrusted text cannot close the comment and become code.

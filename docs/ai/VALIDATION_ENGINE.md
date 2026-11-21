@@ -8,14 +8,17 @@ A fix passes five layers before it can touch a repository. Each layer can stop i
    attributes are parsed the way a browser parses them
    (`src/lib/html-attributes.ts`). It blocks `<script>` in any spelling,
    active/embedding elements (`iframe`, `object`, `embed`, `svg`, `style`, `link`,
-   `meta`, `frame`, `frameset`, …), **every** event handler attribute (also when the scanned element
+   `meta`, `frame`, `frameset`, `portal`, `video`, `audio`, `plaintext`, …),
+   **every** event handler attribute (also when the scanned element
    already carried one), URI attributes whose scheme is not on the allow list
    (`javascript:`, `vbscript:`, `data:text/html`, … — checked after entity decoding
-   and normalisation, so `&#106;avascript:` and `java\tscript:` are caught), and
-   overlay capable styles (`position`, `z-index`, viewport units, `url()`); it rejects
-   unclosed tags; size cap 20k chars. The style check **decodes CSS escapes first**
-   (`decodeCssEscapes`), because a browser resolves `p\6fsition:fixed` to
-   `position:fixed` before it reads the declaration.
+   and normalisation, so `&#106;avascript:` and `java\tscript:` are caught),
+   overlay capable styles (`position`, `z-index`, viewport units, `url()`), and any
+   **brace** (it becomes an expression in JSX and an interpolation in a template
+   file); it rejects unclosed tags; size cap 20k chars. The style check rejects a
+   value that carries an **entity, a CSS escape or a CSS comment** instead of
+   guessing what the browser resolves it to — a partial entity table cannot mirror
+   the browser (`position&sol;&ast;x*&sol;:fixed` is `position: fixed`).
 2. **Rule validation** — `validateFixForRule` (`src/lib/fix-validation.ts`): the fix
    must contain what the rule needs (an `alt=`, a `<label>`, an accessible name).
 3. **Placeholder rejection** — `containsPlaceholder` (`src/lib/ast-patch.ts`): a fix
@@ -25,11 +28,15 @@ A fix passes five layers before it can touch a repository. Each layer can stop i
    the target element is located in the source and the patch is written there, then the
    result is re-parsed. A patch that would not parse is discarded, and so is a patch
    that would empty the visible text of the element (text hidden with `hidden`,
-   `display:none` or `visibility:hidden` does not count as visible — `aria-hidden`
-   does **not** hide anything visually, so its text counts as visible text).
+   `display:none`, `visibility:hidden` or `opacity:0` does not count as visible —
+   `aria-hidden` does **not** hide anything visually, so its text counts as visible
+   text). The new text has to **keep** the old text: a fix that reduces "Read more"
+   to "R" passes every rule check and still deletes what the user reads.
    A fix is only written when **every** occurrence of its element in the file is
    covered by a selected fix: the fixes are matched to the occurrences in order, so
    selecting one of two identical elements would otherwise patch the wrong one.
+   Two selected copies of the same element with different remediations cannot be
+   mapped at all and stay review suggestions.
    Such a fix stays a review suggestion.
 5. **Verification** — `verifyFixes` (`src/lib/fix-verification.ts`): axe is re-run on
    the remediation snippet, in a browser that cannot make network requests or open a
@@ -44,12 +51,22 @@ writes anything into a customer's repository:
 
 - the GitHub tree must not be `truncated` — a partial list cannot prove uniqueness;
 - every source file must be readable — a file that could not be read may hold the
-  element, so the scan is incomplete;
+  element, so the scan is incomplete (a file the API returns with
+  `encoding: 'none'` counts as unreadable);
 - the whole scan must fit the byte budget (5 MB).
 
 An incomplete scan never patches a file; the fix stays a review suggestion. The
 review comment that is written into the file instead neutralizes the comment
-terminator, so untrusted text cannot close the comment and become code.
+terminator (`*/`, `-->`, `--!>`), so untrusted text cannot close the comment and
+become code.
+
+A fix is only written into a file whose destination context can be proven: an HTML
+file (where only a **live tag** counts — not markup inside a comment, a script
+block or another tag's attribute value) or a JSX file (where the element is located
+through the AST). A TypeScript module or a component file that mixes markup and
+code has no proven context — the element text can sit inside a string or an
+expression there — so the fix ships as a review suggestion. Those files are still
+scanned, so a duplicate in one of them keeps the remaining match ambiguous.
 
 Output is embedded in an `accessguard/fix-accessibility-fixes-{date}-{ts}` branch PR
 with a summary file — a human reviews before merge; nothing auto-merges. Every opened
