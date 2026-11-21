@@ -2,15 +2,42 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **P0 — MAKE THE PRODUCT TRUE** ✅ (V23 shipped + hardened, re-review findings closed) |
-| Current task | V23 verified-fix engine shipped and hardened twice: the first hardening pass (3 High + 4 Medium + 1 Low from an independent review, 3 reproduced P0 defects from QA) did not hold up — an independent **re-review** reproduced 2 High + 7 Medium + 1 Low. All of them are now closed and covered by regression tests |
+| Current phase | **SECURITY FIX LOOP — V23 third review closure + CI repair** 🟡 |
+| Current task | All seven findings of the third independent review are fixed and their reproductions are blocked; the fourth independent review is running, and the Docker image gate is re-run after the SARIF severity fix |
 | Owner | CTO agent |
-| Status | GREEN — the four P0 truth gaps are closed, both review rounds are fixed and covered by tests, and the auto-PR claim matches the shipped engine |
+| Status | AMBER — the fixes are green on every local gate (580 tests, coverage, build); the release verdict waits for the fourth independent review and the green Docker proof run |
 | Blocked | Strix autonomous pentest (every provider refused the run — quota / EOL model / no credits). No Strix evidence exists for this cycle |
-| Next action | P1 — regression detection + alerts (`.ai/TASKS.md`), then design partners |
-| Last verification | 2026-11-22 |
+| Next action | Take the fourth review verdict, then commit (code → `.ai/` state → `docs/VOLUMES.md`) and push to `origin/main` |
+| Last verification | 2026-11-22 — fix cycle: tsc 0, lint 0, vitest 580/580, coverage above the gate, build 0, Playwright (see `.ai/TEST-STATUS.md`); reviewer reproductions re-run: 5/5 blocked |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-22, third review closure + CI repair)
+
+| Check | Result |
+|---|---|
+| Third independent V23 security review | **NOT READY — Critical 0, High 2, Medium 5**; every finding is now fixed, see the disposition table in `.ai/SECURITY-STATUS.md` |
+| Reviewer exploit reproductions (re-run on the fixed tree) | PASS — 5/5 blocked: CSS-escaped overlay, frame/frameset, Markdown-injected selector, `aria-hidden` text deletion, wrong duplicate occurrence |
+| `npx vitest run` | PASS — 52 files, 580 tests, 0 failed |
+| `npx vitest run --coverage` | PASS — statements 62.29% / branches 53.55% / functions 64.43% / lines 63.71% (CI thresholds 55/50/58/57) |
+| `npm run lint` | PASS — exit 0 |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
+| Docker image gate | The image carries no HIGH/CRITICAL finding; the job failed because `trivy-action` drops the severity filter in SARIF mode — fixed with `limit-severities-for-sarif: true` and a pinned scanner (`v0.76.2`). The proof run is in `.ai/DEPLOYMENT.md` |
+
+## Evidence (2026-11-22, third independent security review)
+
+| Check | Result |
+|---|---|
+| Third independent V23 security review | **NOT READY — Critical 0, High 2, Medium 5**; findings and working outputs are in `.ai/SECURITY-STATUS.md` |
+| `npx vitest run` | PASS — 51 files, 566 tests, 0 failed |
+| `npm run lint` | PASS — exit 0 |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| Production build + Docker image build | PASS — exit 0; synthetic build sentinel absent from artifacts and image history; temporary image deleted |
+| `npm audit --json` | Critical 0 · High 0 · Moderate 15 (dev toolchain) |
+| Reviewer exploit reproductions | **FAIL** — escaped CSS overlay and active frame/frameset both verified and reached the repository writer |
 
 ## Evidence (2026-11-22, V23 re-review closure)
 

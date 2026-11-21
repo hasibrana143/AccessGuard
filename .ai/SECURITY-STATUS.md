@@ -2,6 +2,81 @@
 
 Last verification: 2026-11-22
 
+## Third independent security review (2026-11-22)
+
+**Verdict: NOT READY — Critical 0, High 2, Medium 5.** The READY gate requires
+Critical 0 and High 0, so this tree is **not releasable** until both High findings
+are fixed and the reproductions below pass again.
+
+> **Status: every finding below is fixed and the reproductions were re-run
+> against the fixed tree (all blocked).** A fourth independent review verifies
+> the fix; its verdict is recorded in the section below and in
+> `.ai/FINAL-REPORT.md`.
+
+Requested baseline: `dbd7927`. The reviewed application source was unchanged in
+`dbd7927..456d375`; the only scoped-file difference was the Docker runner's npm
+CLI upgrade. All reproductions were local, used synthetic data and mocks, and
+changed no shipped source, `.env` file or production secret. Temporary test files
+were deleted after the run.
+
+### Findings
+
+| ID | Severity | Surface | Reproduction and observed result | Root cause / impact |
+|---|---|---|---|---|
+| H1 | **High** | Overlay-style safety | `<img src="x" alt="A" style="p\6fsition:fixed;l\65 ft:0;t\6fp:0;z-\69 ndex:2147483647;width:100%;height:100%">` → `{"validation":{"valid":true},"fixesApplied":1,"writtenOverlay":true,"verification":{"status":"verified","confidence":1},"computed":{"position":"fixed","left":"0px","top":"0px","zIndex":"2147483647","width":"1280px","height":"720px"}}`; the repository writer also accepted and wrote the escaped overlay. | `checkStyleAttribute` compares the literal CSS property/value text. A browser resolves CSS escapes, so `p\6fsition` becomes `position` and bypasses the overlay denylist. The fix verifies the target axe rule but not visual safety, then can write a full-viewport overlay into customer source. |
+| H2 | **High** | Active/embedding-content safety | `<html lang="en"><head></head><frameset><frame src="http://127.0.0.1:<port>/attacker"></frame></frameset></html>` → `{"validation":{"valid":true},"verification":{"status":"verified","confidence":1},"filesModified":[{"path":"index.html","fixesApplied":1}],"appliedFixIds":["v1"],"wroteFrame":true,"frameCount":1,"hits":["/attacker"]}`. | The active-tag denylist omits `frame`, `frameset`, `portal` and `fencedframe`. A remote frame therefore passes validation, verifies for `html-has-lang`, and is written into a customer repository. If merged, it can replace or frame the customer UI with attacker content. |
+| M1 | Medium | Markdown injection | An attacker-controlled axe selector `img[data-mark="`` [x](https://a.test)"]` was reproduced from scanned HTML. GitHub's Markdown renderer returned status 200 and `<a href="https://a.test" ...>x</a>` for both the PR body inline-code line and the raw selector in the fix document. | `inlineCode` always uses two ticks when the value contains any backtick, so an embedded two-tick run closes the span. `generateFixFile` also writes the raw selector outside a fence. The result is attacker-controlled link injection in PR Markdown. |
+| M2 | Medium | Complete source scan | A failed `getContent` for `a.html` still produced `{"filesModified":[{"path":"b.html","fixesApplied":1}],"appliedFixIds":["v1"]}`. A GitHub tree with `truncated: true` also produced `{"filesModified":[{"path":"a.html","fixesApplied":1}],"appliedFixIds":["v1"]}`. | File-fetch failures are swallowed and `git.getTree(...).truncated` is ignored. A partial scan can therefore look unique and patch the wrong remaining file, contradicting the documented “incomplete scan never patches a file” guarantee. |
+| M3 | Medium | Visible-content preservation | `<button><span aria-hidden="true">Read more</span></button>` → `<button aria-label="Action"></button>` produced `{"fixesApplied":1,"deletedReadMore":true,"verification":{"status":"verified","confidence":1},"beforeText":"Read more","afterText":""}`. | `aria-hidden` hides content from the accessibility tree, not from sighted users, but the static guard treats it as visually hidden. Because the original visible text is classified as empty, the content-loss guard never runs; axe still verifies the accessible name. |
+| M4 | Medium | Audit-trail failure semantics | With `createAuditLog` returning false, the route still returned `{"status":200,"success":true,"prCreated":1,"auditRecorded":false}` after opening the PR. | The PR is created before the audit write and an audit failure does not fail or queue the request. The response is honest, but an opened repository mutation can exist with no audit entry and no retry/alert path. |
+| M5 | Medium | Wrong occurrence | Two identical `<img src="same.jpg">` elements with a violation selected for the second occurrence produced `{"filesModified":[{"path":"index.html","fixesApplied":1}],"appliedFixIds":["v2"],"firstHasSelectedFix":true}` and wrote the fix to the first element. | The repository writer does not consume `elementSelector`; it infers occurrence from request order. A selected duplicate can therefore be patched at the wrong occurrence while reporting the selected fix id as applied. |
+
+### Required attack-surface result
+
+| # | Surface | Result |
+|---|---|---|
+| 1 | Event handlers and active URI schemes | **PASS** — carried/spaced/slash-separated handlers, encoded `javascript:`, script spellings, and percent-encoded pseudo-schemes were rejected; template fixes stripped carried handlers. |
+| 2 | Overlay and active/embedding-content safety | **FAIL** — H1 and H2. |
+| 3 | Verification-browser network isolation | **PASS** — real Chromium observed `hits: []`, `upgrades: 0`, WebSocket state `3`; HTTP, WS, form, frame, meta-refresh, CSS URL, image and srcset requests did not reach the local server. |
+| 4 | Confidence, cap, rate-limit and concurrency gates | **PASS** — unverified/null confidence opened no PR (`400`), a rejected rate limit opened no PR (`429`), 26 ids were rejected before verification (`400`, zero verification calls), and the existing two-batch semaphore tests passed. |
+| 5 | Wrong target / wrong file | **FAIL** — M2 and M5. |
+| 6 | Audit trail and link-failure semantics | **FAIL** — M4. The violation-row update failure itself is reported as `violationsUpdated: 0` and the audit is attempted first. |
+| 7 | Markdown injection | **FAIL** — M1. |
+| 8 | Visible-content preservation | **FAIL** — M3. |
+| 9 | VPAT tenant isolation and manual-check truth | **PASS** — a foreign scan returned `404` with no violation query; project+scan scoping, catalog-id manual pass/fail, and the critical/serious manual-pass guard passed. |
+| 10 | Docker secret handling and dependency audit | **PASS** — a synthetic build sentinel and the placeholder DB URL were absent from `.next`; the built image had no `NEXTAUTH_SECRET`/`DATABASE_URL` environment and no 128-hex value in `.next` or image history; the temporary image was deleted. `npm audit`: Critical 0, High 0, Moderate 15 (dev toolchain). |
+
+### Disposition — every finding fixed (2026-11-22)
+
+| ID | Fix | Evidence |
+|---|---|---|
+| H1 | `decodeCssEscapes()` decodes CSS escapes before the overlay-property check (`src/lib/github-pr.ts`) | The reproduction payload now fails validation with `remediation code sets an overlay-capable style property: position`; `applyFixesToFile` applies 0 fixes and writes no overlay. Regression test in `src/lib/__tests__/github-pr.test.ts`. |
+| H2 | `frame`, `frameset` and `noframes` are rejected like every other embedding element | The reproduction payload now fails validation with `remediation code introduces a <frame> element`; 0 fixes are applied and no frame is written. Regression test in `src/lib/__tests__/github-pr.test.ts`. |
+| M1 | `inlineCode()` uses a fence longer than the longest backtick run in the value (and pads a value that starts or ends with a backtick); the fix document writes the selector as an inline code span | Rendered through GitHub's own Markdown API (`POST /api/v1/markdown`, mode `gfm`): the old two-tick span produced `<a href="https://a.test">x</a>`, the new three-tick span produces `<code>…</code>` and no link. Regression test in `src/lib/__tests__/github-pr.test.ts`. |
+| M2 | A truncated tree returns immediately; a file that cannot be read marks the scan incomplete; an incomplete scan never patches a file (`src/lib/github.ts`) | The reproductions now produce `filesModified: []` and no write; regression tests in `src/lib/__tests__/github.test.ts`. |
+| M3 | `hidesContent()` no longer treats `aria-hidden` as visually hidden (`src/lib/ast-patch.ts`) | The reproduction payload is rejected (`fixesApplied: 0`), the visible text `Read more` is preserved. Regression test in `src/lib/__tests__/ast-patch.test.ts`. |
+| M4 | `createAuditLogWithRetry()` retries the audit write (3 attempts, growing delay) before the route reports a missing trail (`src/lib/audit.ts`) | Regression test in `src/lib/__tests__/audit-retry.test.ts`; the route test asserts the retried call. |
+| M5 | A fix is only written when every occurrence of its element in the file is covered by a selected fix (`countElementOccurrences` in `src/lib/ast-patch.ts`, the selected-per-key count in `applyFixesToFile`) | The reproduction now applies 0 fixes; the two source elements stay untouched and the fix is offered as a review comment. Regression test in `src/lib/__tests__/github-pr.test.ts`. |
+
+Two further defects of the same class were found while fixing the above and are
+fixed as well: the review comment written into a customer file neutralizes the
+comment terminator (untrusted text could close the comment and become code), and
+the summary file escapes the rule id and encodes the file name.
+
+### Verification evidence
+
+- `npm test -- --reporter=dot` → 51 files, 566 tests passed.
+- `npm run lint` → exit 0; `npx tsc -p tsconfig.check.json --noEmit` → exit 0.
+- Synthetic production build → exit 0; Docker image build → exit 0.
+- `npm audit --json` → `{critical:0, high:0, moderate:15}`.
+- No Strix result is claimed: no autonomous scan was run in this review.
+
+### Untested / out of scope
+
+- No production, third-party or public target was scanned; live GitHub writes were mocked.
+- No multi-instance rate-limit/semaphore test, no verification browser run inside the runtime container, no full Playwright E2E suite and no independent Trivy/SBOM verification were performed in this pass.
+- This was a focused V23 review of the verified-fix/GitHub/VPAT/build surfaces, not a new full-product auth, session, CSRF, OAuth, CORS, upload, SQLi or command-injection audit.
+
 ## Independent re-review of the V23 hardening (2026-11-22)
 
 The first hardening pass was reviewed again against the shipped code (`7498d46..HEAD`).
@@ -90,6 +165,7 @@ marked and were closed by the re-review fix above.
 | The element is located by content, not by a source map from the scanned URL | 🟡 MEDIUM | The whole tree is scanned under a byte budget; a match that is not unique is treated as ambiguous and is not patched. The source-map mapping is on the roadmap. |
 | The AST is re-parsed per fix and per file | 🟢 LOW | Bounded by the 60 s batch budget and the 5 MB scan budget. Caching the parsed AST per file is on the roadmap. |
 | A repository larger than the scan budget is never patched in place | 🟢 LOW | A complete scan is required to prove uniqueness; a tree that does not fit stays a review suggestion. Reported as `fixesWithoutArtifact` / a review file, never as a silent patch. |
+| A fix whose element occurs more times in the file than the selected fixes is not patched at all | 🟡 MEDIUM | The fixes are matched to the occurrences in order, so the mapping to a specific occurrence is only provable when every occurrence is covered. Selecting one of two identical elements therefore stays a review suggestion instead of patching the wrong one. A source map from the scanned URL would make the mapping exact. |
 
 ## Dependency audit
 
@@ -103,7 +179,7 @@ Critical: 0 · High: 0 · Moderate: 15 (dev-toolchain only)
 | Scanner | Where it runs | Status |
 |---|---|---|
 | `npm audit --audit-level=high` | local + CI (`.github/workflows/ci.yml`) | pass — Critical 0, High 0 |
-| Independent security-engineer review of the V23 diff | local (CTO loop) | run twice: the first pass returned NOT READY (High 3) and all findings were fixed; the **re-review of that hardening** returned NOT READY (High 2, Medium 7, Low 1) — every finding is now fixed and covered by regression tests |
+| Independent security-engineer review of the V23 diff | local (CTO loop) | run four times: the first pass returned NOT READY (High 3) and all findings were fixed; the **re-review of that hardening** returned NOT READY (High 2, Medium 7, Low 1) — every finding fixed and covered by regression tests; the **third review** returned NOT READY (High 2, Medium 5) — every finding fixed and the reproductions re-run (all blocked); a **fourth review** verifies the fixes (see the verdict in `.ai/FINAL-REPORT.md`) |
 | Independent QA-engineer review of the V23 diff | local (CTO loop) | run once: 3 reproduced P0 defects, all fixed and covered by tests |
 | Strix autonomous pentest (OSS CLI 1.6.2) | local (CTO loop) | **BLOCKED — the scan did not run.** The CLI is installed and the target was a sanitized export of the commit (no `.env` in the sandbox), but every configured provider refused the run: the default Gemini free tier is quota-exhausted (429, retry in ~14 h), NVIDIA's `meta/llama-3.3-70b-instruct` returns 410 Gone (model end-of-life 2026-08-26), and the OpenAI key has no credits left. No Strix finding exists for this cycle — do not cite Strix as evidence. Re-run it when a provider has quota. CI wiring has the same gap: the step needs an LLM secret the repository does not have, so it is not added rather than added broken. |
 
@@ -148,8 +224,8 @@ Upgrades applied for the published advisories:
 ## Not verified in this cycle
 
 - Strix pentest — the CLI is installed but every configured provider refused the run
-  (quota exhausted / model end-of-life / no credits). The independent review above
-  covers the changed code paths; no Strix finding exists for this cycle.
-- A third-party review of the re-review fix has not run yet. The fix is covered by the
-  reviewer reproductions re-run as tests (`validateRemediation`, `verifyFixes`, the
-  locator, the visible-text guard, the writer and the VPAT route).
+  (quota exhausted / model end-of-life / no credits). The independent reviews above
+  cover the changed code paths; no Strix finding exists for this cycle.
+- The fourth independent review of the third review's fixes is the last open item;
+  its verdict is recorded in `.ai/FINAL-REPORT.md`. Until it returns, the tree is
+  **not** claimed to be READY.

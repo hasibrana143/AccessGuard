@@ -1,5 +1,50 @@
 # AccessGuard — Test Status
 
+Last run: 2026-11-22 (third-review closure cycle)
+
+## Third-review closure evidence
+
+| Check | Result |
+|---|---|
+| `npx vitest run --coverage` | PASS — 52 files, 580 tests, 0 failed |
+| Coverage | PASS — statements 62.29% (threshold 55) · branches 53.55% (50) · functions 64.43% (58) · lines 63.71% (57) |
+| `npm run lint` | PASS — exit 0 |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+| Reviewer exploit reproductions (re-run on the fixed tree) | PASS — 5/5 blocked: escaped CSS overlay, frame/frameset, Markdown-injected selector, `aria-hidden` text deletion, wrong duplicate occurrence |
+| Two further bypasses found while fixing (CSS comment, entity encoded overlay) | PASS — blocked, with regression tests |
+
+### New coverage in this cycle
+
+| File | Tests | Covers |
+|---|---|---|
+| `src/lib/__tests__/github-pr.test.ts` | 50 | the CSS escaped overlay, the CSS comment overlay, the entity encoded overlay, `frame`/`frameset`/`portal`/`fencedframe`, the inline code span (fence longer than the value, padded edges), the Markdown-injected selector, the wrong duplicate occurrence, the comment terminator in untrusted text |
+| `src/lib/__tests__/github.test.ts` | 28 | a truncated tree patches nothing, an unreadable file patches nothing |
+| `src/lib/__tests__/ast-patch.test.ts` | 51 | `aria-hidden` text counts as visible text |
+| `src/lib/__tests__/audit-retry.test.ts` (new, 2 tests) | 2 | the audit write is retried, and a missing trail is reported honestly |
+| `src/app/api/github/create-pr/route.test.ts` | 11 | the route calls the retried audit write |
+
+## Third independent security-review evidence
+
+| Check | Result |
+|---|---|
+| `npm test -- --reporter=dot` | PASS — 51 files, 566 tests, 0 failed |
+| `npm run lint` | PASS — exit 0 |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| Synthetic production build | PASS — exit 0 |
+| Docker image build | PASS — exit 0; temporary image removed after inspection |
+| `npm audit --json` | Critical 0 · High 0 · Moderate 15 (dev toolchain) |
+| Reviewer exploit reproductions | **FAIL as a release gate** — 2 High and 5 Medium findings reproduced; see `.ai/SECURITY-STATUS.md` |
+
+The temporary reviewer suites were local and mocked. They reproduced the escaped
+CSS overlay, active frame/frameset, Markdown link injection, incomplete GitHub
+scan, visible-content deletion, failed audit write and wrong duplicate occurrence.
+Every temporary file was deleted after the run; no shipped source was changed.
+
+## Previous verified-fix closure cycle
+
 Last run: 2026-11-22 (V23 re-review closure cycle)
 
 ## Vitest

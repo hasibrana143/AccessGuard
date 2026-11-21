@@ -1,14 +1,15 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + re-review closure** · Date: 2026-11-22 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + third-review closure + CI repair** · Date: 2026-11-22 · Owner: CTO agent
 
 ## What shipped
 
 The four P0 "make the product true" gaps from `.ai/PRODUCT-CRITIQUE-DEEP.md` are closed.
-The first V23 cut was reviewed twice: the first review found seven more defects (3
-reproduced P0 defects, 3 High, 4 Medium, 1 Low), and the **re-review of that hardening
-found 2 High, 7 Medium, 1 Low** — equivalent paths were still open. Every finding of
-both rounds is fixed and covered by a regression test.
+The first V23 cut was reviewed three times: the first review found seven more defects
+(3 reproduced P0 defects, 3 High, 4 Medium, 1 Low), the **re-review of that hardening
+found 2 High, 7 Medium, 1 Low**, and the **third review found 2 High, 5 Medium** —
+every round closed the literal reproductions while an equivalent path stayed open.
+Every finding of all three rounds is fixed and covered by a regression test.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -16,6 +17,22 @@ both rounds is fixed and covered by a regression test.
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Third review findings (2026-11-22), fixed
+
+| Finding | Severity | Fix |
+|---|---|---|
+| A CSS escaped overlay (`p\6fsition:fixed`) passed the overlay denylist and was written into customer source | High | CSS escapes are decoded before the declaration is read; the check also removes CSS comments and decodes the HTML entities of the attribute value, the three steps the browser applies in that order |
+| `frame` / `frameset` passed the active-element denylist and were written into customer source | High | `frame`, `frameset`, `noframes`, `portal` and `fencedframe` are rejected like every other embedding element |
+| An attacker controlled axe selector injected a live Markdown link into the PR | Medium | The inline code span uses a fence longer than the longest backtick run in the value (and pads a value that starts or ends with a backtick); the fix document writes the selector as an inline code span. Verified against GitHub's own Markdown renderer |
+| An incomplete GitHub scan (a file that could not be read, a truncated tree) patched the wrong file | Medium | A truncated tree returns immediately, an unreadable file marks the scan incomplete, and an incomplete scan never patches a file |
+| A fix deleted the visible label that was only marked `aria-hidden` | Medium | `aria-hidden` removes content from the accessibility tree, not from the screen — its text counts as visible text |
+| An opened PR could have no audit entry | Medium | The audit write is retried (`createAuditLogWithRetry`, 3 attempts) before the route reports a missing trail |
+| A selected duplicate occurrence was patched at the wrong occurrence | Medium | A fix is only written when every occurrence of its element in the file is covered by a selected fix; otherwise it stays a review suggestion |
+
+Two further defects of the same class were found while fixing the above: the review
+comment written into a customer file could be closed by untrusted text (`*/`, `-->`),
+and the summary file wrote the rule id and the file name unescaped.
 
 ### Re-review findings (2026-11-22), fixed
 
@@ -57,17 +74,28 @@ it had excluded.
 |---|---|
 | `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
 | `npm run lint` | PASS — 0 errors |
-| `npx vitest run` | PASS — 51 files, 566 tests, 0 failed (was 50/523) |
-| `npx vitest run --coverage` | PASS — statements 62.07% / branches 53.25% / functions 64.19% / lines 63.47% (CI thresholds 55/50/58/57) |
+| `npx vitest run` | PASS — 52 files, 580 tests, 0 failed (was 51/566) |
+| `npx vitest run --coverage` | PASS — statements 62.29% / branches 53.55% / functions 64.43% / lines 63.71% (CI thresholds 55/50/58/57) |
 | `npm run build` | PASS — exit 0, Next standalone build |
-| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
 | `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
 | Reviewer exploit reproductions (6) | PASS — every reproduction of the re-review is blocked |
+| Third-review reproductions (5 + 2) | PASS — the escaped overlay, the frame, the injected selector, the `aria-hidden` text deletion and the wrong duplicate occurrence are blocked; the CSS comment and the entity encoded overlay were found while fixing them and are blocked as well |
 | Browser isolation (real Chromium) | PASS — no HTTP request and no WebSocket reaches a local server during verification |
 
 The V23 code initially pushed global branch coverage to 49.98% (below the CI gate of
 50). It was fixed by covering the new code, not by moving the threshold: the GitHub
 writer and API helpers now sit at 87% branch coverage and the AST patcher at 91%.
+
+## The CI pipelines
+
+Three pipelines had been red on `main` since September; all eight defects are fixed
+and documented in `.ai/DEPLOYMENT.md`: the Postgres health command is quoted, the
+Trivy action is pinned, the AccessGuard self-scan runs against the public API, the
+image build and the load build get the `NEXTAUTH_SECRET` / `NEXTAUTH_URL` that the
+Next.js route collection needs, the image reference is lowercase, the runner ships an
+npm without the HIGH CVEs the image gate found, and the image scan keeps its severity
+filter in SARIF mode (the action drops it, so MEDIUM findings failed the job).
 
 ## Commits
 
