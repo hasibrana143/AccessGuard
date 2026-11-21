@@ -3,14 +3,26 @@
 | Field | Value |
 |---|---|
 | Current phase | **P1 — MAKE IT SELL** 🔄 |
-| Current task | Authenticated scans (cookie / header / login script) — shipped; design partners next |
+| Current task | Accessibility gate closed (AA-safe severity tokens, full Playwright suite green); design partners next |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace + VPAT v2 + onboarding + integrations + authenticated scans done |
+| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace + VPAT v2 + onboarding + integrations + authenticated scans + WCAG AA token pass done |
 | Blocked | None |
 | Next action | 3 design partners + 2 case studies (P1 sell phase) |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-21, accessibility gate cycle)
+
+| Check | Result |
+|---|---|
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (was 70/9) |
+| axe `color-contrast` on 13 routes × 2 themes | PASS — severity + emerald tokens retuned for AA text |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS (exit 0) |
+| `npm run lint` | PASS (0 errors) |
+| `npx vitest run` | PASS — 45 files, 410 tests, 0 failed |
+| `npm run build` | PASS (exit 0) — Next 16.4.6, standalone build |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
 
 ## Evidence (2026-11-21, authenticated scans cycle)
 

@@ -47,15 +47,16 @@ Source of record for execution. Full analysis: `.ai/PRODUCT-CRITIQUE.md`.
 
 ## Open defects (from the 2026-11-21 Playwright run: 70 pass / 9 fail)
 
-- [ ] **Contrast token pass** — coral `#e62b34` fails WCAG AA on the dark surfaces
-      (4.4:1 on `#0d0d0d`, 3.98:1 on `#261415`) and on the light surfaces: 8 axe/contrast
-      specs fail. Owner: design + frontend (token change, then re-run `e2e/a11y.spec.ts`,
-      `e2e/contrast.spec.ts`).
-- [ ] **Stale e2e expectation** — `e2e/landing.spec.ts` expects `/auth/login` while the landing
-      page routes authenticated visitors to `/dashboard`; the whole chromium project runs with
-      an authenticated storage state.
-- [ ] **Settings privacy copy** — `e2e/settings.spec.ts` expects “Export My Data / Data Region /
-      EU” on the privacy tab; verify the copy and the assertion.
+- [x] **Contrast token pass** — severity + emerald tokens retuned for WCAG AA as 12px text on
+      their own 10% tint (light `--critical/--serious/--moderate/--minor/--emerald`, dark
+      `--critical`). Verified: axe `color-contrast` green on 13 routes × 2 themes.
+- [x] **Stale e2e expectation** — `e2e/landing.spec.ts` now expects `/dashboard` (the shipped
+      contract for authenticated visitors).
+- [x] **Settings privacy copy** — the spec waited for the tab to become active; the click had
+      landed before React hydration, so the panel never switched. Copy itself was correct
+      ("Export My Data" / "Data Residency Region" / "EU").
+
+Full suite after the fix: **79 passed / 0 failed**.
 
 ## Blocked
 
