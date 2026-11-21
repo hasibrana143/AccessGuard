@@ -2,15 +2,31 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **P0 — MAKE THE PRODUCT TRUE** ✅ (V23 shipped + hardened) |
-| Current task | V23 verified-fix engine shipped and hardened: AST patching, axe verification, confidence gate, VPAT truth, security hardening (3 High + 4 Medium + 1 Low from an independent review, 3 reproduced P0 defects from QA) |
+| Current phase | **P0 — MAKE THE PRODUCT TRUE** ✅ (V23 shipped + hardened, re-review findings closed) |
+| Current task | V23 verified-fix engine shipped and hardened twice: the first hardening pass (3 High + 4 Medium + 1 Low from an independent review, 3 reproduced P0 defects from QA) did not hold up — an independent **re-review** reproduced 2 High + 7 Medium + 1 Low. All of them are now closed and covered by regression tests |
 | Owner | CTO agent |
-| Status | GREEN — the four P0 truth gaps are closed, the independent review findings are fixed and covered by tests, and the auto-PR claim matches the shipped engine |
-| Blocked | None |
+| Status | GREEN — the four P0 truth gaps are closed, both review rounds are fixed and covered by tests, and the auto-PR claim matches the shipped engine |
+| Blocked | Strix autonomous pentest (every provider refused the run — quota / EOL model / no credits). No Strix evidence exists for this cycle |
 | Next action | P1 — regression detection + alerts (`.ai/TASKS.md`), then design partners |
-| Last verification | 2026-11-21 |
+| Last verification | 2026-11-22 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-22, V23 re-review closure)
+
+| Check | Result |
+|---|---|
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS (exit 0) |
+| `npm run lint` | PASS (0 errors) |
+| `npx vitest run` | PASS — 51 files, 566 tests, 0 failed (was 50/523) |
+| `npx vitest run --coverage` | PASS — statements 62.07% / branches 53.25% / functions 64.19% / lines 63.47% (CI thresholds 55/50/58/57) |
+| `npm run build` | PASS (exit 0) — Next standalone build |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
+| Reviewer exploit reproductions (6) | PASS — every reproduction of the re-review is blocked: handler in the scanned page, `/onerror=`, entity encoded `javascript:`, overlay style, wrong element by class, hidden text |
+| Browser isolation (real Chromium) | PASS — no HTTP request and no WebSocket reaches a local server during verification |
+| Independent security re-review of the hardening | NOT READY (High 2, Medium 7, Low 1) → **all findings closed** and covered by regression tests |
+| Strix autonomous pentest | BLOCKED — every configured provider refused the run (quota / EOL model / no credits). No Strix evidence exists for this cycle |
 
 ## Evidence (2026-11-21, V23 verified-fix engine + security hardening)
 

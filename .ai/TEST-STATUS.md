@@ -1,8 +1,66 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-21 (V23 verified-fix engine + security hardening cycle)
+Last run: 2026-11-22 (V23 re-review closure cycle)
 
 ## Vitest
+
+```
+Test Files  51 passed (51)
+Tests       566 passed (566)
+Duration    ~17.5s
+```
+
+### Coverage (CI runs `vitest run --coverage`)
+
+```
+Statements  62.07%  (threshold 55)  PASS
+Branches    53.25%  (threshold 50)  PASS
+Functions   64.19%  (threshold 58)  PASS
+Lines       63.47%  (threshold 57)  PASS
+```
+
+### New coverage in the re-review closure cycle
+
+Every finding of the independent re-review has a regression test that fails on the
+old code:
+
+- `src/lib/__tests__/html-attributes.test.ts` (new, 10 tests) — browser-like attribute
+  parsing (quoted, unquoted, boolean, slash separated, `>` inside a quoted value),
+  entity decoding, URI normalisation, handler detection and handler stripping.
+- `src/lib/__tests__/github-pr.test.ts` (43 tests) — the event handler of the scanned
+  page is rejected, `/onerror=` is rejected, an entity encoded `javascript:` URI is
+  rejected, an overlay style is rejected, ordinary `https`/`mailto`/relative URIs stay
+  valid, and Markdown syntax in untrusted prose is escaped.
+- `src/lib/__tests__/ast-patch.test.ts` (50 tests) — the class list, `aria-label`,
+  `role` and `data-testid` are identity attributes (the wrong copy is not patched), and
+  hidden text (`hidden`, `aria-hidden`, `display:none`, `visibility:hidden`) does not
+  count as visible text.
+- `src/lib/__tests__/github.test.ts` (26 tests) — the **whole** source tree is scanned
+  (a target file beyond the first entries is found, an ambiguous match is still left
+  alone), a tree over the byte budget is never patched, and the writer reports the ids
+  of the fixes it actually wrote.
+- `src/lib/__tests__/fix-verification.test.ts` (30 tests) — a carried handler, an
+  entity encoded URI and a hidden text fix are rejected, and two **real browser**
+  isolation tests prove that no HTTP request and no WebSocket reaches a local server
+  during a verification run.
+- `src/app/api/github/create-pr/route.test.ts` (11 tests) — a violation without an
+  accepted artifact is not linked, a violation patched into a source file is linked, a
+  failed audit write is reported (`auditRecorded: false`), and the audit trail is
+  written even when the violation update fails.
+- `src/lib/__tests__/vpat-generator.test.ts` (13 tests) — a scan of another tenant is
+  answered with `404` and no violation is queried, the violation query is scoped to
+  project **and** scan, and a **real** catalog manual check id
+  (`meaningful-alt`, `keyboard-flow`) overrides the automated result.
+
+The reviewer reproductions were re-run as a temporary suite before the permanent
+regressions were written: all six reproductions (carried handler, `/onerror=`, entity
+encoded `javascript:`, overlay style, wrong element by class, hidden text) are blocked.
+
+## Previous cycle
+
+Last run: 2026-11-21 (V23 verified-fix engine + security hardening cycle)
+
+### Vitest
 
 ```
 Test Files  50 passed (50)
@@ -157,8 +215,11 @@ The V21 cycle closed with 70 passed / 9 failed. All 9 are now fixed at the root 
 ## Not run (blocked)
 
 - k6 load suites — need the full running stack.
-- Strix pentest — CLI/cloud not installed in this environment (manual review recorded in
-  `.ai/SECURITY-STATUS.md`).
+- Strix pentest — the CLI is installed but every configured provider refused the run
+  (quota exhausted / model end-of-life / no credits). The independent review recorded
+  in `.ai/SECURITY-STATUS.md` covers the changed code paths.
+- A third-party review of the re-review fix has not run yet; the reviewer
+  reproductions are covered by the regression tests listed above.
 
 ## How to reproduce green
 

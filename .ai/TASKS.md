@@ -35,8 +35,10 @@ Scope: the four P0 truth gaps above, shipped as one volume. Dependency order: co
 | 5 | Docs + marketing copy aligned with what the engine actually does | docs | DONE |
 | 6 | Post-ship hardening: bounded selection (`MAX_FIXES_PER_PR = 25`), per-reason skip reporting (`skippedInvalid`, `skippedOverLimit`), 10-file write cap, tested `selectVerifiedFixes` | ai | DONE |
 | 7 | Security hardening from the independent QA + security review: validate before render, block verification network access, sandbox + deadlines, cap before the browser work, rate limit, audit trail, ambiguity guard, content-loss guard, honest counters, Markdown escaping, VPAT conformance | security | DONE |
+| 8 | CI repair: the three pipelines that were red on `main` since September (quoted Postgres health command, pinned Trivy action, self-scan rewritten onto the public API) | devops | DONE |
+| 9 | Re-review closure (independent re-review of slice 7 returned NOT READY — High 2, Medium 7, Low 1): browser-like attribute parsing, unconditional handler rejection, URI scheme allowlist, overlay-style rejection, template fixes strip handlers, WebSocket + CSP isolation, verification semaphore, complete tree scan, artifact-based PR linking, audit before link update, Markdown escaping, hidden-text guard, VPAT scan tenancy, manual-check catalog mapping | security | DONE |
 
-Out of scope for V23 (recorded, not silently dropped): per-file patch persistence to the DB (verification results are reported in the PR + response, not stored on `Violation`), Vue/Svelte/Astro AST support, full-page re-scan verification (verification is rule-level on the patched element).
+Out of scope for V23 (recorded, not silently dropped): per-file patch persistence to the DB (verification results are reported in the PR + response, not stored on `Violation`), Vue/Svelte/Astro AST support, full-page re-scan verification (verification is rule-level on the patched element), an AST cache per file (bounded by the 60 s batch budget), a source map from the scanned URL to the repository path (the real fix for the byte-budget limit), and a third-party review of the re-review fix.
 - [x] **Green baseline** — Docker up, `vitest` 378 passed (core), lint 0, build 0; commit WIP in slices (`vol:` messages).
 
 ## P1 — Make it sticky (weeks 3–4)
