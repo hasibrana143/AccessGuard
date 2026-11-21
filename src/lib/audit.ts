@@ -75,6 +75,26 @@ export async function createAuditLog(input: AuditLogInput): Promise<boolean> {
 }
 
 /**
+ * Write an audit entry and retry a transient database failure.
+ *
+ * A repository mutation (a pull request that now exists on GitHub) must not
+ * leave the organization without a trail. The write is attempted a few times
+ * with a growing delay before the caller is told that the entry is missing.
+ */
+export async function createAuditLogWithRetry(
+  input: AuditLogInput,
+  attempts = 3
+): Promise<boolean> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (await createAuditLog(input)) return true;
+    if (attempt < attempts) {
+      await new Promise(resolve => setTimeout(resolve, 250 * attempt));
+    }
+  }
+  return false;
+}
+
+/**
  * Get audit logs for an organization
  */
 export async function getAuditLogs(

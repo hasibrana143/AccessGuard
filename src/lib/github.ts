@@ -214,6 +214,13 @@ export async function applyFixesToRepository(
 
   // List source files in the default branch tree
   const { data: tree } = await octokit.git.getTree({ owner, repo, tree_sha: ref, recursive: '1' });
+
+  // A truncated tree is an incomplete list: an element may live in a file that
+  // is not in it, so no match can be proven unique and nothing is patched.
+  if (tree.truncated) {
+    return { filesModified, fixesAppliedTotal, appliedFixIds };
+  }
+
   const sourceFiles = (tree.tree || []).filter(
     t => t.type === 'blob' && t.path && /\.(html|htm|tsx|jsx|ts|js|vue|svelte|astro)$/.test(t.path)
   );
@@ -234,13 +241,19 @@ export async function applyFixesToRepository(
   const localOccurrence = new Map<string, number>();
   let scannedBytes = 0;
   let scanTruncated = false;
+  let scanIncomplete = false;
 
   const loadFile = async (path: string): Promise<string | undefined> => {
     const cached = contentCache.get(path);
     if (cached !== undefined) return cached;
     try {
       const { data } = await octokit.repos.getContent({ owner, repo, path, ref });
-      if (!('content' in data)) return undefined;
+      if (!('content' in data)) {
+        // The file exists but its content is not readable (a symlink or a
+        // submodule). The scan is incomplete: the element may be in it.
+        scanIncomplete = true;
+        return undefined;
+      }
       const content = Buffer.from(data.content, 'base64').toString('utf8');
       if (scannedBytes + content.length > MAX_SOURCE_SCAN_BYTES) {
         // The budget is exhausted: the scan is incomplete, so no match can be
@@ -252,7 +265,10 @@ export async function applyFixesToRepository(
       contentCache.set(path, content);
       return content;
     } catch {
-      // Skip files that fail to fetch
+      // The file could not be read. The scan is incomplete for the same
+      // reason: the element may be in this file, so it must not be patched in
+      // another one.
+      scanIncomplete = true;
       return undefined;
     }
   };
@@ -278,7 +294,9 @@ export async function applyFixesToRepository(
       containing.push(file.path);
     }
 
-    if (containing.length !== 1 || scanTruncated) continue; // no match, ambiguous or incomplete: review file only
+    if (containing.length !== 1 || scanTruncated || scanIncomplete) {
+      continue; // no match, ambiguous or incomplete: review file only
+    }
 
     const path = containing[0];
     const key = `${path}::${fixOccurrenceKey(violation)}`;

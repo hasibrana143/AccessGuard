@@ -248,6 +248,45 @@ export function locateElement(
   return { start: index, end: index + needle.length };
 }
 
+/**
+ * How often the element occurs in the file. The fixes are matched to the
+ * occurrences in order, so the mapping between a selected fix and an element
+ * is only provable when every occurrence is covered by a selected fix.
+ */
+export function countElementOccurrences(
+  content: string,
+  filePath: string,
+  elementHtml: string
+): number {
+  if (!elementHtml) return 0;
+
+  if (isJsxLikeFile(filePath)) {
+    const signature = parseElementSignature(elementHtml);
+    if (!signature) return 0;
+    return collectJsxCandidates(content, filePath).filter(c =>
+      candidateMatches(c, signature)
+    ).length;
+  }
+
+  const trimmed = elementHtml.trim();
+  const needle = content.includes(elementHtml)
+    ? elementHtml
+    : trimmed && content.includes(trimmed)
+      ? trimmed
+      : null;
+  if (!needle) return 0;
+
+  let count = 0;
+  let from = 0;
+  for (;;) {
+    const index = content.indexOf(needle, from);
+    if (index === -1) break;
+    count++;
+    from = index + needle.length;
+  }
+  return count;
+}
+
 // A style value is emitted into a JS expression, so it must not be able to close
 // the expression context. Only plain CSS values are allowed.
 const SAFE_CSS_PROP = /^[a-zA-Z][a-zA-Z0-9-]*$/;
@@ -351,10 +390,11 @@ export function preservesVisibleContent(original: string, replacement: string): 
 /** True when an element's attributes keep its content from being seen. */
 function hidesContent(attributes: ParsedAttribute[]): boolean {
   for (const attribute of attributes) {
+    // `hidden` and the two CSS properties below remove the content from the
+    // rendering. `aria-hidden` does not: it only removes the content from the
+    // accessibility tree, the user still reads it. Treating it as hidden would
+    // let a fix delete a visible label.
     if (attribute.name === 'hidden') return true;
-    if (attribute.name === 'aria-hidden' && attribute.value.trim().toLowerCase() === 'true') {
-      return true;
-    }
     if (attribute.name === 'style') {
       const style = attribute.value.toLowerCase().replace(/\s+/g, '');
       if (style.includes('display:none') || style.includes('visibility:hidden')) return true;
@@ -368,8 +408,9 @@ const TAG_SCAN = /<(\/?)([a-zA-Z][^\s/>]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g
 
 /**
  * The text a user can actually see in an element snippet. Content inside a
- * hidden element (the `hidden` attribute, `aria-hidden="true"`, `display:none`
- * or `visibility:hidden`) is not visible and does not count.
+ * hidden element (the `hidden` attribute, `display:none` or `visibility:hidden`)
+ * is not visible and does not count. `aria-hidden` does not hide anything
+ * visually, so its content counts.
  */
 export function visibleTextContent(element: string): string {
   const open = element.match(/^<([a-zA-Z][a-zA-Z0-9:._-]*)\b([^>]*)>/);

@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   getUserRepositories: vi.fn(),
   requireVerifiedEmail: vi.fn(),
   checkRateLimit: vi.fn(),
-  createAuditLog: vi.fn(),
+  createAuditLogWithRetry: vi.fn(),
   verifyFixes: vi.fn(),
   applyFixesToRepository: vi.fn(),
 }));
@@ -34,7 +34,7 @@ vi.mock('@/lib/rate-limit', () => ({
   checkRateLimit: mocks.checkRateLimit,
   rateLimits: { default: { interval: 60000, limit: 100 }, remediation: { interval: 60000, limit: 20 } },
 }));
-vi.mock('@/lib/audit', () => ({ createAuditLog: mocks.createAuditLog }));
+vi.mock('@/lib/audit', () => ({ createAuditLogWithRetry: mocks.createAuditLogWithRetry }));
 vi.mock('@/lib/github', () => ({
   isGitHubConfigured: mocks.isGitHubConfigured,
   validateWriteAccess: mocks.validateWriteAccess,
@@ -99,7 +99,7 @@ describe('POST /api/github/create-pr', () => {
     mocks.createFile.mockResolvedValue(true);
     mocks.createPullRequest.mockResolvedValue({ url: 'https://github.com/owner/repo/pull/1' });
     mocks.updateMany.mockResolvedValue({ count: 1 });
-    mocks.createAuditLog.mockResolvedValue(true);
+    mocks.createAuditLogWithRetry.mockResolvedValue(true);
     mocks.applyFixesToRepository.mockResolvedValue({
       filesModified: [],
       fixesAppliedTotal: 0,
@@ -193,7 +193,7 @@ describe('POST /api/github/create-pr', () => {
     const res = await POST(request(['v1']));
     expect(res.status).toBe(200);
 
-    expect(mocks.createAuditLog).toHaveBeenCalledWith(
+    expect(mocks.createAuditLogWithRetry).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'github_pr_created',
         orgId: USER.orgId,
@@ -260,7 +260,7 @@ describe('POST /api/github/create-pr', () => {
     mocks.verifyFixes.mockResolvedValue(
       new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
     );
-    mocks.createAuditLog.mockResolvedValue(false);
+    mocks.createAuditLogWithRetry.mockResolvedValue(false);
 
     const res = await POST(request(['v1']));
     const body = await res.json();
@@ -279,7 +279,7 @@ describe('POST /api/github/create-pr', () => {
     const res = await POST(request(['v1']));
 
     expect(res.status).toBe(200);
-    expect(mocks.createAuditLog).toHaveBeenCalledWith(
+    expect(mocks.createAuditLogWithRetry).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'github_pr_created' })
     );
   });

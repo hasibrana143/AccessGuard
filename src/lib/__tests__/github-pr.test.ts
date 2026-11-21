@@ -8,6 +8,7 @@ import {
   generatePrBody,
   escapeMarkdownText,
   codeFence,
+  inlineCode,
 } from '@/lib/github-pr';
 
 describe('PR text escaping', () => {
@@ -64,6 +65,38 @@ describe('PR text escaping', () => {
     expect(body).not.toContain('![tracking pixel]');
     expect(body).toContain('\\!\\[tracking pixel\\]');
   });
+
+  it('fences an inline code span longer than any backtick run in the value', () => {
+    expect(inlineCode('plain')).toBe('`plain`');
+    // A value with two backticks needs a three backtick fence, otherwise it
+    // closes the span and the rest of the value is rendered as Markdown.
+    expect(inlineCode('has `` ticks')).toBe('```has `` ticks```');
+    // A value that starts or ends with a backtick is padded so the fence is
+    // not read as part of the content.
+    expect(inlineCode('`edge`')).toBe('`` `edge` ``');
+  });
+
+  it('keeps a Markdown injected selector inside one code span', () => {
+    // The selector comes from the scanned page: it can carry a Markdown link.
+    const selector = 'img[data-mark="`` [x](https://a.test)"]';
+    const body = generatePrBody([
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        severity: 'serious',
+        url: 'https://example.com/',
+        description: 'd',
+        elementSelector: selector,
+      },
+    ]);
+
+    const line = body.split('\n').find(l => l.includes('Selector:')) ?? '';
+    const fence = line.match(/`+/)![0];
+    // The fence is longer than the longest backtick run inside the value, so
+    // the value cannot close the span.
+    expect(fence.length).toBeGreaterThan(2);
+    expect(line).toContain(selector);
+  });
 });
 
 describe('validateRemediation', () => {
@@ -119,6 +152,49 @@ describe('validateRemediation', () => {
       '<img src="x" alt="A" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:999999">'
     );
     expect(result.valid).toBe(false);
+  });
+
+  it('rejects an overlay style hidden behind CSS escapes', () => {
+    // The browser decodes the escapes before it reads the declaration, so the
+    // check has to see the decoded form.
+    const result = validateRemediation(
+      '<img src="x" alt="A" style="p\\6fsition:fixed;l\\65 ft:0;t\\6fp:0;z-\\69 ndex:2147483647;width:100%;height:100%">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('overlay-capable');
+  });
+
+  it('rejects an overlay style hidden behind a CSS comment', () => {
+    // A comment is whitespace to the browser: `position/**/:fixed` is the
+    // declaration `position: fixed`.
+    const result = validateRemediation(
+      '<img src="x" alt="A" style="position/**/:fixed;left:0;top:0;z-index:2147483647;width:100%;height:100%">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('overlay-capable');
+  });
+
+  it('rejects an overlay style hidden behind an HTML entity', () => {
+    // The browser decodes the attribute value before the CSS is parsed.
+    const result = validateRemediation(
+      '<img src="x" alt="A" style="position&#58;fixed;left:0;top:0;z-index:2147483647;width:100%;height:100%">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('overlay-capable');
+  });
+
+  it('rejects portal and fencedframe elements', () => {
+    expect(validateRemediation('<portal src="http://127.0.0.1:9/x"></portal>').valid).toBe(false);
+    expect(validateRemediation('<fencedframe src="http://127.0.0.1:9/x"></fencedframe>').valid).toBe(false);
+  });
+
+  it('rejects frame and frameset elements', () => {
+    // A frame loads a remote document into the customer's page.
+    const result = validateRemediation(
+      '<html lang="en"><head></head><frameset><frame src="http://127.0.0.1:9/attacker"></frame></frameset></html>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('frame');
   });
 
   it('allows ordinary https and mailto URIs', () => {
@@ -218,6 +294,32 @@ describe('applyFixesToFile', () => {
     expect(result.fixesApplied).toBe(2);
     expect(result.content).toContain('alt="First"');
     expect(result.content).toContain('alt="Second"');
+  });
+
+  it('does not patch the first of two identical elements when only one was selected', () => {
+    // The fixes are matched to the occurrences in order, so the mapping to a
+    // specific occurrence is only provable when every occurrence is covered.
+    const original = '<html><body><img src="same.jpg"><img src="same.jpg"></body></html>';
+    const result = applyFixesToFile(original, [
+      { ruleId: 'image-alt', elementHtml: '<img src="same.jpg">', remediationCode: '<img src="same.jpg" alt="A">' },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.content).toContain('<img src="same.jpg"><img src="same.jpg">');
+  });
+
+  it('neutralizes a comment terminator in untrusted text', () => {
+    const result = applyFixesToFile('<html><body></body></html>', [
+      {
+        ruleId: 'image-alt',
+        elementHtml: '<img src="missing.jpg">',
+        remediationCode: '<img src="missing.jpg" alt="A">',
+        description: 'evil --> <script>alert(1)</script>',
+      },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.content).not.toContain('--><script>');
   });
 
   it('patches two different elements of the same rule independently', () => {

@@ -6,11 +6,13 @@ import { validateFixForRule } from '@/lib/fix-validation';
 import {
   buildReplacement,
   containsPlaceholder,
+  countElementOccurrences,
   hasSyntaxErrors,
   locateElement,
   preservesVisibleContent,
 } from '@/lib/ast-patch';
 import {
+  decodeHtmlEntities,
   isEventHandlerAttribute,
   normalizeUriValue,
   parseHtmlAttributes,
@@ -91,8 +93,16 @@ export function escapeMarkdownText(value: string): string {
 
 /** An inline code span that the value cannot break out of. */
 export function inlineCode(value: string): string {
-  const ticks = value.includes('`') ? '``' : '`';
-  return `${ticks}${value}${ticks}`;
+  // The fence must be longer than the longest backtick run inside the value,
+  // otherwise the value closes the span and the rest of it is rendered as
+  // Markdown (an attacker controlled selector could inject a live link).
+  let longest = 0;
+  for (const match of value.matchAll(/`+/g)) longest = Math.max(longest, match[0].length);
+  const ticks = '`'.repeat(longest + 1);
+  // A value that starts or ends with a backtick needs padding, or the fence
+  // would be read as part of the content.
+  const pad = value.startsWith('`') || value.endsWith('`') ? ' ' : '';
+  return `${ticks}${pad}${value}${pad}${ticks}`;
 }
 
 /** A code fence long enough to contain the content it wraps. */
@@ -231,9 +241,38 @@ function checkUriAttribute(name: string, value: string): string | null {
   return null;
 }
 
+/**
+ * Decode CSS escape sequences the way a browser does: `\26` is a code point,
+ * `\a` is the literal character, and a trailing backslash continues the line.
+ * A style attribute that hides an overlay property behind an escape
+ * (`p\6fsition:fixed`) is read by the browser as `position:fixed`.
+ */
+export function decodeCssEscapes(value: string): string {
+  return value.replace(
+    /\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \n\r\t\f])?|([^\r\n\f0-9a-fA-F])|(\r\n|[\n\r\f]))/g,
+    (_match, hex: string | undefined, literal: string | undefined, newline: string | undefined) => {
+      if (hex) {
+        const code = parseInt(hex, 16);
+        if (code === 0 || code > 0x10ffff) return '\uFFFD';
+        return String.fromCodePoint(code);
+      }
+      if (literal) return literal;
+      if (newline) return '';
+      return '';
+    }
+  );
+}
+
 /** Check a style attribute for declarations that can take over the screen. */
 function checkStyleAttribute(value: string): string | null {
-  for (const declaration of value.split(';')) {
+  // The browser decodes the entities of the attribute value first, then treats
+  // a CSS comment as whitespace (`position/**/:fixed` is `position: fixed`) and
+  // then resolves the CSS escapes. The check follows the same order.
+  const withoutEntities = decodeHtmlEntities(value);
+  const withoutComments = withoutEntities.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const decoded = decodeCssEscapes(withoutComments);
+
+  for (const declaration of decoded.split(';')) {
     const separator = declaration.indexOf(':');
     if (separator === -1) continue;
 
@@ -275,8 +314,14 @@ export function validateRemediation(
   }
 
   // No active or embedding elements: they execute code, load remote content or
-  // rewrite the document.
-  const ACTIVE_TAGS = ['iframe', 'object', 'embed', 'applet', 'base', 'svg', 'style', 'link', 'meta'];
+  // rewrite the document. `frame`/`frameset` load a remote document into the
+  // customer's page, so they are rejected like every other embedding element;
+  // `portal` and `fencedframe` load a document the same way, and `math` (like
+  // `svg`) can carry foreign content that the HTML parser executes.
+  const ACTIVE_TAGS = [
+    'iframe', 'object', 'embed', 'applet', 'base', 'svg', 'style', 'link', 'meta',
+    'frame', 'frameset', 'noframes', 'portal', 'fencedframe', 'math',
+  ];
   for (const tag of ACTIVE_TAGS) {
     if (new RegExp(`<\\s*/?\\s*${tag}\\b`, 'i').test(code)) {
       return { valid: false, reason: `remediation code introduces a <${tag}> element` };
@@ -362,6 +407,17 @@ export function applyFixesToFile(
   const targets: Array<{ start: number; end: number; replacement: string }> = [];
   const claimed: Array<{ start: number; end: number }> = [];
 
+  // How many fixes were selected per element. The fixes are matched to the
+  // occurrences of the element in the file in order, so the mapping is only
+  // provable when every occurrence is covered: selecting the second of two
+  // identical elements would otherwise patch the first one.
+  const selectedByKey = new Map<string, number>();
+  for (const v of violations) {
+    if (!v.elementHtml) continue;
+    const key = fixOccurrenceKey(v);
+    selectedByKey.set(key, (selectedByKey.get(key) ?? 0) + 1);
+  }
+
   for (const v of violations) {
     if (!v.remediationCode) continue;
 
@@ -377,6 +433,12 @@ export function applyFixesToFile(
     }
 
     const key = fixOccurrenceKey(v);
+    const occurrences = countElementOccurrences(originalContent, filePath, v.elementHtml);
+    if (occurrences > (selectedByKey.get(key) ?? 0)) {
+      unmatched.push(v);
+      continue;
+    }
+
     const occurrence = occurrenceByKey.get(key) ?? 0;
     const location = locateElement(originalContent, filePath, v.elementHtml, occurrence);
     if (!location) {
@@ -429,53 +491,65 @@ export function applyFixesToFile(
   return { content, fixesApplied, errors };
 }
 
+/**
+ * Neutralize the terminator of a source comment. The description, the
+ * explanation and the remediation come from the scanned page (through the
+ * model), so a comment terminator inside them would close the comment and
+ * turn the rest of the text into code in the customer's file.
+ */
+function neutralizeCommentTerminator(value: string, terminator: string): string {
+  return terminator === '*/'
+    ? value.replace(/\*\//g, '*\\/')
+    : value.replace(/-->/g, '--\\>');
+}
+
 // Generate a fix comment block
 function generateFixComment(
   filePath: string,
   violations: FileFixViolation[]
 ): string {
   const lines: string[] = [];
-  
+
   // Determine file type for comment syntax
   const ext = filePath.split('.').pop()?.toLowerCase();
-  const commentStart = ['js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'sass'].includes(ext || '') 
-    ? '/*' 
+  const commentStart = ['js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'sass'].includes(ext || '')
+    ? '/*'
     : '<!--';
-  const commentEnd = ['js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'sass'].includes(ext || '') 
-    ? '*/' 
+  const commentEnd = ['js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'sass'].includes(ext || '')
+    ? '*/'
     : '-->';
-  const lineComment = ['js', 'jsx', 'ts', 'tsx'].includes(ext || '') ? '//' : '#';
-  
+  const safe = (value: string) => neutralizeCommentTerminator(value, commentEnd);
+
   lines.push(`${commentStart}`);
   lines.push(' * AccessGuard Accessibility Fixes');
   lines.push(' * ');
-  lines.push(` * File: ${filePath}`);
+  lines.push(` * File: ${safe(filePath)}`);
   lines.push(' * ');
   lines.push(' * Issues Found:');
-  
+
   for (const v of violations) {
-    lines.push(` * - [${(v.severity || 'N/A').toUpperCase()}] ${v.ruleId}: ${v.description || 'Accessibility violation'}`);
+    lines.push(` * - [${(v.severity || 'N/A').toUpperCase()}] ${v.ruleId}: ${safe(v.description || 'Accessibility violation')}`);
   }
-  
+
   lines.push(' * ');
   lines.push(' * Suggested Fixes:');
-  
+
   for (const v of violations) {
     if (v.remediationCode) {
       lines.push(' * ---');
       lines.push(` * Rule: ${v.ruleId}`);
       if (v.aiExplanation) {
-        lines.push(` * Explanation: ${v.aiExplanation}`);
+        lines.push(` * Explanation: ${safe(v.aiExplanation)}`);
       }
       lines.push(' * Code:');
       for (const codeLine of v.remediationCode.split('\n')) {
-        lines.push(` *   ${codeLine}`);
+        lines.push(` *   ${safe(codeLine)}`);
       }
     }
   }
-  
+
   lines.push(`${commentEnd}`);
-  
+
   return lines.join('\n');
 }
 

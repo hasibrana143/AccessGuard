@@ -136,6 +136,45 @@ describe('applyFixesToRepository', () => {
     expect(result.filesModified).toEqual([]);
   });
 
+  it('does not patch a file when the GitHub tree is truncated', async () => {
+    // A truncated tree is an incomplete list: the element may live in a file
+    // that is not in it.
+    mocks.getTree.mockResolvedValue({
+      data: { tree: [{ type: 'blob', path: 'index.html' }], truncated: true },
+    });
+    fileContent('index.html', '<html><body><img src="a.jpg"></body></html>');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch another file when a file cannot be read', async () => {
+    tree(['a.html', 'b.html']);
+    // a.html cannot be read: the element may live in it.
+    fileContent('b.html', '<html><body><img src="a.jpg"></body></html>');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
   it('writes each file once when the fixes target different files', async () => {
     tree(['a.html', 'b.html']);
     fileContent('a.html', '<html><body><img src="a.jpg"></body></html>');
@@ -245,7 +284,11 @@ describe('applyFixesToRepository', () => {
     const paths = Array.from({ length: 50 }, (_, index) => `page-${index}.html`);
     paths.push('target.html');
     tree(paths);
-    fileContent('page-0.html', '<html><body><img src="other.jpg"></body></html>');
+    // Every file has to be readable: a file that cannot be read makes the scan
+    // incomplete and nothing is patched.
+    for (const path of paths) {
+      fileContent(path, '<html><body><img src="other.jpg"></body></html>');
+    }
     fileContent('target.html', '<html><body><img src="a.jpg"></body></html>');
 
     const result = await applyFixesToRepository(

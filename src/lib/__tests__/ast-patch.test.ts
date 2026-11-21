@@ -116,6 +116,17 @@ describe('elementTextContent / preservesVisibleContent', () => {
     expect(preservesVisibleContent('<img src="a.jpg">', '<img src="a.jpg" alt="A">')).toBe(true);
   });
 
+  it('treats aria-hidden text as visible', () => {
+    // `aria-hidden` only removes the content from the accessibility tree: the
+    // user still reads it, so a fix may not delete it.
+    expect(
+      preservesVisibleContent(
+        '<button><span aria-hidden="true">Read more</span></button>',
+        '<button aria-label="Action"></button>'
+      )
+    ).toBe(false);
+  });
+
   it('rejects a replacement that moves the text into a hidden element', () => {
     expect(
       preservesVisibleContent(
@@ -143,13 +154,15 @@ describe('elementTextContent / preservesVisibleContent', () => {
     ).toBe(false);
   });
 
-  it('rejects a replacement that hides the text with aria-hidden', () => {
+  it('accepts a replacement that keeps the text in an aria-hidden element', () => {
+    // `aria-hidden` removes the content from the accessibility tree only: the
+    // user still reads it, so the text is not deleted.
     expect(
       preservesVisibleContent(
         '<a href="/about">Read more</a>',
         '<a href="/about"><span aria-hidden="true">Read more</span></a>'
       )
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('counts text that is visible next to hidden text', () => {

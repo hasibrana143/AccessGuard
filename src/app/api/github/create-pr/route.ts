@@ -18,6 +18,7 @@ import {
   escapeMarkdownText,
   generatePrTitle,
   generatePrBody,
+  inlineCode,
   type ViolationForPR,
 } from '@/lib/github-pr';
 import {
@@ -27,7 +28,7 @@ import {
   type FixCandidate,
 } from '@/lib/fix-verification';
 import { checkRateLimit, rateLimits } from '@/lib/rate-limit';
-import { createAuditLog } from '@/lib/audit';
+import { createAuditLogWithRetry } from '@/lib/audit';
 
 // The gate reads verification confidence. An unknown (null) confidence never passes.
 // Re-exported for existing importers.
@@ -373,11 +374,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Audit trail first: the PR exists from here on, so the record of it must
-    // not depend on a later database write succeeding.
-    const auditRecorded = await createAuditLog({
+    // not depend on a later database write succeeding. A transient database
+    // error is retried before the PR is reported as unaudited — a repository
+    // mutation without a trail must not be the normal outcome.
+    const auditEntry = {
       orgId: auth.user.orgId,
       userId: auth.user.id,
-      action: 'github_pr_created',
+      action: 'github_pr_created' as const,
       metadata: {
         repository,
         branchName,
@@ -392,7 +395,10 @@ export async function POST(request: NextRequest) {
         skippedUnverified: selection.skippedUnverified,
         rules: violationsWithFixes.map(v => v.ruleId),
       },
-    });
+    };
+
+    let auditRecorded = false;
+    auditRecorded = await createAuditLogWithRetry(auditEntry);
 
     // Update violations with PR URL — only the violations whose fix is in the PR.
     const eligibleViolationIds = [...acceptedViolationIds];
@@ -492,7 +498,7 @@ function generateSummaryFile(violations: ViolationWithProject[], sourceFixesAppl
 
   for (const v of violations) {
     const fileName = `${v.ruleId}-${v.id.slice(0, 8)}.md`;
-    lines.push(`- [${v.ruleId}](${fileName}) - ${v.severity}`);
+    lines.push(`- [${escapeMarkdownText(v.ruleId)}](${encodeURIComponent(fileName)}) - ${escapeMarkdownText(v.severity)}`);
   }
 
   return lines.join('\n');
@@ -519,9 +525,10 @@ function generateFixFile(violation: ViolationWithProject): string {
     escapeMarkdownText(violation.description),
     '',
     '### Element Selector',
-    codeFence(selector),
-    selector,
-    codeFence(selector),
+    // The selector comes from the scanned page. An inline code span with a
+    // fence longer than any backtick run in the value cannot break out of it,
+    // so the selector stays readable and never becomes a Markdown link.
+    inlineCode(selector),
     '',
     '### Original HTML',
     `${htmlFence}html`,
