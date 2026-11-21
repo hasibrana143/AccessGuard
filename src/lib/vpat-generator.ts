@@ -1,4 +1,5 @@
 import { db } from './db';
+import { getCheckDef } from './manual-checks';
 
 // WCAG 2.2 AA criteria (extends 2.1 AA)
 const WCAG22_CRITERIA: Array<{ id: string; level: string; name: string }> = [
@@ -258,7 +259,7 @@ export async function generateVPATData(projectId: string, scanId?: string, optio
   const criterionList = standard === 'WCAG 2.2 AA' ? WCAG22_CRITERIA : WCAG22_CRITERIA.filter(c => !['2.4.11','2.4.12','2.5.7','2.5.8','3.2.6','3.3.7','3.3.8'].includes(c.id));
   
   const where = scanId
-    ? { scanId }
+    ? { projectId, scanId }
     : { projectId, status: { not: 'fixed' }, deletedAt: null };
 
   const violations = await db.violation.findMany({
@@ -266,12 +267,20 @@ export async function generateVPATData(projectId: string, scanId?: string, optio
     select: { wcagCriteria: true, severity: true },
   });
 
-  // Get manual check results for remarks
+  // Resolve stored catalog ids to the WCAG criterion they assess.
   const manualChecks = await db.manualCheck.findMany({
     where: { projectId },
     select: { checkId: true, status: true, notes: true },
   });
-  const manualById = new Map(manualChecks.map(m => [m.checkId, m]));
+  const manualChecksByCriterion = new Map<string, (typeof manualChecks)[number][]>();
+  for (const manualCheck of manualChecks) {
+    const definition = getCheckDef(manualCheck.checkId);
+    if (!definition) continue;
+
+    const checks = manualChecksByCriterion.get(definition.wcag) ?? [];
+    checks.push(manualCheck);
+    manualChecksByCriterion.set(definition.wcag, checks);
+  }
 
   const vpCriteria: VPATCriterion[] = [];
   let supports = 0;
@@ -284,7 +293,11 @@ export async function generateVPATData(projectId: string, scanId?: string, optio
     
     // Enhance remarks with manual check info
     let enhancedRemarks = remarks;
-    const manualCheck = manualById.get(criterion.id);
+    const criterionManualChecks = manualChecksByCriterion.get(criterion.id) ?? [];
+    const manualCheck =
+      criterionManualChecks.find(check => check.status === 'fail') ??
+      criterionManualChecks.find(check => check.status === 'pass') ??
+      criterionManualChecks[0];
     if (manualCheck) {
       if (manualCheck.status === 'pass') {
         enhancedRemarks += ` Manual check: PASS - ${manualCheck.notes || 'Verified accessible.'}`;

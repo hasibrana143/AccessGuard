@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
+import { createServer } from 'node:http';
 import { chromium } from 'playwright';
 import {
   MIN_FIX_CONFIDENCE,
   MAX_FIXES_PER_PR,
+  buildVerificationDocument,
+  createVerificationContext,
   passesConfidenceGate,
   resolveChromiumExecutable,
   selectVerifiedFixes,
@@ -275,5 +278,111 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     ]);
     expect(results.get('v5')?.status).toBe('unverified');
     expect(results.get('v5')?.reason).toContain('rejected before verification');
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('rejects a candidate that carries a handler the scanned page already had', async () => {
+    const results = await verifyFixes([
+      {
+        id: 'v6',
+        ruleId: 'image-alt',
+        elementHtml: '<img src="hero.jpg" onerror="globalThis.__pwned=1">',
+        remediationCode: '<img src="hero.jpg" onerror="globalThis.__pwned=1" alt="A">',
+      },
+    ]);
+    expect(results.get('v6')?.status).toBe('unverified');
+    expect(results.get('v6')?.reason).toContain('rejected before verification');
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('rejects a candidate whose URI scheme is only active after decoding', async () => {
+    const results = await verifyFixes([
+      {
+        id: 'v7',
+        ruleId: 'link-name',
+        elementHtml: '<a href="/about">Read more</a>',
+        remediationCode: '<a href="&#106;avascript:globalThis.__pwned=1" aria-label="safe">Read more</a>',
+      },
+    ]);
+    expect(results.get('v7')?.status).toBe('unverified');
+    expect(results.get('v7')?.reason).toContain('rejected before verification');
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('fails a fix that hides the visible text of the element', async () => {
+    const results = await verifyFixes([
+      {
+        id: 'v8',
+        ruleId: 'link-name',
+        elementHtml: '<a href="/about">Read more</a>',
+        remediationCode: '<a href="/about" aria-label="Read more"><span hidden>Read more</span></a>',
+      },
+    ]);
+    expect(results.get('v8')?.status).toBe('failed');
+    expect(results.get('v8')?.confidence).toBe(0);
+    expect(results.get('v8')?.reason).toContain('visible text');
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('never lets the verification document open a WebSocket', async () => {
+    let upgrades = 0;
+    const server = createServer();
+    server.on('upgrade', (_request, socket) => {
+      upgrades++;
+      socket.destroy();
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+
+    try {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const context = await createVerificationContext(browser);
+        const page = await context.newPage();
+        await page.setContent(buildVerificationDocument('<p>hello</p>'));
+
+        await page.evaluate(async (url) => {
+          try {
+            const socket = new WebSocket(url);
+            await new Promise(resolve => setTimeout(resolve, 500));
+            socket.close();
+          } catch {
+            // A blocked connection throws in the page: that is the expected result.
+          }
+        }, `ws://127.0.0.1:${port}/internal`);
+
+        expect(upgrades).toBe(0);
+      } finally {
+        await browser.close();
+      }
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('never lets the verification document make an HTTP request', async () => {
+    let hits = 0;
+    const server = createServer((_request, response) => {
+      hits++;
+      response.end('ok');
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+
+    try {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const context = await createVerificationContext(browser);
+        const page = await context.newPage();
+        await page.setContent(
+          buildVerificationDocument(`<img src="http://127.0.0.1:${port}/pixel.png" alt="A">`)
+        );
+        await page.waitForTimeout(500);
+
+        expect(hits).toBe(0);
+      } finally {
+        await browser.close();
+      }
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
   }, BROWSER_TEST_TIMEOUT);
 });

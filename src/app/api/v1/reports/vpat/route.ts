@@ -31,6 +31,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
+  if (scanId) {
+    const scan = await db.scan.findFirst({
+      where: { id: scanId, projectId },
+      select: { id: true },
+    });
+
+    if (!scan) {
+      return NextResponse.json({ error: 'Scan not found' }, { status: 404 });
+    }
+  }
+
   try {
     const vpat = await generateVPATData(projectId, scanId || undefined);
 

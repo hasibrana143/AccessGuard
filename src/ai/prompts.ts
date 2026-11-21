@@ -5,6 +5,7 @@
 export const PROMPT_VERSION = 2;
 
 import { randomUUID } from 'crypto';
+import { stripEventHandlerAttributes } from '@/lib/html-attributes';
 
 export interface RuleInfo {
   name: string;
@@ -351,7 +352,10 @@ export function renderTemplateFix(html: string, ruleId: string, description: str
   };
 
   return {
-    remediationCode: fix.remediationCode,
+    // The scanned element may carry an event handler written by the target page.
+    // A template fix must not carry it into the customer's repository, and the
+    // safety checks reject any remediation that still has one.
+    remediationCode: stripEventHandlerAttributes(fix.remediationCode),
     explanation: `${fix.explanation} Rule: ${rule.name}.`,
   };
 }

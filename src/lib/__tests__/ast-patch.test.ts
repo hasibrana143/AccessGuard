@@ -69,6 +69,27 @@ describe('locateElement (JSX)', () => {
     const source = '<img src="x" />';
     expect(locateElement(source, 'Card.tsx', '<img src="x" id="b">', 0)).toBeNull();
   });
+
+  it('compares the class list, so the wrong copy is not patched', () => {
+    const source = '<img src="x" className="wrong" />\n<img src="x" className="right" />';
+    const location = locateElement(source, 'Card.tsx', '<img src="x" class="right">', 0);
+
+    expect(location).not.toBeNull();
+    expect(source.slice(location!.start, location!.end)).toContain('className="right"');
+  });
+
+  it('does not match an element that is missing a supplied class', () => {
+    const source = '<img src="x" />';
+    expect(locateElement(source, 'Card.tsx', '<img src="x" class="right">', 0)).toBeNull();
+  });
+
+  it('compares aria-label, role and data-testid when the report carries them', () => {
+    const source = '<button aria-label="Close" role="button" data-testid="close">x</button>';
+    expect(locateElement(source, 'Card.tsx', '<button aria-label="Close" role="button" data-testid="close">', 0)).not.toBeNull();
+    expect(locateElement(source, 'Card.tsx', '<button aria-label="Open" role="button" data-testid="close">', 0)).toBeNull();
+    expect(locateElement(source, 'Card.tsx', '<button aria-label="Close" role="link" data-testid="close">', 0)).toBeNull();
+    expect(locateElement(source, 'Card.tsx', '<button aria-label="Close" role="button" data-testid="other">', 0)).toBeNull();
+  });
 });
 
 describe('elementTextContent / preservesVisibleContent', () => {
@@ -93,6 +114,51 @@ describe('elementTextContent / preservesVisibleContent', () => {
 
   it('accepts a replacement of an element that had no text', () => {
     expect(preservesVisibleContent('<img src="a.jpg">', '<img src="a.jpg" alt="A">')).toBe(true);
+  });
+
+  it('rejects a replacement that moves the text into a hidden element', () => {
+    expect(
+      preservesVisibleContent(
+        '<a href="/about">Read more</a>',
+        '<a href="/about" aria-label="Read more"><span hidden>Read more</span></a>'
+      )
+    ).toBe(false);
+  });
+
+  it('rejects a replacement that hides the text with display:none', () => {
+    expect(
+      preservesVisibleContent(
+        '<a href="/about">Read more</a>',
+        '<a href="/about"><span style="display:none">Read more</span></a>'
+      )
+    ).toBe(false);
+  });
+
+  it('rejects a replacement that hides the text with visibility:hidden', () => {
+    expect(
+      preservesVisibleContent(
+        '<a href="/about">Read more</a>',
+        '<a href="/about"><span style="visibility: hidden">Read more</span></a>'
+      )
+    ).toBe(false);
+  });
+
+  it('rejects a replacement that hides the text with aria-hidden', () => {
+    expect(
+      preservesVisibleContent(
+        '<a href="/about">Read more</a>',
+        '<a href="/about"><span aria-hidden="true">Read more</span></a>'
+      )
+    ).toBe(false);
+  });
+
+  it('counts text that is visible next to hidden text', () => {
+    expect(
+      preservesVisibleContent(
+        '<a href="/about">Read more</a>',
+        '<a href="/about"><span hidden>Read more</span>Open</a>'
+      )
+    ).toBe(true);
   });
 });
 

@@ -290,6 +290,7 @@ export async function POST(request: NextRequest) {
     // Apply fixes to real source files where the offending HTML can be located
     let filesModified: Array<{ path: string; fixesApplied: number }> = [];
     let fixesAppliedTotal = 0;
+    let appliedFixIds: string[] = [];
     try {
       const { applyFixesToRepository } = await import('@/lib/github');
       const fixResult = await applyFixesToRepository(
@@ -302,23 +303,17 @@ export async function POST(request: NextRequest) {
       );
       filesModified = fixResult.filesModified;
       fixesAppliedTotal = fixResult.fixesAppliedTotal;
+      appliedFixIds = fixResult.appliedFixIds ?? [];
     } catch (err) {
       logger.error({ err }, 'Failed to apply fixes to repository files');
     }
 
-    // Create a summary file with all fixes
-    const summaryContent = generateSummaryFile(violationsWithFixes, fixesAppliedTotal, filesModified.length);
+    // A violation is only linked to the PR when an artifact for it was actually
+    // accepted by GitHub: a source file it was patched into, or its own fix
+    // document. A refused write means no artifact, so no link.
+    const acceptedViolationIds = new Set<string>(appliedFixIds);
+    const fixFileIds = new Set<string>();
     let filesCreated = 0;
-    const summaryWritten = await createFile(
-      githubToken,
-      owner,
-      repo,
-      'accessguard-fixes/summary.md',
-      summaryContent,
-      `docs: Add accessibility fix summary for ${violationsWithFixes.length} issues`,
-      branchName
-    );
-    if (summaryWritten) filesCreated++;
 
     // Create individual fix files for violations (docs fallback alongside source edits)
     for (const violation of violationsWithFixes) {
@@ -334,8 +329,30 @@ export async function POST(request: NextRequest) {
         `fix(a11y): ${violation.ruleId} - ${violation.description.slice(0, 50)}`,
         branchName
       );
-      if (written) filesCreated++;
+      if (written) {
+        acceptedViolationIds.add(violation.id);
+        fixFileIds.add(violation.id);
+        filesCreated++;
+      }
     }
+
+    // Create a summary file with all fixes. It lists the fixes whose own fix
+    // document was accepted, so it never points at a file GitHub refused.
+    const summaryContent = generateSummaryFile(
+      violationsWithFixes.filter(v => fixFileIds.has(v.id)),
+      fixesAppliedTotal,
+      filesModified.length
+    );
+    const summaryWritten = await createFile(
+      githubToken,
+      owner,
+      repo,
+      'accessguard-fixes/summary.md',
+      summaryContent,
+      `docs: Add accessibility fix summary for ${fixFileIds.size} issues`,
+      branchName
+    );
+    if (summaryWritten) filesCreated++;
 
     // Create pull request
     const pr = await createPullRequest(
@@ -355,19 +372,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update violations with PR URL — only the violations whose fix is in the PR.
-    const eligibleViolationIds = violationsWithFixes.map(v => v.id);
-    await db.violation.updateMany({
-      where: {
-        id: { in: eligibleViolationIds },
-      },
-      data: {
-        githubPrUrl: pr.url,
-      },
-    });
-
-    // Audit trail: who opened the PR, what was verified, what was skipped.
-    await createAuditLog({
+    // Audit trail first: the PR exists from here on, so the record of it must
+    // not depend on a later database write succeeding.
+    const auditRecorded = await createAuditLog({
       orgId: auth.user.orgId,
       userId: auth.user.id,
       action: 'github_pr_created',
@@ -378,6 +385,7 @@ export async function POST(request: NextRequest) {
         verifiedFixes: violationsWithFixes.length,
         fixesAppliedToSource: fixesAppliedTotal,
         filesModified: filesModified.map(f => f.path),
+        linkedViolations: [...acceptedViolationIds],
         skippedInvalid: selection.skippedInvalid,
         skippedOverLimit: selection.skippedOverLimit,
         skippedLowConfidence: selection.skippedLowConfidence,
@@ -386,6 +394,27 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Update violations with PR URL — only the violations whose fix is in the PR.
+    const eligibleViolationIds = [...acceptedViolationIds];
+    let violationsUpdated = 0;
+    if (eligibleViolationIds.length > 0) {
+      try {
+        const updated = await db.violation.updateMany({
+          where: {
+            id: { in: eligibleViolationIds },
+          },
+          data: {
+            githubPrUrl: pr.url,
+          },
+        });
+        violationsUpdated = updated.count;
+      } catch (err) {
+        // The PR exists and is audited; the link on the violation rows is what
+        // failed. Report it instead of pretending the request failed.
+        logger.error({ err }, 'Failed to link violations to the pull request');
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -393,7 +422,7 @@ export async function POST(request: NextRequest) {
         prNumber: 'N/A', // PR number would require additional API call
         branchName,
         filesCreated,
-        violationsUpdated: eligibleViolationIds.length,
+        violationsUpdated,
         verifiedFixes: violationsWithFixes.length,
         skippedInvalid: selection.skippedInvalid,
         skippedOverLimit: selection.skippedOverLimit,
@@ -401,6 +430,8 @@ export async function POST(request: NextRequest) {
         skippedUnverified: selection.skippedUnverified,
         filesModified,
         fixesAppliedTotal,
+        fixesWithoutArtifact: violationsWithFixes.length - acceptedViolationIds.size,
+        auditRecorded,
       },
     });
   } catch (error) {
@@ -488,9 +519,9 @@ function generateFixFile(violation: ViolationWithProject): string {
     escapeMarkdownText(violation.description),
     '',
     '### Element Selector',
-    '```',
-    escapeMarkdownText(selector),
-    '```',
+    codeFence(selector),
+    selector,
+    codeFence(selector),
     '',
     '### Original HTML',
     `${htmlFence}html`,

@@ -7,6 +7,7 @@
 // aware, so the Nth reported occurrence patches the Nth copy in the file.
 
 import ts from 'typescript';
+import { parseTagAttributes, type ParsedAttribute } from '@/lib/html-attributes';
 
 export interface ElementSignature {
   tag: string;
@@ -52,12 +53,19 @@ const BOOLEAN_ATTRS = new Set([
   'muted', 'playsinline', 'default', 'ismap', 'itemscope', 'reversed',
 ]);
 
-// Attributes that identify one element among several with the same tag.
-const DISTINGUISHING_ATTRS = ['src', 'href', 'id', 'name', 'type', 'alt'];
+// Attributes that identify one element among several with the same tag. Every
+// one of them is compared when the report carries it: comparing only a fixed
+// subset patched the wrong copy when two elements shared it (same src, different
+// class).
+const IDENTITY_ATTRS = [
+  'src', 'href', 'id', 'name', 'aria-label', 'role', 'data-testid', 'type', 'alt',
+];
 
 // Attributes that must match when the candidate reports them: an element without
 // them is a different element (two <img> with the same src but different ids).
-const STRICT_IDENTITY_ATTRS = new Set(['src', 'href', 'id', 'name']);
+const STRICT_IDENTITY_ATTRS = new Set([
+  'src', 'href', 'id', 'name', 'class', 'aria-label', 'role', 'data-testid',
+]);
 
 const PLACEHOLDER_PATTERN =
   /\b(TODO|FIXME|XXX|PLACEHOLDER|LOREM IPSUM)\b|\bYOUR[_\s-]?(ALT|TEXT|LABEL|DESCRIPTION|NAME)|\bINSERT[_\s-]?(HERE|TEXT|ALT|LABEL)\b|<\s*insert|\{\{[^}]*\}\}/i;
@@ -165,14 +173,17 @@ function collectJsxCandidates(content: string, filePath: string): JsxCandidate[]
   return candidates;
 }
 
+function classTokens(value: string): string[] {
+  return value.split(/\s+/).filter(Boolean);
+}
+
 function candidateMatches(candidate: JsxCandidate, signature: ElementSignature): boolean {
   if (candidate.tag !== signature.tag) return false;
 
-  // Every distinguishing attribute the report carries has to match. Comparing only
+  // Every identity attribute the report carries has to match. Comparing only
   // the first one patched the wrong copy when two elements shared it (same src,
   // different id).
-  let compared = 0;
-  for (const key of DISTINGUISHING_ATTRS) {
+  for (const key of IDENTITY_ATTRS) {
     const want = signature.attrs[key];
     if (want === undefined || want === '') continue;
     const have = candidate.attrs[key];
@@ -183,17 +194,15 @@ function candidateMatches(candidate: JsxCandidate, signature: ElementSignature):
       continue;
     }
     if (have.trim() !== want.trim()) return false;
-    compared++;
   }
 
-  if (compared > 0) return true;
-
+  // The class list is compared as a set: the report may carry fewer classes than
+  // the source element, but every class it names has to be there.
   const wantClass = signature.attrs['class'];
   if (wantClass) {
-    const have = (candidate.attrs['class'] || '').split(/\s+/).filter(Boolean);
-    const want = wantClass.split(/\s+/).filter(Boolean);
-    if (want.length === 0) return true;
-    return want.every(w => have.includes(w));
+    const have = classTokens(candidate.attrs['class'] || '');
+    const want = classTokens(wantClass);
+    if (!want.every(w => have.includes(w))) return false;
   }
 
   return true;
@@ -329,11 +338,79 @@ export function elementTextContent(element: string): string {
  * A replacement may not delete the visible text of the element it replaces. An
  * axe-verified fix that empties a link or a button would pass the rule check while
  * removing what the user reads.
+ *
+ * Only visible text counts: text inside a hidden element is not shown to the
+ * user, so a fix that moves the text into a hidden element deletes it.
  */
 export function preservesVisibleContent(original: string, replacement: string): boolean {
-  const before = elementTextContent(original);
+  const before = visibleTextContent(original);
   if (!before) return true;
-  return elementTextContent(replacement).length > 0;
+  return visibleTextContent(replacement).length > 0;
+}
+
+/** True when an element's attributes keep its content from being seen. */
+function hidesContent(attributes: ParsedAttribute[]): boolean {
+  for (const attribute of attributes) {
+    if (attribute.name === 'hidden') return true;
+    if (attribute.name === 'aria-hidden' && attribute.value.trim().toLowerCase() === 'true') {
+      return true;
+    }
+    if (attribute.name === 'style') {
+      const style = attribute.value.toLowerCase().replace(/\s+/g, '');
+      if (style.includes('display:none') || style.includes('visibility:hidden')) return true;
+    }
+  }
+  return false;
+}
+
+// Opening tag, closing tag or self-closing tag.
+const TAG_SCAN = /<(\/?)([a-zA-Z][^\s/>]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
+
+/**
+ * The text a user can actually see in an element snippet. Content inside a
+ * hidden element (the `hidden` attribute, `aria-hidden="true"`, `display:none`
+ * or `visibility:hidden`) is not visible and does not count.
+ */
+export function visibleTextContent(element: string): string {
+  const open = element.match(/^<([a-zA-Z][a-zA-Z0-9:._-]*)\b([^>]*)>/);
+  if (!open) return '';
+  const tag = open[1].toLowerCase();
+  if (VOID_TAGS.has(tag)) return '';
+  if (/\/\s*$/.test(open[2] ?? '')) return '';
+  const close = new RegExp(`</${tag}\\s*>`, 'i');
+  const closeIndex = element.search(close);
+  if (closeIndex === -1) return '';
+  const inner = element.slice(open[0].length, closeIndex);
+
+  let text = '';
+  let hiddenDepth = 0;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  TAG_SCAN.lastIndex = 0;
+
+  while ((match = TAG_SCAN.exec(inner)) !== null) {
+    if (hiddenDepth === 0) text += inner.slice(cursor, match.index);
+    cursor = match.index + match[0].length;
+
+    const isClosing = match[1] === '/';
+    const name = match[2].toLowerCase();
+    const selfClosing = match[4] === '/';
+
+    if (isClosing) {
+      if (hiddenDepth > 0) hiddenDepth--;
+      continue;
+    }
+    if (VOID_TAGS.has(name) || selfClosing) continue;
+
+    if (hiddenDepth > 0) {
+      hiddenDepth++; // nested element inside the hidden subtree
+      continue;
+    }
+    if (hidesContent(parseTagAttributes(match[3] ?? ''))) hiddenDepth = 1;
+  }
+  if (hiddenDepth === 0) text += inner.slice(cursor);
+
+  return text.replace(/\{[^{}]*\}/g, '').trim();
 }
 
 /** True when the patched content no longer parses (TypeScript/JSX syntax errors). */

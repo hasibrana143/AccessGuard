@@ -99,8 +99,12 @@ describe('POST /api/github/create-pr', () => {
     mocks.createFile.mockResolvedValue(true);
     mocks.createPullRequest.mockResolvedValue({ url: 'https://github.com/owner/repo/pull/1' });
     mocks.updateMany.mockResolvedValue({ count: 1 });
-    mocks.createAuditLog.mockResolvedValue(undefined);
-    mocks.applyFixesToRepository.mockResolvedValue({ filesModified: [], fixesAppliedTotal: 0 });
+    mocks.createAuditLog.mockResolvedValue(true);
+    mocks.applyFixesToRepository.mockResolvedValue({
+      filesModified: [],
+      fixesAppliedTotal: 0,
+      appliedFixIds: [],
+    });
   });
 
   it('rejects a request without remediation code before touching GitHub', async () => {
@@ -210,5 +214,73 @@ describe('POST /api/github/create-pr', () => {
 
     expect(res.status).toBe(200);
     expect(body.data.filesCreated).toBe(0);
+  });
+
+  it('does not link a violation whose fix file was refused', async () => {
+    mocks.findMany.mockResolvedValue([violation('v1')]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mocks.createFile.mockResolvedValue(false); // GitHub refuses every write
+
+    const res = await POST(request(['v1']));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.violationsUpdated).toBe(0);
+    expect(body.data.fixesWithoutArtifact).toBe(1);
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('links a violation whose fix was written into a source file', async () => {
+    mocks.findMany.mockResolvedValue([violation('v1')]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mocks.applyFixesToRepository.mockResolvedValue({
+      filesModified: [{ path: 'index.html', fixesApplied: 1 }],
+      fixesAppliedTotal: 1,
+      appliedFixIds: ['v1'],
+    });
+    mocks.createFile.mockResolvedValue(false); // only the documentation file is refused
+
+    const res = await POST(request(['v1']));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.violationsUpdated).toBe(1);
+    expect(body.data.fixesWithoutArtifact).toBe(0);
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['v1'] } } })
+    );
+  });
+
+  it('reports an audit failure instead of claiming a trail', async () => {
+    mocks.findMany.mockResolvedValue([violation('v1')]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mocks.createAuditLog.mockResolvedValue(false);
+
+    const res = await POST(request(['v1']));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.auditRecorded).toBe(false);
+  });
+
+  it('keeps the audit trail when the violation update fails', async () => {
+    mocks.findMany.mockResolvedValue([violation('v1')]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mocks.updateMany.mockRejectedValue(new Error('db down'));
+
+    const res = await POST(request(['v1']));
+
+    expect(res.status).toBe(200);
+    expect(mocks.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'github_pr_created' })
+    );
   });
 });

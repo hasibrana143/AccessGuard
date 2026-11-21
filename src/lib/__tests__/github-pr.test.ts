@@ -38,6 +38,32 @@ describe('PR text escaping', () => {
     ]);
     expect(body).not.toContain('<img src=x');
   });
+
+  it('neutralizes Markdown links, images and mentions in untrusted text', () => {
+    const escaped = escapeMarkdownText(
+      '![tracking pixel](https://attacker.example/pixel?x=1) @victim [click](https://attacker.example)'
+    );
+
+    expect(escaped).not.toContain('](');
+    expect(escaped).toContain('\\]\\(');
+    expect(escaped).toContain('\\@');
+  });
+
+  it('keeps a Markdown injected description out of the PR body', () => {
+    const body = generatePrBody([
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        severity: 'serious',
+        url: 'https://example.com/',
+        description: '![tracking pixel](https://attacker.example/pixel?x=1) @victim',
+        wcagCriteria: '1.1.1',
+      },
+    ]);
+
+    expect(body).not.toContain('![tracking pixel]');
+    expect(body).toContain('\\!\\[tracking pixel\\]');
+  });
 });
 
 describe('validateRemediation', () => {
@@ -64,12 +90,41 @@ describe('validateRemediation', () => {
     expect(result.valid).toBe(false);
   });
 
-  it('allows event handlers that existed in the original element', () => {
+  it('rejects an event handler that existed in the original element', () => {
+    // The scanned page controls the handler code, so a handler is never carried
+    // into a remediation — not even one that was already there.
     const result = validateRemediation(
       '<img src="x.jpg" onerror="fallback()" alt="desc">',
       '<img src="x.jpg" onerror="fallback()">'
     );
-    expect(result.valid).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('event handler');
+  });
+
+  it('rejects a slash separated event handler', () => {
+    // `<img src=x /onerror=...>` is two attributes for the browser.
+    const result = validateRemediation('<img src="x.jpg" /onerror="globalThis.__pwned=1" alt="A">');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('event handler');
+  });
+
+  it('rejects an entity encoded javascript: URI', () => {
+    const result = validateRemediation('<a href="&#106;avascript:globalThis.__pwned=1" aria-label="safe">safe</a>');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('active URI scheme');
+  });
+
+  it('rejects a full screen overlay style', () => {
+    const result = validateRemediation(
+      '<img src="x" alt="A" style="position:fixed;inset:0;width:100vw;height:100vh;z-index:999999">'
+    );
+    expect(result.valid).toBe(false);
+  });
+
+  it('allows ordinary https and mailto URIs', () => {
+    expect(validateRemediation('<a href="https://example.com/about">About</a>').valid).toBe(true);
+    expect(validateRemediation('<a href="mailto:team@example.com">Mail</a>').valid).toBe(true);
+    expect(validateRemediation('<a href="/about">About</a>').valid).toBe(true);
   });
 
   it('rejects a script tag in any spelling', () => {

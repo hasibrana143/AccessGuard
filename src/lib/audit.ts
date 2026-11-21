@@ -42,9 +42,14 @@ interface AuditLogInput {
 }
 
 /**
- * Create an audit log entry
+ * Create an audit log entry.
+ *
+ * Returns true when the entry was written. A failure is logged but never
+ * thrown (an audit outage must not break the flow that was audited), so a
+ * caller that has to report the state of the trail — a pull request that now
+ * exists on GitHub — has to check the return value instead of assuming success.
  */
-export async function createAuditLog(input: AuditLogInput): Promise<void> {
+export async function createAuditLog(input: AuditLogInput): Promise<boolean> {
   try {
     await db.auditLog.create({
       data: {
@@ -59,9 +64,13 @@ export async function createAuditLog(input: AuditLogInput): Promise<void> {
         }),
       },
     });
+    return true;
   } catch (error) {
-    logger.error({ err: error }, '');
-    // Don't throw - audit log failures shouldn't break the main flow
+    logger.error(
+      { err: error, action: input.action, orgId: input.orgId },
+      'Audit log write failed'
+    );
+    return false;
   }
 }
 

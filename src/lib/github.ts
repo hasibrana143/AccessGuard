@@ -178,6 +178,13 @@ export async function getRepositoryDetails(token: string, owner: string, repo: s
   }
 }
 
+/**
+ * Upper bound of source content the writer reads for one pull request. The whole
+ * source tree has to be scanned to prove that a match is unique, so a tree that
+ * does not fit is never patched: an incomplete scan cannot prove uniqueness.
+ */
+const MAX_SOURCE_SCAN_BYTES = 5 * 1024 * 1024;
+
 // Apply accessibility fixes to real source files in the repository
 export async function applyFixesToRepository(
   token: string,
@@ -191,9 +198,15 @@ export async function applyFixesToRepository(
     elementHtml?: string | null;
     remediationCode?: string | null;
   }>
-): Promise<{ filesModified: Array<{ path: string; fixesApplied: number }>; fixesAppliedTotal: number }> {
+): Promise<{
+  filesModified: Array<{ path: string; fixesApplied: number }>;
+  fixesAppliedTotal: number;
+  /** Ids of the fixes that were written into a source file. */
+  appliedFixIds: string[];
+}> {
   const octokit = getOctokit(token);
   const filesModified: Array<{ path: string; fixesApplied: number }> = [];
+  const appliedFixIds: string[] = [];
   let fixesAppliedTotal = 0;
 
   const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate } = await import('@/lib/github-pr');
@@ -201,17 +214,26 @@ export async function applyFixesToRepository(
 
   // List source files in the default branch tree
   const { data: tree } = await octokit.git.getTree({ owner, repo, tree_sha: ref, recursive: '1' });
-  const sourceFiles = (tree.tree || [])
-    .filter(t => t.type === 'blob' && t.path && /\.(html|htm|tsx|jsx|ts|js|vue|svelte|astro)$/.test(t.path))
-    .slice(0, 50);
+  const sourceFiles = (tree.tree || []).filter(
+    t => t.type === 'blob' && t.path && /\.(html|htm|tsx|jsx|ts|js|vue|svelte|astro)$/.test(t.path)
+  );
 
-  if (sourceFiles.length === 0) return { filesModified, fixesAppliedTotal };
+  // Every source file is scanned: uniqueness may only be decided on the
+  // complete tree. A truncated scan patched the wrong file before.
+  const treeBytes = sourceFiles.reduce((sum, file) => sum + (file.size ?? 0), 0);
+  if (treeBytes > MAX_SOURCE_SCAN_BYTES) {
+    return { filesModified, fixesAppliedTotal, appliedFixIds };
+  }
+
+  if (sourceFiles.length === 0) return { filesModified, fixesAppliedTotal, appliedFixIds };
 
   // One fetch per file: the content is cached so several fixes can land in the same
   // file without the later write overwriting the earlier fix.
   const contentCache = new Map<string, string>();
   const assignments = new Map<string, FileFixViolation[]>();
   const localOccurrence = new Map<string, number>();
+  let scannedBytes = 0;
+  let scanTruncated = false;
 
   const loadFile = async (path: string): Promise<string | undefined> => {
     const cached = contentCache.get(path);
@@ -220,6 +242,13 @@ export async function applyFixesToRepository(
       const { data } = await octokit.repos.getContent({ owner, repo, path, ref });
       if (!('content' in data)) return undefined;
       const content = Buffer.from(data.content, 'base64').toString('utf8');
+      if (scannedBytes + content.length > MAX_SOURCE_SCAN_BYTES) {
+        // The budget is exhausted: the scan is incomplete, so no match can be
+        // proven unique and nothing is patched.
+        scanTruncated = true;
+        return undefined;
+      }
+      scannedBytes += content.length;
       contentCache.set(path, content);
       return content;
     } catch {
@@ -249,7 +278,7 @@ export async function applyFixesToRepository(
       containing.push(file.path);
     }
 
-    if (containing.length !== 1) continue; // no match, or ambiguous: review file only
+    if (containing.length !== 1 || scanTruncated) continue; // no match, ambiguous or incomplete: review file only
 
     const path = containing[0];
     const key = `${path}::${fixOccurrenceKey(violation)}`;
@@ -286,9 +315,15 @@ export async function applyFixesToRepository(
     }
     filesModified.push({ path, fixesApplied: result.fixesApplied });
     fixesAppliedTotal += result.fixesApplied;
+    // Only a complete, accepted write proves that the fix is in the repository.
+    if (result.fixesApplied === list.length) {
+      for (const violation of list) {
+        if (violation.id) appliedFixIds.push(violation.id);
+      }
+    }
   }
 
-  return { filesModified, fixesAppliedTotal };
+  return { filesModified, fixesAppliedTotal, appliedFixIds };
 }
 
 // Revoke GitHub OAuth token

@@ -184,6 +184,105 @@ describe('applyFixesToRepository', () => {
     expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
     expect(result.fixesAppliedTotal).toBe(0);
   });
+
+  it('reports the ids of the fixes that were written into a source file', async () => {
+    tree(['index.html']);
+    fileContent('index.html', '<html><body><img src="a.jpg"></body></html>');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(result.appliedFixIds).toEqual(['v1']);
+  });
+
+  it('reports no applied id when the write is refused', async () => {
+    tree(['index.html']);
+    fileContent('index.html', '<html><body><img src="a.jpg"></body></html>');
+    mocks.createOrUpdateFileContents.mockRejectedValue(new Error('boom'));
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(result.appliedFixIds).toEqual([]);
+  });
+
+  it('scans the whole source tree, so a match beyond the first files is found', async () => {
+    // The target file is the 51st entry and another file holds the same element:
+    // patching the first match would change the wrong file.
+    const paths = Array.from({ length: 50 }, (_, index) => `page-${index}.html`);
+    paths.push('target.html');
+    tree(paths);
+    fileContent('page-0.html', '<html><body><img src="a.jpg"></body></html>');
+    fileContent('target.html', '<html><body><img src="a.jpg"></body></html>');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    // Two files hold the element: the match is ambiguous, so nothing is patched.
+    expect(result.filesModified).toEqual([]);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+  });
+
+  it('patches the only file that holds the element, wherever it sits in the tree', async () => {
+    const paths = Array.from({ length: 50 }, (_, index) => `page-${index}.html`);
+    paths.push('target.html');
+    tree(paths);
+    fileContent('page-0.html', '<html><body><img src="other.jpg"></body></html>');
+    fileContent('target.html', '<html><body><img src="a.jpg"></body></html>');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(result.filesModified).toEqual([{ path: 'target.html', fixesApplied: 1 }]);
+    expect(result.appliedFixIds).toEqual(['v1']);
+  });
+
+  it('does not patch anything when the source tree is too large to scan completely', async () => {
+    mocks.getTree.mockResolvedValue({
+      data: {
+        tree: [
+          { type: 'blob', path: 'index.html', size: 6 * 1024 * 1024 },
+        ],
+      },
+    });
+    fileContent('index.html', '<html><body><img src="a.jpg"></body></html>');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(result.filesModified).toEqual([]);
+    expect(mocks.getContent).not.toHaveBeenCalled();
+  });
 });
 
 describe('GitHub API helpers', () => {

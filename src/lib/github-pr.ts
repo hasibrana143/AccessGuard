@@ -10,6 +10,11 @@ import {
   locateElement,
   preservesVisibleContent,
 } from '@/lib/ast-patch';
+import {
+  isEventHandlerAttribute,
+  normalizeUriValue,
+  parseHtmlAttributes,
+} from '@/lib/html-attributes';
 
 // Flexible violation type that works with both strict types and Prisma results
 export type ViolationForPR = {
@@ -28,6 +33,7 @@ export type ViolationForPR = {
 
 // Minimal shape required for file-level fix application
 export type FileFixViolation = {
+  id?: string;
   ruleId: string;
   severity?: string;
   description?: string;
@@ -74,10 +80,19 @@ export function generatePrTitle(violations: ViolationForPR[]): string {
   return `fix(a11y): ${violations.length} accessibility improvements`;
 }
 
-/** Neutralize raw HTML in untrusted text so it cannot render inside a PR body. */
+/** Neutralize raw HTML and Markdown syntax in untrusted text. */
 export function escapeMarkdownText(value: string): string {
   const amp = String.fromCharCode(38);
-  return value.split('<').join(`${amp}lt;`).split('>').join(`${amp}gt;`);
+  const withoutHtml = value.split('<').join(`${amp}lt;`).split('>').join(`${amp}gt;`);
+  // Markdown syntax outside a code block: links, images, mentions, emphasis,
+  // headings and lists. A backslash escapes it without changing the rendering.
+  return withoutHtml.replace(/([\\`*_{}[\]()#+\-=!|~@])/g, '\\$1');
+}
+
+/** An inline code span that the value cannot break out of. */
+export function inlineCode(value: string): string {
+  const ticks = value.includes('`') ? '``' : '`';
+  return `${ticks}${value}${ticks}`;
 }
 
 /** A code fence long enough to contain the content it wraps. */
@@ -136,7 +151,7 @@ export function generatePrBody(violations: ViolationForPR[], project?: { name: s
       lines.push(`- **[${v.severity.toUpperCase()}]** ${escapeMarkdownText(v.description)}`);
       lines.push(`  - Location: ${escapeMarkdownText(v.url)}`);
       if (v.elementSelector) {
-        lines.push(`  - Selector: \`${escapeMarkdownText(v.elementSelector)}\``);
+        lines.push(`  - Selector: ${inlineCode(v.elementSelector)}`);
       }
       lines.push('');
     }
@@ -169,12 +184,82 @@ export function generatePrBody(violations: ViolationForPR[], project?: { name: s
   return lines.join('\n');
 }
 
+// Attributes whose value is a URI and can therefore carry an active scheme.
+const URI_ATTRIBUTES = new Set([
+  'href', 'src', 'srcset', 'action', 'formaction', 'xlink:href', 'poster', 'data',
+  'cite', 'background', 'longdesc', 'manifest', 'ping', 'profile', 'usemap',
+  'codebase', 'archive', 'icon',
+]);
+
+// Schemes that may appear in a URI attribute. Everything else (javascript:,
+// vbscript:, data:text/html, blob:, file:, about:) can execute or exfiltrate.
+const ALLOWED_URI_SCHEMES = new Set(['http', 'https', 'mailto', 'tel', 'ftp']);
+
+// Inert image data URIs are allowed; SVG is not (it can carry script).
+const ALLOWED_DATA_URI = /^data:image\/(png|jpe?g|gif|webp|bmp|x-icon)[;,]/;
+
+// Style properties that can take over the screen or cover other content.
+const OVERLAY_STYLE_PROPERTIES = new Set([
+  'position', 'inset', 'top', 'right', 'bottom', 'left', 'z-index', 'transform',
+  'clip-path', 'mask',
+]);
+
+/** Check a URI attribute against the scheme allowlist. Returns a reason or null. */
+function checkUriAttribute(name: string, value: string): string | null {
+  if (!URI_ATTRIBUTES.has(name)) return null;
+
+  // srcset holds a comma separated list of candidate URLs.
+  const candidates =
+    name === 'srcset'
+      ? value.split(',').map(part => part.trim().split(/\s+/)[0] ?? '')
+      : [value];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeUriValue(candidate);
+    if (!normalized) continue;
+
+    const schemeMatch = normalized.match(/^([a-z][a-z0-9+.-]*):/);
+    if (!schemeMatch) continue; // relative URL: no scheme to abuse
+
+    const scheme = schemeMatch[1] as string;
+    if (ALLOWED_URI_SCHEMES.has(scheme)) continue;
+    if (scheme === 'data' && ALLOWED_DATA_URI.test(normalized)) continue;
+
+    return `remediation code contains an active URI scheme in ${name}: ${scheme}:`;
+  }
+
+  return null;
+}
+
+/** Check a style attribute for declarations that can take over the screen. */
+function checkStyleAttribute(value: string): string | null {
+  for (const declaration of value.split(';')) {
+    const separator = declaration.indexOf(':');
+    if (separator === -1) continue;
+
+    const property = declaration.slice(0, separator).trim().toLowerCase();
+    const cssValue = declaration.slice(separator + 1).trim().toLowerCase();
+    if (!property) continue;
+
+    if (OVERLAY_STYLE_PROPERTIES.has(property)) {
+      return `remediation code sets an overlay-capable style property: ${property}`;
+    }
+    if (/(^|[^a-z])(vw|vh|vmin|vmax)([^a-z]|$)/.test(cssValue)) {
+      return 'remediation code sizes an element with viewport units';
+    }
+    if (cssValue.includes('url(') || cssValue.includes('expression(')) {
+      return 'remediation code loads or executes CSS content';
+    }
+  }
+
+  return null;
+}
+
 // Validate AI-generated remediation code before applying it to source files
 export function validateRemediation(
   remediationCode: string | null | undefined,
-  originalElementHtml?: string | null
-): { valid: boolean; reason?: string } {
-  if (!remediationCode || !remediationCode.trim()) {
+  _originalElementHtml?: string | null
+): { valid: boolean; reason?: string } {  if (!remediationCode || !remediationCode.trim()) {
     return { valid: false, reason: 'empty remediation code' };
   }
 
@@ -203,16 +288,23 @@ export function validateRemediation(
     return { valid: false, reason: 'remediation code contains an active URI scheme' };
   }
 
-  // No event-handler injection if the original element had none. The handler may
-  // be written with spaces around the `=` (`onerror = "…"`).
-  const newHandlers = [...code.matchAll(/\son[a-z]+\s*=/gi)].map((m) => m[0].toLowerCase().replace(/\s+/g, ''));
-  const originalHandlers = originalElementHtml
-    ? [...originalElementHtml.matchAll(/\son[a-z]+\s*=/gi)].map((m) => m[0].toLowerCase().replace(/\s+/g, ''))
-    : [];
+  // Attributes are parsed the way a browser parses them. An event handler is
+  // rejected unconditionally: the scanned page may already carry one, and the
+  // handler's code is attacker controlled either way. Every URI attribute is
+  // checked against a scheme allowlist after entity decoding.
+  const attributes = parseHtmlAttributes(code);
+  for (const attribute of attributes) {
+    if (isEventHandlerAttribute(attribute.name)) {
+      return { valid: false, reason: `remediation code contains an event handler: ${attribute.name}` };
+    }
 
-  const injectedHandlers = newHandlers.filter((h) => !originalHandlers.includes(h));
-  if (injectedHandlers.length > 0) {
-    return { valid: false, reason: `injects new event handler: ${injectedHandlers[0]}` };
+    const uriProblem = checkUriAttribute(attribute.name, attribute.value);
+    if (uriProblem) return { valid: false, reason: uriProblem };
+
+    if (attribute.name === 'style') {
+      const styleProblem = checkStyleAttribute(attribute.value);
+      if (styleProblem) return { valid: false, reason: styleProblem };
+    }
   }
 
   // No unclosed HTML tags (rough balance check for common void-safe tags)

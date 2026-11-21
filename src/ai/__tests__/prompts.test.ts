@@ -103,4 +103,15 @@ describe('ai/prompts', () => {
     const authFix = renderTemplateFix('<input type="password" onpaste="return false;" />', 'accessible-auth', 'Paste blocked');
     expect(authFix.remediationCode).not.toContain('onpaste="return false;"');
   });
+
+  it('strips an event handler the scanned page carried', () => {
+    const fix = renderTemplateFix(
+      '<img src="x" onerror="globalThis.__pwned=1">',
+      'image-alt',
+      'A photo'
+    );
+
+    expect(fix.remediationCode).not.toContain('onerror');
+    expect(fix.remediationCode).toContain('alt="A photo"');
+  });
 });

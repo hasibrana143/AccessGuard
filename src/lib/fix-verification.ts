@@ -7,9 +7,10 @@
 // browser, unknown rule, incomplete result) the fix stays unverified and is skipped.
 
 import fs from 'node:fs';
-import { chromium, type Browser } from 'playwright';
+import { chromium, type Browser, type BrowserContext } from 'playwright';
 import * as axeCore from 'axe-core';
 import { validateFixCandidate } from '@/lib/github-pr';
+import { visibleTextContent } from '@/lib/ast-patch';
 
 export const MIN_FIX_CONFIDENCE = 0.7;
 export const VERIFIED_FIX_CONFIDENCE = 1;
@@ -48,9 +49,50 @@ const AXE_SOURCE =
   (axeCore as unknown as { source?: string }).source ??
   (axeCore as unknown as { default?: { source?: string } }).default?.source;
 
-function toDocument(remediationCode: string): string {
-  if (/<(html|head|body|title)[\s>]/i.test(remediationCode)) return remediationCode;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Fix verification</title></head><body>${remediationCode}</body></html>`;
+/**
+ * The verification document is untrusted markup rendered by the service. The CSP
+ * is the browser's own enforcement: no connection (WebSocket, fetch, beacon),
+ * no worker, no frame, no plugin, no base URI. `script-src 'unsafe-inline'` is
+ * needed for the axe-core bundle that is injected into the page; the safety
+ * checks reject every script tag and event handler before anything is rendered.
+ */
+const VERIFICATION_CSP =
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; " +
+  "connect-src 'none'; img-src 'none'; font-src 'none'; media-src 'none'; " +
+  "frame-src 'none'; child-src 'none'; object-src 'none'; base-uri 'none'; " +
+  "form-action 'none'; worker-src 'none'; manifest-src 'none'";
+
+/** The document the verification browser renders. */
+export function buildVerificationDocument(remediationCode: string): string {
+  const csp = `<meta http-equiv="Content-Security-Policy" content="${VERIFICATION_CSP}">`;
+
+  if (/<head[\s>]/i.test(remediationCode)) {
+    return remediationCode.replace(/<head([^>]*)>/i, `<head$1>${csp}`);
+  }
+  if (/<html[\s>]/i.test(remediationCode)) {
+    return remediationCode.replace(/<html([^>]*)>/i, `<html$1><head>${csp}</head>`);
+  }
+  if (/<(body|title)[\s>]/i.test(remediationCode)) {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8">${csp}<title>Fix verification</title></head><body>${remediationCode}</body></html>`;
+  }
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">${csp}<title>Fix verification</title></head><body>${remediationCode}</body></html>`;
+}
+
+/**
+ * A browser context that untrusted markup cannot use to reach the network:
+ * every HTTP request is aborted, every WebSocket is closed and service workers
+ * are blocked.
+ */
+export async function createVerificationContext(browser: Browser): Promise<BrowserContext> {
+  const context = await browser.newContext({ serviceWorkers: 'block' });
+  await context.route('**/*', route => route.abort());
+  // WebSocket traffic does not go through the HTTP route interception: it needs
+  // its own handler, otherwise untrusted markup can open a socket to an internal
+  // endpoint.
+  await context.routeWebSocket('**/*', ws => {
+    ws.close();
+  });
+  return context;
 }
 
 /** Chromium locations that are usable when Playwright's own browser is not installed. */
@@ -77,6 +119,49 @@ export function resolveChromiumExecutable(): string | undefined {
 
 /** Hard deadline for one verification run (render + axe). */
 const VERIFICATION_TIMEOUT_MS = 15_000;
+
+/** Deadline for a whole verification batch (all fixes of one request). */
+const VERIFICATION_BATCH_DEADLINE_MS = 60_000;
+
+/**
+ * How many verification batches (Chromium instances) may run at the same time.
+ * The per-request cap and the per-user rate limit bound one request; this
+ * bounds the service, because every member of an organization may open a PR.
+ */
+const MAX_CONCURRENT_VERIFICATIONS = 2;
+
+/** How long a request may wait for a free verification slot. */
+const VERIFICATION_QUEUE_TIMEOUT_MS = 30_000;
+
+let activeVerifications = 0;
+const verificationQueue: Array<() => void> = [];
+
+/** Take a verification slot. False when the queue stayed full for too long. */
+async function acquireVerificationSlot(): Promise<boolean> {
+  if (activeVerifications < MAX_CONCURRENT_VERIFICATIONS) {
+    activeVerifications++;
+    return true;
+  }
+  // Wait for a free slot. The slot is handed over by releaseVerificationSlot.
+  return new Promise<boolean>(resolve => {
+    const grant = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      const index = verificationQueue.indexOf(grant);
+      if (index !== -1) verificationQueue.splice(index, 1);
+      resolve(false);
+    }, VERIFICATION_QUEUE_TIMEOUT_MS);
+    verificationQueue.push(grant);
+  });
+}
+
+function releaseVerificationSlot(): void {
+  const next = verificationQueue.shift();
+  if (next) next(); // hand the slot over, the count stays the same
+  else activeVerifications--;
+}
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -105,23 +190,35 @@ function chromiumArgs(): string[] {
 async function runRuleInBrowser(
   browser: Browser,
   remediationCode: string,
-  ruleId: string
+  ruleId: string,
+  originalVisibleText: string
 ): Promise<RuleVerdict> {
   if (!AXE_SOURCE) throw new Error('axe-core source unavailable');
 
-  const context = await browser.newContext();
-  // The rendered snippet is untrusted markup: no request may leave the browser
-  // (no remote images, no beacons, no SSRF through the verification run).
-  await context.route('**/*', route => route.abort());
+  const context = await createVerificationContext(browser);
   const page = await context.newPage();
   page.setDefaultTimeout(VERIFICATION_TIMEOUT_MS);
   try {
     await withTimeout(
-      page.setContent(toDocument(remediationCode), { waitUntil: 'domcontentloaded' }),
+      page.setContent(buildVerificationDocument(remediationCode), { waitUntil: 'domcontentloaded' }),
       VERIFICATION_TIMEOUT_MS,
       'rendering the fix'
     );
     await page.addScriptTag({ content: AXE_SOURCE });
+
+    // The rendered text is what the user sees. When the original element showed
+    // text, the patched element has to show text too — a fix that moves the text
+    // into a hidden element passes axe and deletes what the user reads.
+    if (originalVisibleText) {
+      const renderedText = await page.evaluate(() => document.body.innerText.trim());
+      if (!renderedText) {
+        return {
+          fired: true,
+          evaluated: true,
+          detail: 'the patched element no longer shows any visible text',
+        };
+      }
+    }
 
     const summary = await withTimeout(
       page.evaluate(async (rule: string) => {
@@ -327,30 +424,63 @@ export async function verifyFixes(
     return results;
   }
 
-  const { browser, error } = await launchBrowser();
-  if (!browser) {
-    const reason = `verification browser unavailable: ${error}`;
+  // The whole browser phase holds one slot of the global verification
+  // semaphore: at most MAX_CONCURRENT_VERIFICATIONS batches (Chromium
+  // instances) run at the same time, however many requests arrive.
+  const slot = await acquireVerificationSlot();
+  if (!slot) {
     for (const fix of safe) {
-      record(fix, { status: 'unverified', confidence: null, reason });
+      record(fix, {
+        status: 'unverified',
+        confidence: null,
+        reason: `verification queue stayed full for ${VERIFICATION_QUEUE_TIMEOUT_MS}ms`,
+      });
     }
     return results;
   }
-
   try {
-    for (const fix of safe) {
-      try {
-        const verdict = await runRuleInBrowser(browser, fix.remediationCode, fix.ruleId);
-        record(fix, verdictToResult(verdict));
-      } catch (err) {
-        record(fix, {
-          status: 'unverified',
-          confidence: null,
-          reason: `verification could not run: ${err instanceof Error ? err.message : String(err)}`,
-        });
+    const { browser, error } = await launchBrowser();
+    if (!browser) {
+      const reason = `verification browser unavailable: ${error}`;
+      for (const fix of safe) {
+        record(fix, { status: 'unverified', confidence: null, reason });
       }
+      return results;
+    }
+
+    const deadline = Date.now() + VERIFICATION_BATCH_DEADLINE_MS;
+
+    try {
+      for (const fix of safe) {
+        if (Date.now() > deadline) {
+          record(fix, {
+            status: 'unverified',
+            confidence: null,
+            reason: `verification batch exceeded its ${VERIFICATION_BATCH_DEADLINE_MS}ms budget`,
+          });
+          continue;
+        }
+        try {
+          const verdict = await runRuleInBrowser(
+            browser,
+            fix.remediationCode,
+            fix.ruleId,
+            visibleTextContent(fix.elementHtml ?? '')
+          );
+          record(fix, verdictToResult(verdict));
+        } catch (err) {
+          record(fix, {
+            status: 'unverified',
+            confidence: null,
+            reason: `verification could not run: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        }
+      }
+    } finally {
+      await browser.close().catch(() => {});
     }
   } finally {
-    await browser.close().catch(() => {});
+    releaseVerificationSlot();
   }
 
   return results;
