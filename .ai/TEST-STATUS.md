@@ -5,9 +5,9 @@ Last run: 2026-11-21 (authenticated scans cycle)
 ## Vitest
 
 ```
-Test Files  44 passed (44)
-Tests       407 passed (407)
-Duration    ~12.9s
+Test Files  45 passed (45)
+Tests       410 passed (410)
+Duration    ~11.0s
 ```
 
 New coverage in this cycle:
@@ -63,10 +63,29 @@ prisma migrate diff fresh DB → schema.prisma    → "No difference detected"
 prisma migrate diff dev DB   → schema.prisma    → "No difference detected"
 ```
 
+## Playwright E2E
+
+```
+npx playwright test --project=chromium   → 70 passed, 9 failed (7.7 min)
+```
+
+All 9 failures are **pre-existing** — none of the failed specs touch a path changed in this
+cycle, and the failing surfaces (CSS tokens, landing page, settings privacy tab) were not
+modified by these commits (`git diff a91e18e..HEAD -- src/app/globals.css src/app/page.tsx
+src/app/settings` is empty).
+
+| Failing spec | Root cause |
+|---|---|
+| `a11y.spec.ts` dashboard + violations (2) | axe contrast: `#e62b34` (coral) on `#0d0d0d` / `#261415` at 12px normal → 4.4:1 and 3.98:1, required 4.5:1. The token was last changed in `425cd37` (V20). |
+| `contrast.spec.ts` dashboard/projects/violations light + dark (6) | Same coral token against the light and dark surface tokens. |
+| `landing.spec.ts` start button (1) | Stale expectation: the landing page intentionally routes authenticated visitors to `/dashboard` (`src/app/page.tsx:25`), but the spec expects `/auth/login` while the whole chromium project runs with an authenticated storage state. |
+| `settings.spec.ts` privacy tab (1) | The privacy tab no longer contains the expected “Export My Data / Data Region / EU” copy on first paint. |
+
+Follow-up opened in `.ai/TASKS.md` (contrast token pass + e2e expectation repair). The APIs
+touched in this cycle (scan-auth, onboarding) are covered by vitest contract tests instead.
+
 ## Not run (blocked)
 
-- Playwright E2E — needs the dev server on :3000; the touched API paths are covered by vitest
-  route tests instead.
 - k6 load suites — need the full running stack.
 - Strix pentest — CLI/cloud not installed in this environment (manual review recorded in
   `.ai/SECURITY-STATUS.md`).
