@@ -1,5 +1,6 @@
 // GitHub integration for AccessGuard
 import { Octokit } from '@octokit/rest';
+import type { FileFixViolation } from '@/lib/github-pr';
 
 // Check if GitHub is configured
 export function isGitHubConfigured(): boolean {
@@ -195,7 +196,8 @@ export async function applyFixesToRepository(
   const filesModified: Array<{ path: string; fixesApplied: number }> = [];
   let fixesAppliedTotal = 0;
 
-  const { applyFixesToFile } = await import('@/lib/github-pr');
+  const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate } = await import('@/lib/github-pr');
+  const { locateElement } = await import('@/lib/ast-patch');
 
   // List source files in the default branch tree
   const { data: tree } = await octokit.git.getTree({ owner, repo, tree_sha: ref, recursive: '1' });
@@ -205,36 +207,64 @@ export async function applyFixesToRepository(
 
   if (sourceFiles.length === 0) return { filesModified, fixesAppliedTotal };
 
-  for (const violation of violations.slice(0, 10)) {
-    if (!violation.remediationCode || !violation.elementHtml) continue;
+  // One fetch per file: the content is cached so several fixes can land in the same
+  // file without the later write overwriting the earlier fix.
+  const contentCache = new Map<string, string>();
+  const assignments = new Map<string, FileFixViolation[]>();
+  const localOccurrence = new Map<string, number>();
+
+  const candidates = violations.filter(v => v.remediationCode && v.elementHtml);
+
+  for (const violation of candidates) {
+    if (!validateFixCandidate(violation).valid) continue;
 
     for (const file of sourceFiles) {
       if (!file.path) continue;
-      try {
-        const { data } = await octokit.repos.getContent({ owner, repo, path: file.path, ref });
-        if (!('content' in data)) continue;
 
-        const original = Buffer.from(data.content, 'base64').toString('utf8');
-        const result = applyFixesToFile(original, [violation], file.path);
-
-        if (result.fixesApplied > 0) {
-          await createFile(
-            token,
-            owner,
-            repo,
-            file.path,
-            result.content,
-            `fix(a11y): ${violation.ruleId}`,
-            branch
-          );
-          filesModified.push({ path: file.path, fixesApplied: result.fixesApplied });
-          fixesAppliedTotal += result.fixesApplied;
-          break;
+      let original = contentCache.get(file.path);
+      if (original === undefined) {
+        try {
+          const { data } = await octokit.repos.getContent({ owner, repo, path: file.path, ref });
+          if (!('content' in data)) continue;
+          original = Buffer.from(data.content, 'base64').toString('utf8');
+          contentCache.set(file.path, original);
+        } catch {
+          // Skip files that fail to fetch
+          continue;
         }
-      } catch {
-        // Skip files that fail to fetch or write
       }
+
+      const key = `${file.path}::${fixOccurrenceKey(violation)}`;
+      const occurrence = localOccurrence.get(key) ?? 0;
+      const location = locateElement(original, file.path, violation.elementHtml!, occurrence);
+      if (!location) continue;
+
+      const list = assignments.get(file.path) ?? [];
+      list.push(violation);
+      assignments.set(file.path, list);
+      localOccurrence.set(key, occurrence + 1);
+      break;
     }
+  }
+
+  for (const [path, list] of assignments) {
+    const original = contentCache.get(path);
+    if (original === undefined) continue;
+
+    const result = applyFixesToFile(original, list, path);
+    if (result.fixesApplied <= 0) continue;
+
+    await createFile(
+      token,
+      owner,
+      repo,
+      path,
+      result.content,
+      `fix(a11y): ${list[0].ruleId}`,
+      branch
+    );
+    filesModified.push({ path, fixesApplied: result.fixesApplied });
+    fixesAppliedTotal += result.fixesApplied;
   }
 
   return { filesModified, fixesAppliedTotal };

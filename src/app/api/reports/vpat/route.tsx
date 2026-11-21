@@ -4,6 +4,7 @@ import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Font, Image } from '@react-pdf/renderer';
 import { logger } from '@/lib/error-logger';
 import { requireProjectAccess } from '@/lib/rbac';
+import { generateVPATData, VPAT_CONFORMANCE_LABELS, type VPATData } from '@/lib/vpat-generator';
 
 Font.register({
   family: 'Helvetica',
@@ -18,6 +19,7 @@ const styles = StyleSheet.create({
   headerLeft: { flex: 1 },
   title: { fontSize: 20, fontWeight: 'bold', color: '#1f2937' },
   subtitle: { fontSize: 10, color: '#6b7280', marginTop: 3 },
+  draftLabel: { fontSize: 9, fontWeight: 'bold', color: '#b45309', marginTop: 4 },
   logo: { width: 50, height: 50, objectFit: 'contain', marginLeft: 10 },
   section: { marginBottom: 15 },
   sectionTitle: { fontSize: 12, fontWeight: 'bold', color: '#1f2937', marginBottom: 8, backgroundColor: '#dbeafe', padding: 6 },
@@ -26,10 +28,11 @@ const styles = StyleSheet.create({
   tableRow: { flexDirection: 'row', borderBottom: '1px solid #e5e7eb', padding: 5 },
   tableRowAlt: { flexDirection: 'row', borderBottom: '1px solid #e5e7eb', padding: 5, backgroundColor: '#f8fafc' },
   tableCell: { fontSize: 8 },
+  remarks: { fontSize: 7, color: '#4b5563' },
   supports: { color: '#16a34a', fontWeight: 'bold' },
   partial: { color: '#ca8a04', fontWeight: 'bold' },
   notSupport: { color: '#dc2626', fontWeight: 'bold' },
-  na: { color: '#6b7280' },
+  notEvaluated: { color: '#6b7280' },
   footer: { position: 'absolute', bottom: 30, left: 40, right: 40, borderTop: '1px solid #e5e7eb', paddingTop: 10, fontSize: 7, color: '#9ca3af', textAlign: 'center' },
   summaryBox: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 10 },
   summaryItem: { alignItems: 'center', padding: 8, backgroundColor: '#f3f4f6', borderRadius: 4, width: '22%' },
@@ -37,69 +40,12 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 8, color: '#6b7280', marginTop: 2 },
 });
 
-const WCAG_CRITERIA: Array<{ id: string; level: string; name: string }> = [
-  { id: '1.1.1', level: 'A', name: 'Non-text Content' },
-  { id: '1.2.1', level: 'A', name: 'Audio-only and Video-only (Prerecorded)' },
-  { id: '1.2.2', level: 'A', name: 'Captions (Prerecorded)' },
-  { id: '1.2.3', level: 'A', name: 'Audio Description or Media Alternative (Prerecorded)' },
-  { id: '1.2.4', level: 'AA', name: 'Captions (Live)' },
-  { id: '1.2.5', level: 'AA', name: 'Audio Description (Prerecorded)' },
-  { id: '1.3.1', level: 'A', name: 'Info and Relationships' },
-  { id: '1.3.2', level: 'A', name: 'Meaningful Sequence' },
-  { id: '1.3.3', level: 'A', name: 'Sensory Characteristics' },
-  { id: '1.3.4', level: 'AA', name: 'Orientation' },
-  { id: '1.3.5', level: 'AA', name: 'Identify Input Purpose' },
-  { id: '1.4.1', level: 'A', name: 'Use of Color' },
-  { id: '1.4.2', level: 'A', name: 'Audio Control' },
-  { id: '1.4.3', level: 'AA', name: 'Contrast (Minimum)' },
-  { id: '1.4.4', level: 'AA', name: 'Resize Text' },
-  { id: '1.4.5', level: 'AA', name: 'Images of Text' },
-  { id: '1.4.10', level: 'AA', name: 'Reflow' },
-  { id: '1.4.11', level: 'AA', name: 'Non-text Contrast' },
-  { id: '1.4.12', level: 'AA', name: 'Text Spacing' },
-  { id: '1.4.13', level: 'AA', name: 'Content on Hover or Focus' },
-  { id: '2.1.1', level: 'A', name: 'Keyboard' },
-  { id: '2.1.2', level: 'A', name: 'No Keyboard Trap' },
-  { id: '2.1.4', level: 'A', name: 'Character Key Shortcuts' },
-  { id: '2.2.1', level: 'A', name: 'Timing Adjustable' },
-  { id: '2.2.2', level: 'A', name: 'Pause, Stop, Hide' },
-  { id: '2.3.1', level: 'A', name: 'Three Flashes or Below Threshold' },
-  { id: '2.4.1', level: 'A', name: 'Bypass Blocks' },
-  { id: '2.4.2', level: 'A', name: 'Page Titled' },
-  { id: '2.4.3', level: 'A', name: 'Focus Order' },
-  { id: '2.4.4', level: 'A', name: 'Link Purpose (In Context)' },
-  { id: '2.4.5', level: 'AA', name: 'Multiple Ways' },
-  { id: '2.4.6', level: 'AA', name: 'Headings and Labels' },
-  { id: '2.4.7', level: 'AA', name: 'Focus Visible' },
-  { id: '2.5.1', level: 'A', name: 'Pointer Gestures' },
-  { id: '2.5.2', level: 'A', name: 'Pointer Cancellation' },
-  { id: '2.5.3', level: 'A', name: 'Label in Name' },
-  { id: '2.5.4', level: 'A', name: 'Motion Actuation' },
-  { id: '3.1.1', level: 'A', name: 'Language of Page' },
-  { id: '3.1.2', level: 'AA', name: 'Language of Parts' },
-  { id: '3.2.1', level: 'A', name: 'On Focus' },
-  { id: '3.2.2', level: 'A', name: 'On Input' },
-  { id: '3.2.3', level: 'AA', name: 'Consistent Navigation' },
-  { id: '3.2.4', level: 'AA', name: 'Consistent Identification' },
-  { id: '3.3.1', level: 'A', name: 'Error Identification' },
-  { id: '3.3.2', level: 'A', name: 'Labels or Instructions' },
-  { id: '3.3.3', level: 'AA', name: 'Error Suggestion' },
-  { id: '3.3.4', level: 'AA', name: 'Error Prevention (Legal, Financial, Data)' },
-  { id: '4.1.1', level: 'A', name: 'Parsing' },
-  { id: '4.1.2', level: 'A', name: 'Name, Role, Value' },
-  { id: '4.1.3', level: 'AA', name: 'Status Messages' },
-];
-
-function getConformanceLevel(violations: Array<{ wcagCriteria: string | null; severity: string }>, criterionId: string): { level: string; label: string; count: number } {
-  const matching = violations.filter(v => v.wcagCriteria === criterionId);
-  if (matching.length === 0) return { level: 'na', label: 'Not Applicable', count: 0 };
-  const hasCritical = matching.some(v => v.severity === 'critical');
-  const hasSerious = matching.some(v => v.severity === 'serious');
-  const count = matching.length;
-  if (hasCritical || hasSerious) return { level: 'not-support', label: 'Does Not Support', count };
-  if (count > 2) return { level: 'partial', label: 'Partially Supports', count };
-  return { level: 'supports', label: 'Supports', count };
-}
+const CONFORMANCE_STYLE: Record<string, string> = {
+  supports: 'supports',
+  'partially-supports': 'partial',
+  'does-not-support': 'notSupport',
+  'not-evaluated': 'notEvaluated',
+};
 
 function VPATDocument({ data }: { data: {
   organization: string;
@@ -107,16 +53,17 @@ function VPATDocument({ data }: { data: {
   productVersion: string;
   reportDate: string;
   logoUrl?: string;
-  violations: Array<{ wcagCriteria: string | null; severity: string }>;
-  summary: { totalViolations: number; criteriaViolated: number };
+  vpat: VPATData;
 } }) {
+  const { vpat } = data;
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.title}>Voluntary Product Accessibility Template</Text>
-            <Text style={styles.subtitle}>WCAG 2.1 AA Conformance Report</Text>
+            <Text style={styles.subtitle}>{vpat.meta.standard} Conformance Report</Text>
+            <Text style={styles.draftLabel}>DRAFT - human review required</Text>
           </View>
           {data.logoUrl && (
             // eslint-disable-next-line jsx-a11y/alt-text -- PDF image (react-pdf) has no alt support
@@ -148,53 +95,44 @@ function VPATDocument({ data }: { data: {
           <Text style={styles.sectionTitle}>Conformance Summary</Text>
           <View style={styles.summaryBox}>
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#16a34a' }]}>
-                {WCAG_CRITERIA.filter(c => getConformanceLevel(data.violations, c.id).level === 'supports').length}
-              </Text>
-              <Text style={styles.summaryLabel}>Supported</Text>
+              <Text style={[styles.summaryValue, { color: '#16a34a' }]}>{vpat.summary.supports}</Text>
+              <Text style={styles.summaryLabel}>Supports</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#ca8a04' }]}>
-                {WCAG_CRITERIA.filter(c => getConformanceLevel(data.violations, c.id).level === 'partial').length}
-              </Text>
-              <Text style={styles.summaryLabel}>Partial</Text>
+              <Text style={[styles.summaryValue, { color: '#ca8a04' }]}>{vpat.summary.partiallySupports}</Text>
+              <Text style={styles.summaryLabel}>Partially Supports</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#dc2626' }]}>
-                {WCAG_CRITERIA.filter(c => getConformanceLevel(data.violations, c.id).level === 'not-support').length}
-              </Text>
-              <Text style={styles.summaryLabel}>Not Supported</Text>
+              <Text style={[styles.summaryValue, { color: '#dc2626' }]}>{vpat.summary.doesNotSupport}</Text>
+              <Text style={styles.summaryLabel}>Does Not Support</Text>
             </View>
             <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, { color: '#6b7280' }]}>
-                {WCAG_CRITERIA.filter(c => getConformanceLevel(data.violations, c.id).level === 'na').length}
-              </Text>
-              <Text style={styles.summaryLabel}>N/A</Text>
+              <Text style={[styles.summaryValue, { color: '#6b7280' }]}>{vpat.summary.notEvaluated}</Text>
+              <Text style={styles.summaryLabel}>Not Evaluated</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>WCAG 2.1 AA Conformance Table</Text>
+          <Text style={styles.sectionTitle}>{vpat.meta.standard} Conformance Table</Text>
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderCell, { width: '10%' }]}>Criteria</Text>
-            <Text style={[styles.tableHeaderCell, { width: '10%' }]}>Level</Text>
-            <Text style={[styles.tableHeaderCell, { width: '50%' }]}>Name</Text>
-            <Text style={[styles.tableHeaderCell, { width: '15%' }]}>Conformance</Text>
-            <Text style={[styles.tableHeaderCell, { width: '15%' }]}>Issues</Text>
+            <Text style={[styles.tableHeaderCell, { width: '8%' }]}>Level</Text>
+            <Text style={[styles.tableHeaderCell, { width: '30%' }]}>Name</Text>
+            <Text style={[styles.tableHeaderCell, { width: '16%' }]}>Conformance</Text>
+            <Text style={[styles.tableHeaderCell, { width: '36%' }]}>Remarks</Text>
           </View>
-          {WCAG_CRITERIA.map((criterion, i) => {
-            const conformance = getConformanceLevel(data.violations, criterion.id);
-            const levelClass = conformance.level === 'supports' ? styles.supports :
-              conformance.level === 'partial' ? styles.partial :
-              conformance.level === 'not-support' ? styles.notSupport : styles.na;
+          {vpat.criteria.map((criterion, i) => {
+            const levelClass = styles[CONFORMANCE_STYLE[criterion.conformance] ?? 'notEvaluated'];
             return (
               <View key={criterion.id} style={i % 2 === 0 ? styles.tableRow : styles.tableRowAlt}>
                 <Text style={[styles.tableCell, { width: '10%' }]}>{criterion.id}</Text>
-                <Text style={[styles.tableCell, { width: '10%' }]}>{criterion.level}</Text>
-                <Text style={[styles.tableCell, { width: '50%' }]}>{criterion.name}</Text>
-                <Text style={[styles.tableCell, { width: '15%' }, levelClass]}>{conformance.label}</Text>
-                <Text style={[styles.tableCell, { width: '15%' }]}>{conformance.count || '-'}</Text>
+                <Text style={[styles.tableCell, { width: '8%' }]}>{criterion.level}</Text>
+                <Text style={[styles.tableCell, { width: '30%' }]}>{criterion.name}</Text>
+                <Text style={[styles.tableCell, { width: '16%' }, levelClass]}>
+                  {VPAT_CONFORMANCE_LABELS[criterion.conformance]}
+                </Text>
+                <Text style={[styles.remarks, { width: '36%' }]}>{criterion.remarks}</Text>
               </View>
             );
           })}
@@ -204,7 +142,10 @@ function VPATDocument({ data }: { data: {
           <Text>
             Generated by AccessGuard VPAT Generator • {data.reportDate}
             {'\n'}
-            This VPAT documents accessibility conformance based on automated testing results.
+            DRAFT - human review required. This draft reflects automated test results only.
+            Criteria marked "Not Evaluated" were not assessed by the automated scan and
+            require manual testing. A final Accessibility Conformance Report must be
+            completed and signed by the organization before it is used for procurement.
           </Text>
         </View>
       </Page>
@@ -226,25 +167,19 @@ export async function GET(request: NextRequest) {
 
     const project = await db.project.findUnique({
       where: { id: projectId },
-      include: {
-        organization: true,
-        scans: {
-          include: { violations: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
+      include: { organization: true },
     });
 
     if (!project) {
       return NextResponse.json({ success: false, error: 'Project not found' }, { status: 404 });
     }
 
-    const scan = project.scans[0];
-    const violations = scan?.violations || [];
     const orgSettings = project.organization?.settings ? JSON.parse(project.organization.settings) : {};
 
-    const criteriaViolated = new Set(violations.map(v => v.wcagCriteria).filter(Boolean)).size;
+    // One generator for every VPAT surface: the PDF, the API and onboarding all read
+    // the same conformance and remarks, so a criterion that was never assessed is
+    // reported as not evaluated instead of being ruled out of scope.
+    const vpat = await generateVPATData(projectId);
 
     const reportData = {
       organization: project.organization?.name || 'Unknown',
@@ -252,11 +187,7 @@ export async function GET(request: NextRequest) {
       productVersion: '1.0',
       reportDate: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
       logoUrl: orgSettings.logoUrl,
-      violations: violations.map(v => ({ wcagCriteria: v.wcagCriteria, severity: v.severity })),
-      summary: {
-        totalViolations: violations.length,
-        criteriaViolated,
-      },
+      vpat,
     };
 
     const { renderToBuffer } = await import('@react-pdf/renderer');
@@ -269,7 +200,9 @@ export async function GET(request: NextRequest) {
         action: 'vpat_generated',
         metadata: JSON.stringify({
           projectId: project.id,
-          violationCount: violations.length,
+          criteriaCount: vpat.criteria.length,
+          notEvaluated: vpat.summary.notEvaluated,
+          draft: true,
         }),
       },
     });
@@ -277,7 +210,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="vpat-${project.id}.pdf"`,
+        'Content-Disposition': `attachment; filename="vpat-${project.id}-draft.pdf"`,
       },
     });
   } catch (error) {

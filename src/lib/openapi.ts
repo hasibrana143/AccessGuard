@@ -965,7 +965,7 @@ const paths: Record<string, PathItem> = {
   '/github/create-pr': {
     post: authed(op({
       tags: ['GitHub'],
-      summary: 'Create PR with applied fixes (writes summary + fix files)',
+      summary: 'Create PR with verified fixes (each fix is re-scanned with axe; only verified fixes are applied)',
       requestBody: {
         required: true,
         content: JSON_CONTENT({ $ref: '#/components/schemas/CreatePrRequest' }),
@@ -2593,9 +2593,31 @@ const schemas = {
   PrResult: {
     type: 'object',
     properties: {
-      prUrl: { type: 'string' },
-      branch: { type: 'string' },
-      summary: { type: 'string' },
+      success: { type: 'boolean' },
+      data: {
+        type: 'object',
+        properties: {
+          prUrl: { type: 'string' },
+          prNumber: { type: 'string' },
+          branchName: { type: 'string' },
+          filesCreated: { type: 'integer' },
+          violationsUpdated: { type: 'integer' },
+          verifiedFixes: { type: 'integer' },
+          skippedLowConfidence: { type: 'integer' },
+          skippedUnverified: { type: 'integer' },
+          filesModified: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                path: { type: 'string' },
+                fixesApplied: { type: 'integer' },
+              },
+            },
+          },
+          fixesAppliedTotal: { type: 'integer' },
+        },
+      },
     },
   },
   CheckoutRequest: {

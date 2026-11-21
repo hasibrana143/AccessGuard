@@ -89,6 +89,70 @@ describe('applyFixesToFile', () => {
     expect(result.fixesApplied).toBe(0);
     expect(result.content).toContain('AccessGuard Accessibility Fixes');
   });
+
+  it('patches the nth occurrence of the same element', () => {
+    const original = '<html><body><img src="a.jpg"><img src="a.jpg"></body></html>';
+    const result = applyFixesToFile(original, [
+      { ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="First">' },
+      { ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="Second">' },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(2);
+    expect(result.content).toContain('alt="First"');
+    expect(result.content).toContain('alt="Second"');
+  });
+
+  it('patches two different elements of the same rule independently', () => {
+    const original = '<html><body><img src="a.jpg"><img src="b.jpg"></body></html>';
+    const result = applyFixesToFile(original, [
+      { ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' },
+      { ruleId: 'image-alt', elementHtml: '<img src="b.jpg">', remediationCode: '<img src="b.jpg" alt="B">' },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(2);
+    expect(result.content).toContain('src="a.jpg" alt="A"');
+    expect(result.content).toContain('src="b.jpg" alt="B"');
+  });
+
+  it('rejects a fix that still contains a placeholder', () => {
+    const original = '<html><body><img src="a.jpg"></body></html>';
+    const result = applyFixesToFile(original, [
+      { ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="TODO: describe">' },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.errors[0]).toContain('placeholder');
+  });
+
+  it('does not count an unchanged file as a fix', () => {
+    const original = '<html><body><img src="a.jpg" alt="A"></body></html>';
+    const result = applyFixesToFile(original, [
+      { ruleId: 'image-alt', elementHtml: '<img src="a.jpg" alt="A">', remediationCode: '<img src="a.jpg" alt="A">' },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.errors[0]).toContain('no-op');
+  });
+
+  it('patches a JSX element through the AST even when the DOM HTML differs', () => {
+    const original = 'export const Card = () => <img src="hero.jpg" />;';
+    const result = applyFixesToFile(original, [
+      { ruleId: 'image-alt', elementHtml: '<img src="hero.jpg">', remediationCode: '<img src="hero.jpg" alt="Hero">' },
+    ], 'Card.tsx');
+
+    expect(result.fixesApplied).toBe(1);
+    expect(result.content).toBe('export const Card = () => <img src="hero.jpg" alt="Hero" />;');
+  });
+
+  it('discards a patch that would break the file', () => {
+    const original = 'export const Card = () => <img src="hero.jpg" />;';
+    const result = applyFixesToFile(original, [
+      { ruleId: 'image-alt', elementHtml: '<img src="hero.jpg">', remediationCode: '<img src="hero.jpg" alt="x">}' },
+    ], 'Card.tsx');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.errors[0]).toContain('no longer parses');
+  });
 });
 
 describe('createFixBranchName', () => {

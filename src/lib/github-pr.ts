@@ -3,6 +3,12 @@
 
 import type { Severity } from '@/types';
 import { validateFixForRule } from '@/lib/fix-validation';
+import {
+  buildReplacement,
+  containsPlaceholder,
+  hasSyntaxErrors,
+  locateElement,
+} from '@/lib/ast-patch';
 
 // Flexible violation type that works with both strict types and Prisma results
 export type ViolationForPR = {
@@ -200,6 +206,34 @@ export function validateRemediation(
   return { valid: true };
 }
 
+/**
+ * Full pre-flight for a fix: injection safety, placeholder rejection and the
+ * per-rule check that the remediation addresses the rule it claims to fix.
+ */
+export function validateFixCandidate(v: FileFixViolation): { valid: boolean; reason?: string } {
+  if (!v.remediationCode) return { valid: false, reason: 'empty remediation code' };
+
+  const validation = validateRemediation(v.remediationCode, v.elementHtml);
+  if (!validation.valid) return { valid: false, reason: validation.reason };
+
+  if (containsPlaceholder(v.remediationCode)) {
+    return { valid: false, reason: 'remediation still contains a placeholder' };
+  }
+
+  const ruleCheck = validateFixForRule(v.ruleId, v.remediationCode, v.elementHtml);
+  if (!ruleCheck.valid) return { valid: false, reason: `does not fix rule: ${ruleCheck.reason}` };
+
+  return { valid: true };
+}
+
+/**
+ * Occurrences are counted per rule AND per element, so three copies of the same
+ * image are patched one by one while two different images are patched independently.
+ */
+export function fixOccurrenceKey(v: { ruleId: string; elementHtml?: string | null }): string {
+  return `${v.ruleId}::${v.elementHtml ?? ''}`;
+}
+
 // Apply fixes to file content
 export function applyFixesToFile(
   originalContent: string,
@@ -207,22 +241,17 @@ export function applyFixesToFile(
   filePath: string
 ): { content: string; fixesApplied: number; errors: string[] } {
   const errors: string[] = [];
-  let content = originalContent;
-  let fixesApplied = 0;
   const unmatched: FileFixViolation[] = [];
+  const occurrenceByKey = new Map<string, number>();
+  const targets: Array<{ start: number; end: number; replacement: string }> = [];
+  const claimed: Array<{ start: number; end: number }> = [];
 
   for (const v of violations) {
     if (!v.remediationCode) continue;
 
-    const validation = validateRemediation(v.remediationCode, v.elementHtml);
+    const validation = validateFixCandidate(v);
     if (!validation.valid) {
       errors.push(`[${v.ruleId}] skipped: ${validation.reason}`);
-      continue;
-    }
-
-    const ruleCheck = validateFixForRule(v.ruleId, v.remediationCode, v.elementHtml);
-    if (!ruleCheck.valid) {
-      errors.push(`[${v.ruleId}] skipped (does not fix rule): ${ruleCheck.reason}`);
       continue;
     }
 
@@ -231,24 +260,43 @@ export function applyFixesToFile(
       continue;
     }
 
-    // 1. Exact match replacement
-    if (content.includes(v.elementHtml)) {
-      content = content.replace(v.elementHtml, v.remediationCode);
-      fixesApplied++;
+    const key = fixOccurrenceKey(v);
+    const occurrence = occurrenceByKey.get(key) ?? 0;
+    const location = locateElement(originalContent, filePath, v.elementHtml, occurrence);
+    if (!location) {
+      unmatched.push(v);
+      continue;
+    }
+    occurrenceByKey.set(key, occurrence + 1);
+
+    const originalElement = originalContent.slice(location.start, location.end);
+    const replacement = buildReplacement(filePath, v.remediationCode);
+    if (replacement.trim() === originalElement.trim()) {
+      errors.push(`[${v.ruleId}] skipped: patch is identical to the original element (no-op)`);
+      continue;
+    }
+    if (claimed.some(c => location.start < c.end && location.end > c.start)) {
+      errors.push(`[${v.ruleId}] skipped: target element was already patched`);
       continue;
     }
 
-    // 2. Trimmed match (leading/trailing whitespace differences)
-    const trimmedElem = v.elementHtml.trim();
-    const trimmedFix = v.remediationCode.trim();
-    if (trimmedElem && content.includes(trimmedElem)) {
-      content = content.replace(trimmedElem, trimmedFix);
-      fixesApplied++;
-      continue;
-    }
-
-    unmatched.push(v);
+    claimed.push(location);
+    targets.push({ ...location, replacement });
   }
+
+  // Splice from the end so earlier offsets stay valid.
+  let content = originalContent;
+  for (const target of [...targets].sort((a, b) => b.start - a.start)) {
+    content = content.slice(0, target.start) + target.replacement + content.slice(target.end);
+  }
+
+  if (targets.length > 0 && hasSyntaxErrors(content, filePath)) {
+    errors.push('patched file no longer parses; all patches discarded');
+    content = originalContent;
+    targets.length = 0;
+  }
+
+  const fixesApplied = targets.length;
 
   // Fallback for violations we could not apply: attach review comments at the top
   if (unmatched.length > 0) {

@@ -18,7 +18,8 @@ interface RemediationRequest extends RemediationPromptInput {
 export interface RemediationResult {
   remediationCode: string;
   explanation: string;
-  confidence: number;
+  /** AI self-reported confidence; null for template fixes (never fabricated). */
+  confidence: number | null;
   source: 'llm' | 'template';
   model: string | null;
   usage: ModelUsage | null;
@@ -78,7 +79,9 @@ function templateResult(violation: RemediationRequest): RemediationResult {
   return {
     remediationCode: fix.remediationCode,
     explanation: `${fix.explanation} Rule: ${rule.name} (${violation.wcagCriteria}).`,
-    confidence: 0.5,
+    // A template fix carries no AI confidence. It is never fabricated: eligibility is
+    // decided later by axe verification, not by this number.
+    confidence: null,
     source: 'template',
     model: null,
     usage: null,

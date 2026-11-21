@@ -67,6 +67,10 @@ jobs:
 
       - run: npm run lint
 
+      # Chromium is installed before the unit suite: the fix-verification tests run
+      # axe in a real browser.
+      - run: npx playwright install --with-deps chromium
+
       - run: npx vitest run --coverage
         env:
           DATABASE_URL: postgresql://accessguard:accessguard_secret@localhost:5432/accessguard_test
@@ -76,8 +80,6 @@ jobs:
       - run: npm run build
 
       - run: npm audit --audit-level=high
-
-      - run: npx playwright install --with-deps chromium
 
       - run: npm run test:e2e
         env:

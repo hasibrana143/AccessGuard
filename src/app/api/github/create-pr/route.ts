@@ -18,6 +18,15 @@ import {
   generatePrBody,
   type ViolationForPR,
 } from '@/lib/github-pr';
+import {
+  MIN_FIX_CONFIDENCE,
+  passesConfidenceGate,
+  verifyFixes,
+} from '@/lib/fix-verification';
+
+// The gate reads verification confidence. An unknown (null) confidence never passes.
+// Re-exported for existing importers.
+export { MIN_FIX_CONFIDENCE } from '@/lib/fix-verification';
 
 // Type for violation with project
 type ViolationWithProject = {
@@ -40,9 +49,6 @@ type ViolationWithProject = {
   fixedAt: Date | null;
   project: { name: string; url: string };
 };
-
-// Only apply fixes the AI is confident about (WCAG fixes are risky when uncertain)
-export const MIN_FIX_CONFIDENCE = 0.7;
 
 // Helper to convert Prisma result to ViolationForPR
 function toViolationForPR(v: ViolationWithProject): ViolationForPR {
@@ -107,20 +113,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Filter only violations with remediation code and sufficient AI confidence
-    const violationsWithFixes = violations.filter(v => v.remediationCode && (v.aiConfidenceScore === null || v.aiConfidenceScore >= MIN_FIX_CONFIDENCE));
+    // Only violations that carry a remediation can be verified and applied.
+    const violationsWithCode = violations.filter(v => v.remediationCode);
 
-    const skippedLowConfidence = violations.filter(v => v.remediationCode && v.aiConfidenceScore !== null && v.aiConfidenceScore < MIN_FIX_CONFIDENCE).length;
-
-    if (violationsWithFixes.length === 0) {
-      const hasAnyFixes = violations.some(v => v.remediationCode);
+    if (violationsWithCode.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: hasAnyFixes
-            ? 'Selected violations have low AI confidence for auto-fixing. Regenerate fixes or select different violations.'
-            : 'No violations have remediation code. Generate fixes first.',
-          skippedLowConfidence,
+          error: 'No violations have remediation code. Generate fixes first.',
+          skippedLowConfidence: 0,
+          skippedUnverified: 0,
         },
         { status: 400 }
       );
@@ -192,6 +194,43 @@ export async function POST(request: NextRequest) {
     // Get repository details including default branch
     const repoDetails = await getRepositoryDetails(githubToken, owner, repo);
     const defaultBranch = repoDetails?.defaultBranch || 'main';
+
+    // Verification decides what may be applied: axe is re-run on each patched element.
+    // A fix that cannot be verified (no browser, or a rule that cannot be evaluated in
+    // isolation) never reaches the repository.
+    const verification = await verifyFixes(
+      violationsWithCode.map(v => ({
+        id: v.id,
+        ruleId: v.ruleId,
+        remediationCode: v.remediationCode as string,
+      }))
+    );
+
+    const violationsWithFixes = violationsWithCode.filter(v =>
+      passesConfidenceGate(verification.get(v.id)?.confidence ?? null)
+    );
+    const skippedLowConfidence = violationsWithCode.filter(v => {
+      const confidence = verification.get(v.id)?.confidence ?? null;
+      return confidence !== null && confidence < MIN_FIX_CONFIDENCE;
+    }).length;
+    const skippedUnverified = violationsWithCode.filter(
+      v => (verification.get(v.id)?.confidence ?? null) === null
+    ).length;
+
+    if (violationsWithFixes.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            skippedUnverified > 0
+              ? 'Fix verification could not run for the selected fixes (no browser available, or the rule cannot be evaluated in isolation).'
+              : 'Selected fixes did not pass verification: axe still reports the violation on the patched element.',
+          skippedLowConfidence,
+          skippedUnverified,
+        },
+        { status: 400 }
+      );
+    }
 
     // Create branch name
     const branchName = customBranch || createFixBranchName('accessibility-fixes');
@@ -286,7 +325,9 @@ export async function POST(request: NextRequest) {
         branchName,
         filesCreated: violationsWithFixes.length + 1, // +1 for summary
         violationsUpdated: violationIds.length,
+        verifiedFixes: violationsWithFixes.length,
         skippedLowConfidence,
+        skippedUnverified,
         filesModified,
         fixesAppliedTotal,
       },
@@ -320,6 +361,12 @@ function generateSummaryFile(violations: ViolationWithProject[], sourceFixesAppl
     lines.push('### Files Changed');
     lines.push('');
   }
+
+  lines.push('## Verification');
+  lines.push('');
+  lines.push('- Every fix in this PR was re-scanned with axe-core on the patched element before the PR was opened.');
+  lines.push('- Fixes that could not be verified were excluded from this PR.');
+  lines.push('');
 
   lines.push('## Issues by Severity');
   lines.push('');

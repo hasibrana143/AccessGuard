@@ -174,7 +174,7 @@ const SECTION508_MAPPING: Record<string, string[]> = {
   '3.3.8': ['508.3.3.8', '508.4.9.6'],
 };
 
-interface VPATCriterion {
+export interface VPATCriterion {
   id: string;
   level: string;
   name: string;
@@ -184,6 +184,15 @@ interface VPATCriterion {
   section508Refs?: string[];
   manualCheckId?: string;
 }
+
+/** Human readable conformance labels. "Not Evaluated" is the only honest label for
+ * a criterion that automated testing did not assess - never "Not Applicable". */
+export const VPAT_CONFORMANCE_LABELS: Record<VPATCriterion['conformance'], string> = {
+  supports: 'Supports',
+  'partially-supports': 'Partially Supports',
+  'does-not-support': 'Does Not Support',
+  'not-evaluated': 'Not Evaluated',
+};
 
 interface VPATSummary {
   supports: number;
