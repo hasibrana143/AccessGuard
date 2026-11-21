@@ -1,6 +1,48 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-22 (third-review closure cycle)
+Last run: 2026-11-22 (fourth-review closure)
+
+## Fourth-review closure evidence
+
+| Check | Result |
+|---|---|
+| `npx vitest run --coverage` | PASS — 52 shipped files, 605/605 tests, 0 failed |
+| Coverage | PASS — statements 62.88% (threshold 55) · branches 54.46% (50) · functions 64.91% (58) · lines 64.26% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0 |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+| Reviewer exploit reproductions (re-run on the fixed tree) | PASS — 12/12 blocked; the temporary reproduction file was deleted afterwards |
+| GitHub Markdown API (4-M1 bare URL) | PASS — the escaped URL renders as plain text; the control renders as a live link |
+| Docker image gate | PASS — run 44955598091 completed ✅ (Trivy step passes) |
+
+### New coverage in this cycle
+
+| File | Covers |
+|---|---|
+| `src/lib/__tests__/github-pr.test.ts` | the named-entity CSS overlay (4-H1), a style value that carries an entity / escape / comment, a remediation with a brace (4-H3 JSX), the alternate HTML comment terminator `--!>` (4-H2), `plaintext` (4-M2), the resource loaders `video`/`audio`/`source`/`track`/`input[type=image]` (4-M3), the GFM bare-URL autolink (4-M1), the swapped remediations of two selected copies (4-M8), the reduced label (4-M7), the quote escape into a file without a proven context |
+| `src/lib/__tests__/ast-patch.test.ts` | the live-tag scanner (an element in a comment, in a script block or in an attribute value is not live — 4-M9), the patchable-file rule (HTML/JSX only), `opacity:0` hides content, the root element's own hidden state, the replacement has to keep the original text (4-M6/4-M7) |
+| `src/lib/__tests__/github.test.ts` | a file the API returns with `encoding:'none'` is unreadable and makes the scan incomplete (4-M4), the omitted source extensions are scanned (4-M5), a file without a proven context is not patched (4-H3), an element inside a comment is not patched (4-M9), the swapped remediations are not written (4-M8) |
+
+The reviewer's exact payloads were re-run as a temporary suite before the permanent
+regressions were written: all twelve are blocked. The temporary file was deleted
+afterwards and the shipped suite runs 52 files.
+
+## Fourth independent security-review evidence
+
+| Check | Result |
+|---|---|
+| Temporary review reproductions | PASS as an evidence harness — 2 files, 32/32 tests. The exploit cases assert that the unsafe behavior reproduces; the exact third-review cases assert that the unsafe write is blocked |
+| `npx vitest run --reporter=dot` (with review files) | PASS — 54 files, 612/612 tests |
+| `npx vitest run --reporter=dot` (after review-file deletion) | PASS — 52 shipped files, 580/580 tests |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0 |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npm audit --audit-level=high --json` | PASS — Critical 0, High 0, Moderate 15, Low 0 |
+| Security gate | **FAIL — Critical 0, High 3, Medium 9, Low 0**; see `.ai/SECURITY-STATUS.md` |
+
+The two temporary files were deleted after the run. No shipped source was changed.
 
 ## Third-review closure evidence
 

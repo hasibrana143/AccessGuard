@@ -2,15 +2,47 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 third review closure + CI repair** 🟡 |
-| Current task | All seven findings of the third independent review are fixed and their reproductions are blocked; the fourth independent review is running, and the Docker image gate is re-run after the SARIF severity fix |
+| Current phase | **SECURITY FIX LOOP — V23 fifth-review verification** 🟡 |
+| Current task | Fifth independent review of the fourth-review closure; the 3 High and 9 Medium findings are fixed, gated and documented |
 | Owner | CTO agent |
-| Status | AMBER — the fixes are green on every local gate (580 tests, coverage, build); the release verdict waits for the fourth independent review and the green Docker proof run |
-| Blocked | Strix autonomous pentest (every provider refused the run — quota / EOL model / no credits). No Strix evidence exists for this cycle |
-| Next action | Take the fourth review verdict, then commit (code → `.ai/` state → `docs/VOLUMES.md`) and push to `origin/main` |
-| Last verification | 2026-11-22 — fix cycle: tsc 0, lint 0, vitest 580/580, coverage above the gate, build 0, Playwright (see `.ai/TEST-STATUS.md`); reviewer reproductions re-run: 5/5 blocked |
+| Status | AMBER — the fourth review's **all 12 findings are fixed** and the gate suite is green; the release gate is not yet closed because a fifth independent review has not returned READY |
+| Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
+| Next action | Run the fifth independent security review against the closed tree; release only on a READY verdict |
+| Last verification | 2026-11-22 — fourth-review closure: tsc 0, lint 0, vitest 52 files/605 tests, coverage 62.88/54.46/64.91/64.26, build 0, Playwright 79/79, npm audit High 0/Critical 0, all 12 reviewer payloads blocked |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-22, fourth-review closure)
+
+| Check | Result |
+|---|---|
+| Fourth independent V23 security review | **NOT READY — Critical 0, High 3, Medium 9, Low 0**; every finding is now fixed, see the disposition table in `.ai/SECURITY-STATUS.md` |
+| Reviewer exploit reproductions (re-run on the fixed tree) | PASS — 12/12 blocked: named-entity CSS overlay, `--!>` comment breakout, JSX/TS source injection, GFM bare-URL autolink, `plaintext`, the resource loaders, `encoding:none`, the omitted `.mjs` scan, `opacity:0`, the label reduction, the swapped remediations, the commented element |
+| `npx vitest run --coverage` | PASS — 52 shipped files, 605/605 tests |
+| Coverage | PASS — statements 62.88% (threshold 55) · branches 54.46% (50) · functions 64.91% (58) · lines 64.26% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0 |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
+| GitHub Markdown API (bare-URL evidence) | PASS — the escaped URL renders as plain text; the control renders as a live link |
+| Docker image gate | **PASS — run 44955598091 completed ✅** on `8afc55a`; the Trivy step passes with `limit-severities-for-sarif: true` and the pinned scanner `v0.76.2` |
+| Temporary-file cleanup | PASS — the temporary reproduction file was deleted; the shipped suite runs 52 files |
+
+## Evidence (2026-11-22, fourth independent security review)
+
+| Check | Result |
+|---|---|
+| Fourth independent V23 security review | **NOT READY — Critical 0, High 3, Medium 9, Low 0**; working outputs and attempted variants are in `.ai/SECURITY-STATUS.md` |
+| Review exploit reproductions | **FAIL** — 4-H1 named-entity CSS overlay, 4-H2 `--!>` comment breakout, 4-H3 JSX/TS source injection and nine Medium equivalent paths reproduce |
+| Temporary review suite | PASS as an evidence harness — 2 files, 32/32 tests; the unsafe cases assert the exploit and the exact cases assert the write is blocked |
+| `npx vitest run` (with review files) | PASS — 54 files, 612/612 tests |
+| `npx vitest run` (after review-file deletion) | PASS — 52 shipped files, 580/580 tests |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0 |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npm audit --audit-level=high --json` | PASS — Critical 0, High 0, Moderate 15, Low 0 |
+| Temporary-file cleanup | PASS — both `tmp-security-review.test.ts` files deleted; no source change remained |
 
 ## Evidence (2026-11-22, third review closure + CI repair)
 

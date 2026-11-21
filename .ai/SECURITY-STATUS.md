@@ -2,16 +2,127 @@
 
 Last verification: 2026-11-22
 
+## Fourth independent security review (2026-11-22)
+
+**Verdict: NOT READY — Critical 0, High 3, Medium 9, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree is **not releasable** until the three
+High findings below are fixed and their working reproductions are blocked.
+
+The requested baseline was `456d375`, but a concurrent process committed the
+review fixes while this review was running. The final results below were
+re-run against the actual tree at `8afc55a` (`456d375..8afc55a` changes the
+five reviewed source modules, their tests and CI/docs). No shipped source was
+changed by this reviewer. All attacks were local, used synthetic data and
+mocked GitHub writes, and touched no production or third-party target.
+
+### Reproduced findings
+
+| ID | Severity | Surface | Working reproduction and observed result | Root cause / impact |
+|---|---|---|---|---|
+| 4-H1 | **High** | Overlay-style safety | `<img id="overlay" src="x" alt="A" style="position&sol;&ast;x*&sol;:fixed;width:100%;height:100%">` → validation `valid:true`, axe confidence `1`, `fixesApplied:1`, repository write `index.html / 1`; Chromium computed `position:fixed`, `width:1280px`, `height:720px`. | The browser decodes the complete HTML entity set before CSS parsing, but the checker's named-entity table omits `ast`. The checker therefore sees `position/&ast;x*/` while Chromium sees `position/*x*/` and resolves `position:fixed`. A full-viewport overlay can be written into customer source. |
+| 4-H2 | **High** | Untrusted source comment | A violation description containing `evil --!> <script>globalThis.__repositoryCommentBreakout = true</script>` → the review comment written into `index.html` contained both `--!>` and `<script>`; Chromium executed the script (`__repositoryCommentBreakout === true`). | `neutralizeCommentTerminator()` removes only the literal `-->`. HTML parsers also accept `--!>` as a comment end, so untrusted text closes the generated comment and turns the remainder into active markup in the customer repository. |
+| 4-H3 | **High** | Source-language context | TSX: `<div role="button">Hello{globalThis.__jsxInjection = true}</div>` → validation `valid:true`, axe confidence `1`, `fixesApplied:1`, repository write `Card.tsx / 1`; rendering the component set `__jsxInjection === true`. TS: `<div role="button">Hello';globalThis.__tsInjection = true;//</div>` → `valid:true`, `fixesApplied:1`; executing the written module set `__tsInjection === true`. | Remediation is validated as HTML, then inserted into JSX or a TypeScript string without validating the destination lexical context. Braces and quote/line-comment escapes become executable customer code. |
+| 4-M1 | Medium | Markdown injection | `escapeMarkdownText('https://evil.test/phishing')` → GitHub's Markdown API returned `href="https://evil.test/phishing"`. The same escaped prose is used for attacker-controlled descriptions in the PR body and fix document. | The Markdown escaper does not neutralize GFM bare-URL autolinks. The exact code-span selector injection is closed, but untrusted prose can still create a live attacker-controlled link. |
+| 4-M2 | Medium | Active/raw-text element safety | `<img src="x" alt="A"><plaintext></plaintext>` → validation `valid:true`, axe confidence `1`, `fixesApplied:1`; Chromium reported `buttonCount:0` and rendered the later `<button>Continue</button>` as plain text. | `plaintext` is absent from the active-tag list. Its browser parsing semantics consume the rest of the customer document, so one accepted remediation can remove the remaining UI. |
+| 4-M3 | Medium | Customer-side remote resource loading | Accepted `video`, `audio` and `input[type=image]` elements reached a local HTTP server; `source` and `track` are accepted as well. The verification browser blocks the request, but the accepted markup issues the request when the customer repository is served. | The active-tag list does not reject resource-loader elements and the HTTP(S) URI allowlist does not distinguish an unchanged customer resource from a newly introduced attacker/internal URL. The result is a client-side tracking and internal-network request primitive after merge. |
+| 4-M4 | Medium | Complete source scan | `getContent` for `a.html` returned `{content:'', encoding:'none'}` while `b.html` contained the target → `filesModified:[{path:'b.html',fixesApplied:1}]` and one GitHub write. | The reader treats the presence of `content` as readable content. GitHub uses `encoding:'none'` when the Contents API cannot inline a large file; the empty value was cached as a successfully scanned file, so uniqueness was not proven. |
+| 4-M5 | Medium | Complete source scan / file set | A tree containing `app.mjs` and `index.html`, both with the same target → only `index.html` was fetched and patched. `app.mjs` was silently outside the scan. | The source extension allowlist omits common source extensions (`.mjs`; the same family includes `.cjs`, `.mts` and `.cts`). A duplicate in an omitted file can make the remaining match look unique. |
+| 4-M6 | Medium | Visible-content preservation | `<button><span>Read more</span></button>` → `<button><span style="opacity:0">Read more</span></button>` → `preservesVisibleContent:true`, `fixesApplied:1`; Chromium computed `opacity:0` and the accessible button name remained `Read more`. | The static guard only recognizes `hidden`, `display:none` and `visibility:hidden`; the verification gate checks `innerText`, which still contains opacity-zero text. The label can be made visually invisible while passing both gates. |
+| 4-M7 | Medium | Visible-content preservation | `<button>Read more</button>` → `<button>R</button>` → axe confidence `1`, `fixesApplied:1`; the page body became `R`. | The guard only asks whether any replacement text exists. It does not preserve the original label, so almost all user-visible meaning can be removed while the fix is reported as verified and applied. |
+| 4-M8 | Medium | Wrong occurrence | Two selected identical `<img src="same.jpg">` elements with remediations `Second` then `First` → `fixesApplied:2`; the first occurrence received `Second` and the second received `First`. | When every duplicate is selected, occurrence identity is still assigned from request order. The writer does not consume `elementSelector`, and the route's database query has no deterministic occurrence order, so the remediation can land on the wrong copy. |
+| 4-M9 | Medium | Wrong target / applied counter | `<!-- <img src="a.jpg"> -->` → `fixesApplied:1` and the comment contained the patched image, but Chromium found `img` count `0`. | The plain-HTML locator is substring-based and does not exclude comments. A non-live target is patched and reported as applied, overstating the fix and leaving the real violation unchanged. |
+
+### Exact findings and required variants re-run
+
+| Original item | Current-tree result |
+|---|---|
+| H1 — CSS-escaped full-viewport overlay | **BLOCKED before write**: validation is false and `applyFixesToFile` applies 0 fixes. Direct CSS comments, numeric entities and the standard escape variants are also blocked. The named-entity variant above remains open. |
+| H2 — `frame`/`frameset` remote document | **BLOCKED before write**: validation is false, 0 fixes, no frame written. `portal`, `fencedframe` and `math` are blocked. The raw-text and remote-loader variants above remain open. |
+| M1 — backtick selector injection | **BLOCKED**: the PR body and fix document were rendered through GitHub's Markdown API and contained neither `href="https://a.test"` nor `>x</a>`. Sized inline-code fences and adversarial backtick runs are blocked. GFM bare-URL autolinking remains open as 4-M1. |
+| M2 — truncated tree and unreadable file | **BLOCKED before write**: both reproductions produce `filesModified:[]` and no GitHub write. The `encoding:none` and omitted-extension variants remain open as 4-M4/4-M5. |
+| M3 — `aria-hidden` label deletion | **BLOCKED**: the exact replacement is rejected, 0 fixes are applied and `Read more` remains. The opacity and label-reduction variants remain open as 4-M6/4-M7. |
+| M4 — audit write failure | **PASS against the stated acceptance criterion**: `createAuditLogWithRetry` makes exactly 3 attempts with 250 ms and 500 ms delays. The route honestly reports `auditRecorded:false` after exhaustion. Residual risk: the PR still exists without an audit row when the database remains unavailable; this is not counted as a new finding because retry was the required closure. |
+| M5 — one selected occurrence among two duplicates | **BLOCKED before a source patch**: 0 fixes; both elements remain unchanged and the fallback is a review comment. When both duplicates are selected, request-order and comment-target variants remain open as 4-M8/4-M9. |
+
+### Verification evidence
+
+| Command / check | Result |
+|---|---|
+| `npx vitest run src/lib/__tests__/tmp-security-review.test.ts src/app/api/github/create-pr/__tests__/tmp-security-review.test.ts --reporter=verbose` | exit 0 — 2 files, 32/32 review reproductions passed. A passing reproduction asserts that the unsafe behavior is still present; the exact H1/H2/M1–M5 cases assert that the write is blocked. |
+| `npx vitest run --reporter=dot` (with the two temporary review files) | exit 0 — 54 files, 612/612 tests passed. |
+| `npx vitest run --reporter=dot` (after temporary-file deletion) | exit 0 — 52 shipped files, 580/580 tests passed. |
+| `npx tsc -p tsconfig.check.json --noEmit` | exit 0. |
+| `npm run lint` | exit 0. |
+| `npm run build` | exit 0 — Next 16.4.6 compiled successfully and generated 116 static pages. |
+| `npm audit --audit-level=high --json` | exit 0 — Critical 0, High 0, Moderate 15, Low 0. |
+| Tracked-file secret scan | 771 tracked text files scanned without printing values. No live secret was found. One AWS-key-shaped string is a documentation example under `.openclaw/skills/`; no `.env`, key, PEM, credential or service-account JSON file is tracked. |
+| GitHub Markdown API | `gh api markdown --method POST --input -` returned HTTP 200 for every adversarial PR/fix rendering. |
+
+### OWASP/security-surface disposition for this scoped pass
+
+| Surface | Result |
+|---|---|
+| Injection / XSS | **FAIL** — 4-H1 through 4-H3 reproduce in Chromium or by executing the written customer source. |
+| SSRF / network isolation | Verification isolation remains blocked for the exact H2 path; **FAIL at the customer-repository boundary** because 4-M3 can introduce customer-side requests. |
+| Auth / session / CSRF / OAuth / cookies / CORS / headers | No changed code in these surfaces in this scoped review; not independently re-audited in this pass. The reviewed route continues to use the existing verified-email RBAC guard. |
+| SQL injection | The reviewed route uses Prisma parameters and no raw SQL; no SQLi reproduction was found in scope. |
+| Command injection / uploads | No shell execution or upload path exists in the reviewed module; no reproduction was attempted outside scope. |
+| Rate limits / resource bounds | The existing request cap, per-user rate limit and two-browser semaphore were unchanged; no new concurrency reproduction was found in this pass. |
+| RBAC / tenant isolation | The route scopes violations through `project.orgId = auth.user.orgId`; no cross-tenant bypass was reproduced in the reviewed path. |
+| Audit trail | Retry semantics pass the stated criterion; the persistent-database-failure residual is recorded above. |
+| Dependencies / secrets | `npm audit` has no High/Critical finding; the tracked-file scan found no live secret. |
+
+### Untested / out of scope
+
+- No production, third-party or public target was scanned; live GitHub writes were mocked. No Strix finding is claimed.
+- No full Playwright E2E, coverage, Docker image/SBOM, multi-instance concurrency or container-Chromium run was performed in this pass.
+- GitHub Markdown rendering was tested through GitHub's API, but no pull request was opened and no GitHub repository was mutated.
+- Vue/Svelte/Angular framework event-directive execution was not run in a framework runtime; the finding count relies on the reproduced JSX and TypeScript source-context executions.
+- This was a focused V23 verified-fix/GitHub-writer audit, not a fresh full-product review of authentication, session lifecycle, CSRF, OAuth, CORS, uploads, SQLi or command injection.
+
+### Cleanup
+
+Both temporary review files were deleted. Immediately after deletion,
+`git status --short` showed only the pre-existing `.ai/DEPLOYMENT.md` change; no
+temporary test or source change remained. This report and the accompanying
+state/report updates are documentation-only changes made by the reviewer.
+
+### Fourth-review closure (2026-11-22)
+
+All twelve findings of the fourth review are fixed. Each fix is a **root-cause**
+fix in the shared code, not a payload-specific block, and each has a permanent
+regression test that fails on the old code.
+
+| ID | Root cause | Fix |
+|---|---|---|
+| 4-H1 | The overlay check decoded the attribute with a **partial** named-entity table, so an entity the table did not know (`&ast;`) was read as literal text while the browser resolved it as a CSS comment | The style check no longer decodes entities at all: a style value that carries an **entity (`&`), a CSS escape (`\`) or a CSS comment (`/*`)** is **rejected**. A partial table cannot mirror the browser, so the value is not guessed (`src/lib/github-pr.ts`, `checkStyleAttribute`) |
+| 4-H2 | `neutralizeCommentTerminator` neutralized only `-->`; an HTML comment also ends at `--!>` | Both terminators are neutralized (`-->`, `--!>`) |
+| 4-H3 | The remediation was validated as HTML and then written into a JSX file or a TypeScript string without a destination-lexical check | A remediation may not contain a **brace** (it opens a JSX expression and a template interpolation). A fix is only written into a file whose destination context can be **proven**: an HTML file or a JSX file. A TypeScript module or a mixed component file (`.ts`, `.mts`, `.cts`, `.vue`, `.svelte`, `.astro`) has no proven context — the element text can sit inside a string or an expression — so the fix ships as a **review suggestion**. JSX attribute values additionally escape `&` and `"` so a value cannot break out of the attribute |
+| 4-M1 | GFM autolinks a bare URL without any Markdown syntax, so escaping Markdown syntax was not enough | `escapeMarkdownText` neutralizes the scheme of a URL (`https&#58;//`, `www&#46;`). Verified against GitHub's own Markdown API: the escaped text renders as plain text, the control still renders as a live link |
+| 4-M2 | `plaintext` was missing from the active-tag list | `plaintext`, `xmp`, `listing`, `noscript` and `noembed` were added to the list |
+| 4-M3 | Resource-loader elements were accepted | `video`, `audio`, `source`, `track` and `input[type=image]` are rejected |
+| 4-M4 | `encoding:'none'` was cached as a successfully scanned (empty) file | `encoding:'none'` counts as **unreadable** → the scan is incomplete → nothing is patched |
+| 4-M5 | The source-extension allowlist omitted `.mjs`/`.cjs`/`.mts`/`.cts` | The scan covers `html, htm, tsx, jsx, ts, js, mjs, cjs, mts, cts, vue, svelte, astro`. Files that are scanned but never patched still count, so a duplicate in one of them keeps the remaining match ambiguous |
+| 4-M6 | The static visibility guard knew `hidden`, `display:none` and `visibility:hidden`; `opacity:0` keeps the text in the DOM, so the rendered-text check does not catch it | `opacity:0` counts as hidden in the static guard (CSS and JSX-object form) and the **root element's** own hidden state is checked, not only its children |
+| 4-M7 | The guard asked only whether the replacement had *any* text | The replacement has to **keep** the original text (normalized, case-insensitive): "Read more" → "R" is rejected. A replacement that keeps the text next to more text is accepted |
+| 4-M8 | The occurrence identity came from the request order, which is not the occurrence order | Two selected copies of the same element with **different** remediations cannot be mapped at all, so they stay review suggestions (`conflictingRemediationKeys`) |
+| 4-M9 | The HTML locator was substring-based and matched markup inside a comment | A **live-tag scanner** (`liveTagStarts`) excludes markup inside a comment (both terminators), inside a raw-text element (`script`, `style`, `textarea`, `title`, `xmp`, `plaintext`, `noscript`) and inside another tag's attribute value. Such an element is neither patched nor counted |
+
+The reviewer's exact payloads were re-run as a temporary suite after the fixes:
+all twelve are blocked, and the temporary file was deleted afterwards. The
+permanent regression tests are in `src/lib/__tests__/github-pr.test.ts`,
+`src/lib/__tests__/ast-patch.test.ts` and `src/lib/__tests__/github.test.ts`.
+
 ## Third independent security review (2026-11-22)
 
 **Verdict: NOT READY — Critical 0, High 2, Medium 5.** The READY gate requires
 Critical 0 and High 0, so this tree is **not releasable** until both High findings
 are fixed and the reproductions below pass again.
 
-> **Status: every finding below is fixed and the reproductions were re-run
-> against the fixed tree (all blocked).** A fourth independent review verifies
-> the fix; its verdict is recorded in the section below and in
-> `.ai/FINAL-REPORT.md`.
+> **Status: the literal third-review findings below were fixed and their exact
+> reproductions were blocked.** The fourth independent review then found
+> equivalent paths that remain open; its verdict is recorded in the section
+> above and in `.ai/FINAL-REPORT.md`.
 
 Requested baseline: `dbd7927`. The reviewed application source was unchanged in
 `dbd7927..456d375`; the only scoped-file difference was the Docker runner's npm
@@ -58,10 +169,11 @@ were deleted after the run.
 | M4 | `createAuditLogWithRetry()` retries the audit write (3 attempts, growing delay) before the route reports a missing trail (`src/lib/audit.ts`) | Regression test in `src/lib/__tests__/audit-retry.test.ts`; the route test asserts the retried call. |
 | M5 | A fix is only written when every occurrence of its element in the file is covered by a selected fix (`countElementOccurrences` in `src/lib/ast-patch.ts`, the selected-per-key count in `applyFixesToFile`) | The reproduction now applies 0 fixes; the two source elements stay untouched and the fix is offered as a review comment. Regression test in `src/lib/__tests__/github-pr.test.ts`. |
 
-Two further defects of the same class were found while fixing the above and are
-fixed as well: the review comment written into a customer file neutralizes the
-comment terminator (untrusted text could close the comment and become code), and
-the summary file escapes the rule id and encodes the file name.
+Two further defects of the same class were found while fixing the above. The
+summary file now escapes the rule id and encodes the file name. The review
+comment originally neutralized the literal `*/` / `-->` terminator; the fourth
+review reproduced HTML's alternate `--!>` terminator, so comment neutralization
+is **not closed** (4-H2 above).
 
 ### Verification evidence
 
@@ -162,10 +274,11 @@ marked and were closed by the re-review fix above.
 |---|---|---|
 | The Docker image runs Chromium as root, so the OS sandbox is disabled there | 🟡 MEDIUM | The verification document carries a restrictive CSP, the context aborts every HTTP request and closes every WebSocket, only validated markup is rendered, every run has a deadline, and the route is rate limited. Running the container as a non-root user is the follow-up (it also needs the Chromium sandbox packages). |
 | Verification is rule-level on the remediation snippet, not on the patched file | 🟠 HIGH | Accepted by design: the customer's build is not available to the service. The patched file is re-parsed (syntax guard), ambiguous matches are left to a human, and the PR states exactly what was verified. |
-| The element is located by content, not by a source map from the scanned URL | 🟡 MEDIUM | The whole tree is scanned under a byte budget; a match that is not unique is treated as ambiguous and is not patched. The source-map mapping is on the roadmap. |
+| The element is located by content, not by a source map from the scanned URL | 🟠 HIGH | **Accepted after the fourth-review closure:** the scan is complete (every source extension, an unreadable file makes it incomplete, a truncated tree makes it incomplete, a byte budget bounds it) and only a **live tag** counts, so uniqueness is proven within what was scanned. A stable source-map identity remains the real fix and is on the roadmap. |
 | The AST is re-parsed per fix and per file | 🟢 LOW | Bounded by the 60 s batch budget and the 5 MB scan budget. Caching the parsed AST per file is on the roadmap. |
 | A repository larger than the scan budget is never patched in place | 🟢 LOW | A complete scan is required to prove uniqueness; a tree that does not fit stays a review suggestion. Reported as `fixesWithoutArtifact` / a review file, never as a silent patch. |
-| A fix whose element occurs more times in the file than the selected fixes is not patched at all | 🟡 MEDIUM | The fixes are matched to the occurrences in order, so the mapping to a specific occurrence is only provable when every occurrence is covered. Selecting one of two identical elements therefore stays a review suggestion instead of patching the wrong one. A source map from the scanned URL would make the mapping exact. |
+| Two selected copies of the same element with different remediations cannot be mapped | 🟢 LOW | **Closed after the fourth review:** the request order is not an occurrence identity, so such fixes stay review suggestions and the source is never patched with a swapped remediation (4-M8). |
+| A fix is never written into a TypeScript module or a mixed component file | 🟢 LOW | **Accepted:** the element text can sit inside a string or an expression there, so the destination context cannot be proven. The fix ships as a review suggestion and the file is still scanned, so a duplicate in it keeps the remaining match ambiguous (4-H3). |
 
 ## Dependency audit
 
@@ -179,7 +292,7 @@ Critical: 0 · High: 0 · Moderate: 15 (dev-toolchain only)
 | Scanner | Where it runs | Status |
 |---|---|---|
 | `npm audit --audit-level=high` | local + CI (`.github/workflows/ci.yml`) | pass — Critical 0, High 0 |
-| Independent security-engineer review of the V23 diff | local (CTO loop) | run four times: the first pass returned NOT READY (High 3) and all findings were fixed; the **re-review of that hardening** returned NOT READY (High 2, Medium 7, Low 1) — every finding fixed and covered by regression tests; the **third review** returned NOT READY (High 2, Medium 5) — every finding fixed and the reproductions re-run (all blocked); a **fourth review** verifies the fixes (see the verdict in `.ai/FINAL-REPORT.md`) |
+| Independent security-engineer review of the V23 diff | local (CTO loop) | run four times: the first pass returned NOT READY (High 3) and all findings were fixed; the **re-review of that hardening** returned NOT READY (High 2, Medium 7, Low 1) — every finding fixed and covered by regression tests; the **third review** returned NOT READY (High 2, Medium 5) — every finding fixed and the exact reproductions blocked; the **fourth review** returned **NOT READY (High 3, Medium 9)** with 32 working reproductions |
 | Independent QA-engineer review of the V23 diff | local (CTO loop) | run once: 3 reproduced P0 defects, all fixed and covered by tests |
 | Strix autonomous pentest (OSS CLI 1.6.2) | local (CTO loop) | **BLOCKED — the scan did not run.** The CLI is installed and the target was a sanitized export of the commit (no `.env` in the sandbox), but every configured provider refused the run: the default Gemini free tier is quota-exhausted (429, retry in ~14 h), NVIDIA's `meta/llama-3.3-70b-instruct` returns 410 Gone (model end-of-life 2026-08-26), and the OpenAI key has no credits left. No Strix finding exists for this cycle — do not cite Strix as evidence. Re-run it when a provider has quota. CI wiring has the same gap: the step needs an LLM secret the repository does not have, so it is not added rather than added broken. |
 
@@ -226,6 +339,7 @@ Upgrades applied for the published advisories:
 - Strix pentest — the CLI is installed but every configured provider refused the run
   (quota exhausted / model end-of-life / no credits). The independent reviews above
   cover the changed code paths; no Strix finding exists for this cycle.
-- The fourth independent review of the third review's fixes is the last open item;
-  its verdict is recorded in `.ai/FINAL-REPORT.md`. Until it returns, the tree is
-  **not** claimed to be READY.
+- The fourth independent review returned **NOT READY (High 3, Medium 9)**. The
+  exact third-review cases remain blocked, but equivalent paths are open. The
+  fix loop and a new independent review are required before the tree can be
+  claimed READY.

@@ -33,6 +33,30 @@ pass fixed what the fix actually exposed.
 The load-test job was not among the three red pipelines (it runs on a weekly
 cron); it carried the same defect and was fixed with it.
 
+### The SARIF severity behaviour, from the action's own source
+
+`aquasecurity/trivy-action@v0.36.0` — `entrypoint.sh`:
+
+```sh
+# Handle SARIF
+if [ "${TRIVY_FORMAT:-}" = "sarif" ]; then
+  if [ "${INPUT_LIMIT_SEVERITIES_FOR_SARIF:-false}" != "true" ]; then
+    echo "Building SARIF report with all severities"
+    unset TRIVY_SEVERITY      # <- the filter is dropped, so the exit code counts everything
+  else
+    echo "Building SARIF report"
+  fi
+fi
+```
+
+The input exists in the action (`action.yaml`: `limit-severities-for-sarif`) and
+is exported as `INPUT_LIMIT_SEVERITIES_FOR_SARIF`. With it set to `true`,
+`TRIVY_SEVERITY=CRITICAL,HIGH` survives into the scan, so only HIGH and CRITICAL
+fail the job and appear in the SARIF report. The scanner is pinned to
+`v0.76.2` (the action's default is `v0.70.0`, which has the path traversal
+advisories GHSA-mcj4-mphf-j9ff and GHSA-8rc5-4fr6-64pw); the Trivy release
+tag `v0.76.2` exists.
+
 ## Image scan — what the gate found
 
 The first successful scan of the image (2026-11-22) reported:
@@ -47,6 +71,24 @@ remaining 8 findings are MEDIUM and live in the dev-toolchain tree
 (`minimatch`, `glob`, `fast-copy`, `@vitest/mocker`) plus one in the npm bundle.
 The gate itself is unchanged: Trivy fails the job on HIGH/CRITICAL and the
 results are uploaded to code scanning as SARIF.
+
+## The proof run (2026-11-22)
+
+All four workflows are green on `8afc55a`:
+
+| Run | Workflow | Result |
+|---|---|---|
+| 44955597980 | CI | ✅ success |
+| 44955597965 | Deploy | ✅ success |
+| 44955597959 | AccessGuard Scan | ✅ success |
+| 44955598091 | Docker | ✅ success — the Trivy step passes with the severity filter restored |
+
+The Docker run is the proof for the image gate: it builds the multi-arch image,
+pushes it, scans it with Trivy `v0.76.2` (the exit code now counts HIGH/CRITICAL
+only, because `limit-severities-for-sarif: true` keeps `TRIVY_SEVERITY` alive in
+SARIF mode) and uploads the SARIF report. The 8 remaining MEDIUM findings are
+uploaded as `warning` alerts; the code-scanning dashboard shows 0 High and 0
+Critical open alerts.
 
 ## Local environment
 

@@ -1,15 +1,17 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + third-review closure + CI repair** · Date: 2026-11-22 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + fourth-review closure** · Date: 2026-11-22 · Owner: CTO agent
 
 ## What shipped
 
 The four P0 "make the product true" gaps from `.ai/PRODUCT-CRITIQUE-DEEP.md` are closed.
-The first V23 cut was reviewed three times: the first review found seven more defects
+The first V23 cut was reviewed four times: the first review found seven more defects
 (3 reproduced P0 defects, 3 High, 4 Medium, 1 Low), the **re-review of that hardening
-found 2 High, 7 Medium, 1 Low**, and the **third review found 2 High, 5 Medium** —
-every round closed the literal reproductions while an equivalent path stayed open.
-Every finding of all three rounds is fixed and covered by a regression test.
+found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, and the
+**fourth review of the third-review fixes found 3 High, 9 Medium** — every round closed
+the literal reproductions while an equivalent path stayed open. **All four rounds of
+findings are now fixed and covered by regression tests**; the release gate waits for a
+fifth independent review to return READY.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -17,6 +19,26 @@ Every finding of all three rounds is fixed and covered by a regression test.
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Fourth-review closure (2026-11-22)
+
+All twelve findings of the fourth review are fixed. Each fix is a root-cause fix in
+the shared code with a permanent regression test:
+
+| Finding | Severity | Fix |
+|---|---|---|
+| 4-H1 — a named-entity CSS overlay bypassed the style check (the entity table was partial) | High | A style value that carries an **entity, a CSS escape or a CSS comment** is rejected outright — a partial table cannot mirror what the browser resolves |
+| 4-H2 — HTML's alternate `--!>` comment terminator | High | Both terminators (`-->`, `--!>`) are neutralized in the untrusted text |
+| 4-H3 — a remediation validated as HTML was inserted into a JSX file or a TypeScript string | High | A brace is rejected; a fix is only written into a file whose destination context can be **proven** (HTML or JSX) — a TypeScript module or a mixed component file receives a review suggestion |
+| 4-M1 — GFM autolinks a bare URL without Markdown syntax | Medium | The URL scheme is neutralized (`https&#58;//`, `www&#46;`); verified against GitHub's own Markdown API |
+| 4-M2 — `plaintext` rewrote the rest of the customer document | Medium | `plaintext`, `xmp`, `listing`, `noscript`, `noembed` are rejected |
+| 4-M3 — customer-side resource loading | Medium | `video`, `audio`, `source`, `track`, `input[type=image]` are rejected |
+| 4-M4 — `encoding:'none'` was cached as a scanned (empty) file | Medium | It counts as unreadable → the scan is incomplete → nothing is patched |
+| 4-M5 — `.mjs`/`.cjs`/`.mts`/`.cts` were outside the scan | Medium | The scan covers every source extension; the scanned-but-never-patched files still count |
+| 4-M6 — `opacity:0` kept the text in the DOM, so both gates passed | Medium | `opacity:0` counts as hidden in the static guard (CSS and JSX-object form) |
+| 4-M7 — "Read more" could be reduced to "R" | Medium | The replacement has to **keep** the original visible text |
+| 4-M8 — two selected identical elements got their remediations swapped by request order | Medium | Such fixes cannot be mapped at all, so they stay review suggestions |
+| 4-M9 — an element inside an HTML comment was patched and counted as applied | Medium | A live-tag scanner excludes markup in a comment, in a raw-text element and in an attribute value |
 
 ### Third review findings (2026-11-22), fixed
 
@@ -74,13 +96,15 @@ it had excluded.
 |---|---|
 | `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
 | `npm run lint` | PASS — 0 errors |
-| `npx vitest run` | PASS — 52 files, 580 tests, 0 failed (was 51/566) |
-| `npx vitest run --coverage` | PASS — statements 62.29% / branches 53.55% / functions 64.43% / lines 63.71% (CI thresholds 55/50/58/57) |
+| `npx vitest run` | PASS — 52 files, 605 tests, 0 failed (was 52/580) |
+| `npx vitest run --coverage` | PASS — statements 62.88% / branches 54.46% / functions 64.91% / lines 64.26% (CI thresholds 55/50/58/57) |
 | `npm run build` | PASS — exit 0, Next standalone build |
 | `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
 | `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
 | Reviewer exploit reproductions (6) | PASS — every reproduction of the re-review is blocked |
 | Third-review reproductions (5 + 2) | PASS — the escaped overlay, the frame, the injected selector, the `aria-hidden` text deletion and the wrong duplicate occurrence are blocked; the CSS comment and the entity encoded overlay were found while fixing them and are blocked as well |
+| Fourth-review reproductions (12) | PASS — all twelve fourth-review payloads are blocked on the fixed tree (the temporary reproduction file was deleted afterwards) |
+| GitHub Markdown API (bare URL) | PASS — the escaped URL renders as plain text; the control renders as a live link |
 | Browser isolation (real Chromium) | PASS — no HTTP request and no WebSocket reaches a local server during verification |
 
 The V23 code initially pushed global branch coverage to 49.98% (below the CI gate of
@@ -96,6 +120,9 @@ image build and the load build get the `NEXTAUTH_SECRET` / `NEXTAUTH_URL` that t
 Next.js route collection needs, the image reference is lowercase, the runner ships an
 npm without the HIGH CVEs the image gate found, and the image scan keeps its severity
 filter in SARIF mode (the action drops it, so MEDIUM findings failed the job).
+**Proof: Docker run 44955598091 completed ✅ on `8afc55a`** — the Trivy step passes
+with the filter restored and the scanner pinned to `v0.76.2`. CI (44955597980),
+Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same commit.
 
 ## Commits
 
@@ -109,6 +136,9 @@ filter in SARIF mode (the action drops it, so MEDIUM findings failed the job).
 - `f8f54f1` — `vol: devops — V23: repair the three CI pipelines`
 - `4370a1a` — `vol: devops — V23: give the real-browser verification tests room on a cold CI runner`
 - `8cb32db` — `vol: security — V23: close the re-review findings in the fix pipeline and the VPAT report`
+- `086a6a3` / `bcf1b31` / `870267f` / `66dffba` — OpenAPI parity + docs + state + volume entry after the re-review
+- `dbd7927` / `a55a340` / `19ab1ac` / `456d375` — the Docker pipeline repair (build env, lowercase image reference, npm without the HIGH CVEs)
+- `e2d38b0` / `1a6b9c2` / `24fdb02` / `7c49b7b` / `8afc55a` — the third-review closure (code, devops, docs, state, volume entry)
 
 ## What this does NOT prove (read before making a claim)
 
@@ -118,7 +148,11 @@ filter in SARIF mode (the action drops it, so MEDIUM findings failed the job).
   human rather than guessed.
 - A verified fix can still break surrounding code. The PR is reviewed by a human before
   merge, and the PR summary states exactly what was verified.
-- `.vue` / `.svelte` / `.astro` files keep the conservative exact-text match and can miss.
+- A fix is **never** written into a TypeScript module or a mixed component file
+  (`.ts`, `.mts`, `.cts`, `.vue`, `.svelte`, `.astro`): the element text can sit inside a
+  string or an expression there, so the destination context cannot be proven. Those
+  fixes ship as a review suggestion. The files are still **scanned**, so a duplicate in
+  one of them keeps the remaining match ambiguous.
 - Verification results are reported in the PR, the API response and the audit log, not
   stored on the `Violation` row. Persisting them is on the roadmap.
 - **No Strix result exists for this cycle.** The CLI is installed and the target was a
@@ -127,9 +161,9 @@ filter in SARIF mode (the action drops it, so MEDIUM findings failed the job).
   credits exhausted). The security evidence for this cycle is the independent
   human-agent reviews (including the re-review) plus `npm audit`; Strix must be re-run
   before it can be cited.
-- **A third-party review of the re-review fix has not run yet.** The fix is covered by
-  the reviewer reproductions re-run as permanent regression tests, not by another
-  independent opinion.
+- **The fifth independent security review has not run yet.** The fourth review's 3 High
+  and 9 Medium findings are fixed, gated and documented, and the release gate stays
+  closed until a new independent pass returns READY; see `.ai/SECURITY-STATUS.md`.
 
 ## Follow-ups logged, not done here
 
