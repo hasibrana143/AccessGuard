@@ -54,6 +54,8 @@
 
 **Reports** `/api/reports` (POST generate; `list`, `share` (token), `executive-summary`, `vpat` (tsx renderers)) → `ComplianceReport` + public `/share/[token]`.
 
+**Public API VPAT** `/api/v1/reports/vpat` (API key) — `projectId` (required), `scanId` (optional). The project must belong to the key's organization; a `scanId` must belong to that project, otherwise the request is answered with `404` and no violation is queried. Violations are read by project **and** scan, so a report can never be built from another tenant's scan.
+
 ## 7. GitHub
 | `/api/github/oauth` | GET | OAuth authorize URL | authed |
 | `/api/github/connect` | POST | Exchange code→token, store encrypted, `GithubConnection` upsert | owner |
