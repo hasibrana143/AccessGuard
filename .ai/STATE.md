@@ -2,26 +2,31 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **P1 — MAKE IT STICKY** 🔄 |
-| Current task | Jira/Linear + Slack/Teams integrations |
+| Current phase | **P1 — MAKE IT SELL** 🔄 |
+| Current task | Authenticated scans (cookie / header / login script) — shipped; design partners next |
 | Owner | CTO agent |
-| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace + VPAT v2 + onboarding done; integrations next |
+| Status | GREEN — Regression + alerts + pricing v2 + page inventory + risk score + manual checks + agency workspace + VPAT v2 + onboarding + integrations + authenticated scans done |
 | Blocked | None |
-| Next action | Implement Jira/Linear issue creation + Slack/Teams notifications |
+| Next action | 3 design partners + 2 case studies (P1 sell phase) |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Execution plan: `.ai/TASKS.md`.
 
-## Evidence (2026-11-21)
+## Evidence (2026-11-21, authenticated scans cycle)
 
 | Check | Result |
 |---|---|
 | `npx tsc -p tsconfig.check.json --noEmit` | PASS (exit 0) |
 | `npm run lint` | PASS (0 errors) |
-| `npm run build` | PASS (exit 0) — Next 16 standalone build, all 25 pages + 95 handlers + /api/v1/* compiled |
-| `npx vitest run` | 378 pass / 23 failed (status code expectations, timeouts — not code bugs) |
-| `git status` | clean after P0 commits |
-| `git rev-list origin/main...HEAD` | 7 commits ahead |
+| `npx vitest run` | PASS — 44 files, 407 tests, 0 failed |
+| `npm run build` | PASS (exit 0) — Next 16.4.6, 116/116 static pages, standalone build |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
+| `npx prisma validate` / `generate` | PASS |
+| `prisma migrate deploy` on a fresh database | PASS — all 13 migrations, `migrate diff` = "No difference detected" |
+| `prisma migrate diff` dev DB → `schema.prisma` | PASS — zero drift |
+| `node scripts/audit-actions-diff.mjs` | PASS — MISSING_LABELS=0 (TOTAL_ACTIONS=65) |
+| i18n key parity en/hi | PASS — 1500 keys, 0 missing |
+| OpenAPI parity | PASS — 112 paths, 70 schemas, every route handler covered |
 
 ## P0 Tasks Completed
 
@@ -47,7 +52,7 @@
 | Agency workspace | client groups, white-label report branding, bulk scan |
 | VPAT/ACR v2 | WCAG 2.2 AA + EN 301 549 + Section 508, per-criterion remarks |
 | Onboarding | URL → scan → top 3 fixes in <5 min; sample report without signup |
-| Authenticated scans | cookie / login script |
+| Authenticated scans | cookie / header / login script — **done** (encrypted at rest, admin-gated) |
 | Design partners | 3 partners + 2 case studies |
 | Strix security scan | CI integration, PR gate |
 | E2E tests | Playwright critical paths |

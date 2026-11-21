@@ -34,7 +34,7 @@ Source of record for execution. Full analysis: `.ai/PRODUCT-CRITIQUE.md`.
 - [ ] VPAT/ACR v2: WCAG 2.2 AA + EN 301 549 + Section 508, per-criterion remarks.
 - [ ] Onboarding: URL → scan → top 3 fixes in <5 min; sample report without signup.
 - [ ] Jira/Linear + Slack/Teams.
-- [ ] Authenticated scans (cookie / login script).
+- [x] Authenticated scans (cookie / header / login script).
 - [ ] 3 design partners + 2 case studies.
 
 ## P2 — Scale (weeks 9–12)
