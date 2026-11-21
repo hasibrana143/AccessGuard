@@ -68,8 +68,18 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
+          # The action drops the severity filter in SARIF mode (the SARIF report
+          # is meant to carry every severity), and the exit code then counts
+          # every finding: the job failed on MEDIUM findings. With this flag the
+          # filter is kept, so only HIGH/CRITICAL fail the gate and reach the
+          # SARIF report.
+          limit-severities-for-sarif: true
           exit-code: '1'
           ignore-unfixed: true
+          # The action's default (v0.70.0) has known path traversal advisories
+          # (GHSA-mcj4-mphf-j9ff, GHSA-8rc5-4fr6-64pw); v0.76.2 is the current
+          # release.
+          version: v0.76.2
 
       - name: Upload Trivy SARIF
         if: github.ref_type == 'branch' && always()
