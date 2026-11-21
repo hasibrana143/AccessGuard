@@ -45,7 +45,10 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "coverage/**", "playwright-report/**", "test-results/**", "tests/load/**"]
+  // github-action/dist is committed compiled output (esbuild bundle), not
+  // source. Linting it produced 9 pre-existing errors (require() imports,
+  // this-alias) in generated code and blocked the lint gate.
+  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "coverage/**", "playwright-report/**", "test-results/**", "tests/load/**", "github-action/dist/**"]
 }];
 
 export default eslintConfig;
