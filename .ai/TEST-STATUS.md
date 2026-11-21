@@ -6,17 +6,35 @@ Last run: 2026-11-21 (V23 verified-fix engine + security hardening cycle)
 
 ```
 Test Files  50 passed (50)
-Tests       491 passed (491)
-Duration    ~17.1s
+Tests       523 passed (523)
+Duration    ~17.4s
 ```
+
+### Coverage (CI runs `vitest run --coverage`)
+
+```
+Statements  60.54%  (threshold 55)  PASS
+Branches    52.05%  (threshold 50)  PASS
+Functions   63.43%  (threshold 58)  PASS
+Lines       61.84%  (threshold 57)  PASS
+```
+
+The V23 code initially pushed global branch coverage to **49.98%** — below the CI
+gate, so the hardened commit would have failed CI. Fixed by covering the code V23
+added, not by lowering the threshold: `src/lib/github.ts` (the GitHub writer and the
+API helpers) and `src/lib/ast-patch.ts` (the AST locator and the HTML→JSX converter)
+now sit at 87% and 91% branch coverage. No threshold was changed.
 
 New coverage in this cycle:
 
-- `src/lib/__tests__/ast-patch.test.ts` (23 tests) — AST location in JSX, occurrence
+- `src/lib/__tests__/ast-patch.test.ts` (38 tests) — AST location in JSX, occurrence
   awareness, HTML exact match, HTML→JSX conversion (`class`→`className`, void
   self-closing, `style` → object), placeholder rejection, parse guard, and the
   visible-text guard. Regression: two elements with the same `src` but a different
-  `id` must not match each other.
+  `id` must not match each other. Also the attribute forms (single-quoted, unquoted,
+  valueless, JSX expression), the class-list fallback, the style allow-list (a value
+  that could escape the JS expression is dropped) and the edge cases of the text
+  guard.
 - `src/lib/__tests__/fix-verification.test.ts` (22 tests) — gate semantics (`null`
   never passes), verdict mapping (verified / failed / unverified), runner failure
   handling, the **check-before-render order** (an unsafe candidate never reaches the
@@ -24,14 +42,18 @@ New coverage in this cycle:
   whitespace-only alt, rejected fixes, injected event handler). The browser block is
   skipped (visibly) when no Chromium is reachable; CI installs Chromium before the
   unit suite for this reason.
-- `src/lib/__tests__/github-pr.test.ts` (extended) — occurrence-aware patching,
+- `src/lib/__tests__/github-pr.test.ts` (35 tests) — occurrence-aware patching,
   independent elements of the same rule, placeholder rejection, no-op rejection,
-  JSX patching through the AST, syntax-guard discard, content-loss rejection, and
-  the validation bypasses (`<script/x>`, unquoted `javascript:`, `data:text/html`,
-  `onerror = "…"`, `iframe`/`object`/`svg`/`style`/`link`).
-- `src/lib/__tests__/github.test.ts` (new, 5 tests) — the repository writer: one
+  JSX patching through the AST, syntax-guard discard, content-loss rejection, the
+  validation bypasses (`<script/x>`, unquoted `javascript:`, `data:text/html`,
+  `onerror = "…"`, `iframe`/`object`/`svg`/`style`/`link`), and the Markdown
+  escaping of untrusted text in the PR body.
+- `src/lib/__tests__/github.test.ts` (20 tests) — the repository writer: one
   fetch and one write per file, two fixes in one file, two files, an ambiguous match
-  left alone, a refused write not reported as applied, an unsafe fix never written.
+  left alone, a refused write not reported as applied, an unsafe fix never written;
+  plus the GitHub API helpers (OAuth URL, code exchange, authenticated user,
+  repository list, branch creation, file creation, pull request, write-access
+  validation, repository details, token revocation, pull request status).
 - `src/app/api/github/create-pr/route.test.ts` (new, 7 tests) — the PR route: no PR
   without remediation, the request cap, no PR when every fix is unverified, no PR when
   the branch fails, only eligible violations linked to the PR, the audit trail, and

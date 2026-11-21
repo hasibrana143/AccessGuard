@@ -18,13 +18,15 @@
 |---|---|
 | `npx tsc -p tsconfig.check.json --noEmit` | PASS (exit 0) |
 | `npm run lint` | PASS (0 errors) |
-| `npx vitest run` | PASS — 50 files, 491 tests, 0 failed (was 45/410) |
+| `npx vitest run` | PASS — 50 files, 523 tests, 0 failed (was 45/410) |
+| `npx vitest run --coverage` | PASS — statements 60.54% / branches 52.05% / functions 63.43% / lines 61.84% (CI thresholds 55/50/58/57) |
 | `npm run build` | PASS (exit 0) — Next standalone build |
 | `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
 | `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
 | axe verification in a real browser (vitest) | PASS — verified / failed / rejected cases behave as specified |
 | Independent QA review of the V23 diff | 3 reproduced P0 defects → all fixed and covered by tests |
 | Independent security review of the V23 diff | NOT READY (High 3) → all High/Medium/Low findings fixed and covered by tests |
+| Strix autonomous pentest | BLOCKED — every configured provider refused the run (quota / EOL model / no credits). No Strix evidence exists for this cycle |
 
 ## Evidence (2026-11-21, accessibility gate cycle)
 

@@ -68,7 +68,7 @@ Critical: 0 · High: 0 · Moderate: 15 (dev-toolchain only)
 | `npm audit --audit-level=high` | local + CI (`.github/workflows/ci.yml`) | pass — Critical 0, High 0 |
 | Independent security-engineer review of the V23 diff | local (CTO loop) | run twice: the first pass returned NOT READY (High 3) and all findings were fixed; a re-review of the hardening is the current gate |
 | Independent QA-engineer review of the V23 diff | local (CTO loop) | run once: 3 reproduced P0 defects, all fixed and covered by tests |
-| Strix autonomous pentest (OSS CLI 1.6.2, diff-scoped) | local (CTO loop) | the scan runs against a sanitized export of the commit (no `.env` in the sandbox); CI wiring needs a `STRIX_LLM` / `LLM_API_KEY` secret in the repository, which is not available yet — the CI step is therefore not added rather than added broken |
+| Strix autonomous pentest (OSS CLI 1.6.2) | local (CTO loop) | **BLOCKED — the scan did not run.** The CLI is installed and the target was a sanitized export of the commit (no `.env` in the sandbox), but every configured provider refused the run: the default Gemini free tier is quota-exhausted (429, retry in ~14 h), NVIDIA's `meta/llama-3.3-70b-instruct` returns 410 Gone (model end-of-life 2026-08-26), and the OpenAI key has no credits left. No Strix finding exists for this cycle — do not cite Strix as evidence. Re-run it when a provider has quota. CI wiring has the same gap: the step needs an LLM secret the repository does not have, so it is not added rather than added broken. |
 
 V23 dependency change: `typescript` and `axe-core` were promoted to production
 dependencies (they are imported by runtime code; the lockfile diff is 9 lines, no new

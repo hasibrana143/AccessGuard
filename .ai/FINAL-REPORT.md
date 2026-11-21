@@ -41,11 +41,16 @@ it had excluded.
 |---|---|
 | `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
 | `npm run lint` | PASS — 0 errors |
-| `npx vitest run` | PASS — 50 files, 491 tests, 0 failed (was 45/410) |
+| `npx vitest run` | PASS — 50 files, 523 tests, 0 failed (was 45/410) |
+| `npx vitest run --coverage` | PASS — statements 60.54% / branches 52.05% / functions 63.43% / lines 61.84% (CI thresholds 55/50/58/57) |
 | `npm run build` | PASS — exit 0, Next standalone build |
 | `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
 | `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
 | axe verification with a real browser | PASS — verified / failed / rejected cases behave as specified |
+
+The V23 code initially pushed global branch coverage to 49.98% (below the CI gate of
+50). It was fixed by covering the new code, not by moving the threshold: the GitHub
+writer and API helpers now sit at 87% branch coverage and the AST patcher at 91%.
 
 ## Commits
 
@@ -67,6 +72,21 @@ it had excluded.
 - `.vue` / `.svelte` / `.astro` files keep the conservative exact-text match and can miss.
 - Verification results are reported in the PR, the API response and the audit log, not
   stored on the `Violation` row. Persisting them is on the roadmap.
+- **No Strix result exists for this cycle.** The CLI is installed and the target was a
+  sanitized export of the commit, but every configured provider refused the run (Gemini
+  free tier quota exhausted, NVIDIA `meta/llama-3.3-70b-instruct` end-of-life, OpenAI
+  credits exhausted). The security evidence for this cycle is the two independent
+  human-agent reviews plus `npm audit`; Strix must be re-run before it can be cited.
+
+## Follow-ups logged, not done here
+
+- Replace the end-of-life NVIDIA model in the free pool
+  (`src/ai/model-router.ts`). The router fails over on 4xx, so the chain still completes,
+  but every AI remediation wastes one provider call. Picking a live model needs a check
+  of the current NVIDIA catalogue (next AI volume).
+- Re-run the Strix pentest against the same sanitized export once a provider has quota.
+- Run Chromium as a non-root user in the Docker image so the OS sandbox stays enabled
+  for the verification browser.
 
 ## User actions required
 
