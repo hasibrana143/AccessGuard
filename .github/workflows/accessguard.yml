@@ -1,5 +1,15 @@
 name: AccessGuard Scan
 
+# The scan uses AccessGuard's own public API (POST /api/v1/scans,
+# GET /api/v1/reports/vpat). It needs an API key and a project id:
+#
+#   secret ACCESSGUARD_API_KEY     ag_... key with scans:write and reports:read
+#   secret ACCESSGUARD_PROJECT_ID  the project to scan
+#   variable ACCESSGUARD_API_URL   optional, defaults to https://accessguard.io
+#
+# Without the secrets the steps are skipped (not failed) and the workflow says
+# so, so a missing key does not turn every push red.
+
 on:
   push:
     branches: [main, develop]
@@ -15,15 +25,35 @@ jobs:
   scan:
     name: Accessibility Scan
     runs-on: ubuntu-latest
+    env:
+      ACCESSGUARD_API_URL: ${{ vars.ACCESSGUARD_API_URL || 'https://accessguard.io' }}
+      ACCESSGUARD_API_KEY: ${{ secrets.ACCESSGUARD_API_KEY }}
+      ACCESSGUARD_PROJECT_ID: ${{ secrets.ACCESSGUARD_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Run AccessGuard Scan
-        uses: accessguard/action@v1
-        with:
-          api-key: ${{ secrets.ACCESSGUARD_API_KEY }}
-          project-id: ${{ secrets.ACCESSGUARD_PROJECT_ID }}
-          fail-on: critical
+        if: ${{ env.ACCESSGUARD_API_KEY != '' && env.ACCESSGUARD_PROJECT_ID != '' }}
+        run: |
+          curl --fail-with-body -sS -X POST "$ACCESSGUARD_API_URL/api/v1/scans" \
+            -H "Authorization: Bearer $ACCESSGUARD_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"projectId\":\"$ACCESSGUARD_PROJECT_ID\"}" \
+            -o accessguard-results.json
+          cat accessguard-results.json
+
+      - name: Fail on critical violations
+        if: ${{ env.ACCESSGUARD_API_KEY != '' && env.ACCESSGUARD_PROJECT_ID != '' }}
+        run: |
+          critical=$(jq -r '.severityCounts.critical // 0' accessguard-results.json)
+          if [ "$critical" -gt 0 ]; then
+            echo "::error::$critical critical accessibility violation(s) found"
+            exit 1
+          fi
+
+      - name: Explain the skip
+        if: ${{ env.ACCESSGUARD_API_KEY == '' || env.ACCESSGUARD_PROJECT_ID == '' }}
+        run: echo "::notice::ACCESSGUARD_API_KEY / ACCESSGUARD_PROJECT_ID are not configured - the self-scan was skipped."
 
       - name: Upload scan results
         if: always()
@@ -31,24 +61,38 @@ jobs:
         with:
           name: accessguard-results
           path: accessguard-results.json
+          if-no-files-found: ignore
 
   vpaa-report:
     name: Generate VPAT Report
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      ACCESSGUARD_API_URL: ${{ vars.ACCESSGUARD_API_URL || 'https://accessguard.io' }}
+      ACCESSGUARD_API_KEY: ${{ secrets.ACCESSGUARD_API_KEY }}
+      ACCESSGUARD_PROJECT_ID: ${{ secrets.ACCESSGUARD_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
 
+      # The public API returns the VPAT as JSON. The PDF export is produced by
+      # the dashboard route (/api/reports/vpat), which needs a signed-in session.
       - name: Generate VPAT
-        uses: accessguard/action@v1
-        with:
-          api-key: ${{ secrets.ACCESSGUARD_API_KEY }}
-          project-id: ${{ secrets.ACCESSGUARD_PROJECT_ID }}
-          command: generate-vpat
-          format: pdf
+        if: ${{ env.ACCESSGUARD_API_KEY != '' && env.ACCESSGUARD_PROJECT_ID != '' }}
+        run: |
+          curl --fail-with-body -sS \
+            "$ACCESSGUARD_API_URL/api/v1/reports/vpat?projectId=$ACCESSGUARD_PROJECT_ID" \
+            -H "Authorization: Bearer $ACCESSGUARD_API_KEY" \
+            -o vpat-report.json
+          jq -r '.vpat.summary' vpat-report.json
+
+      - name: Explain the skip
+        if: ${{ env.ACCESSGUARD_API_KEY == '' || env.ACCESSGUARD_PROJECT_ID == '' }}
+        run: echo "::notice::ACCESSGUARD_API_KEY / ACCESSGUARD_PROJECT_ID are not configured - the VPAT report was skipped."
 
       - name: Upload VPAT
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: vpat-report
-          path: vpat-*.pdf
+          path: vpat-report.json
+          if-no-files-found: ignore
