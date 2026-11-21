@@ -164,3 +164,99 @@ describe('hasSyntaxErrors', () => {
     expect(hasSyntaxErrors('<div>', 'index.html')).toBe(false);
   });
 });
+
+describe('attribute forms', () => {
+  it('reads single-quoted, unquoted and valueless attributes', () => {
+    expect(parseElementSignature("<img src='a.jpg'>")?.attrs.src).toBe('a.jpg');
+    expect(parseElementSignature('<img src=a.jpg>')?.attrs.src).toBe('a.jpg');
+    expect(parseElementSignature('<input disabled>')?.attrs.disabled).toBe('');
+  });
+
+  it('canonicalises JSX attribute names', () => {
+    const signature = parseElementSignature('<div className="box" htmlFor="email"></div>');
+    expect(signature?.attrs.class).toBe('box');
+    expect(signature?.attrs.for).toBe('email');
+  });
+
+  it('reads JSX attributes written as an expression or without a value', () => {
+    const source = `const view = (
+      <div>
+        <input disabled />
+        <img src={url} alt={"Photo"} />
+      </div>
+    );`;
+
+    // A valueless attribute carries no identity, so the element still matches.
+    expect(locateElement(source, 'a.tsx', '<input disabled>', 0)).not.toBeNull();
+    // A string expression is read as its value.
+    expect(locateElement(source, 'a.tsx', '<img alt="Photo">', 0)).not.toBeNull();
+    // An expression that is not a string is not an identity value.
+    expect(locateElement(source, 'a.tsx', '<img src="url">', 0)).toBeNull();
+  });
+
+  it('keeps boolean attributes and drops valueless non-boolean attributes', () => {
+    expect(htmlToJsx('<input disabled>')).toBe('<input disabled />');
+    expect(htmlToJsx('<div data-x>text</div>')).toBe('<div>text</div>');
+  });
+});
+
+describe('class list fallback', () => {
+  const source = '<div class="card wide">x</div>\n<div class="other">y</div>';
+
+  it('matches on the class list when the report carries no distinguishing attribute', () => {
+    const location = locateElement(source, 'Card.tsx', '<div class="card">', 0);
+    expect(location).not.toBeNull();
+    expect(source.slice(location!.start, location!.end)).toContain('card wide');
+  });
+
+  it('does not match an element with a different class list', () => {
+    expect(locateElement(source, 'Card.tsx', '<div class="card">', 1)).toBeNull();
+  });
+
+  it('does not filter on a blank class list', () => {
+    expect(locateElement(source, 'Card.tsx', '<div class=" ">', 0)).not.toBeNull();
+  });
+});
+
+describe('locateElement edge cases', () => {
+  const html = '<html><body><img src="a.jpg"></body></html>';
+
+  it('returns null for an empty or non-element snippet', () => {
+    expect(locateElement(html, 'index.html', '', 0)).toBeNull();
+    expect(locateElement(JSX_SOURCE, 'Card.tsx', 'not an element', 0)).toBeNull();
+  });
+
+  it('matches the trimmed element text when the raw snippet is absent', () => {
+    const location = locateElement(html, 'index.html', '  <img src="a.jpg">  ', 0);
+    expect(location).not.toBeNull();
+  });
+
+  it('returns null when the element is not in the file', () => {
+    expect(locateElement(html, 'index.html', '<img src="b.jpg">', 0)).toBeNull();
+  });
+});
+
+describe('style allow-list', () => {
+  it('drops declarations that could escape the JS expression', () => {
+    expect(htmlToJsx('<p style="color: {red}">x</p>')).toBe('<p style={{  }}>x</p>');
+    expect(htmlToJsx('<p style="background: url(x)">x</p>')).toBe('<p style={{  }}>x</p>');
+    expect(htmlToJsx('<p style="width: expression(1)">x</p>')).toBe('<p style={{  }}>x</p>');
+    expect(htmlToJsx('<p style="2bad: red">x</p>')).toBe('<p style={{  }}>x</p>');
+    expect(htmlToJsx('<p style="color">x</p>')).toBe('<p style={{  }}>x</p>');
+    expect(htmlToJsx('<p style="color:">x</p>')).toBe('<p style={{  }}>x</p>');
+  });
+});
+
+describe('elementTextContent edge cases', () => {
+  it('returns an empty string for text that is not an element', () => {
+    expect(elementTextContent('plain text')).toBe('');
+  });
+
+  it('returns an empty string for a self-closing non-void element', () => {
+    expect(elementTextContent('<div />')).toBe('');
+  });
+
+  it('returns an empty string for an element that is never closed', () => {
+    expect(elementTextContent('<div>unclosed')).toBe('');
+  });
+});

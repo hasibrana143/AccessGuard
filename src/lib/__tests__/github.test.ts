@@ -1,22 +1,51 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   getTree: vi.fn(),
   getContent: vi.fn(),
   createOrUpdateFileContents: vi.fn(),
+  getAuthenticated: vi.fn(),
+  listForAuthenticatedUser: vi.fn(),
+  getRef: vi.fn(),
+  createRef: vi.fn(),
+  pullCreate: vi.fn(),
+  pullGet: vi.fn(),
+  repoGet: vi.fn(),
 }));
 
 vi.mock('@octokit/rest', () => ({
   Octokit: class {
-    git = { getTree: mocks.getTree };
+    git = { getTree: mocks.getTree, getRef: mocks.getRef, createRef: mocks.createRef };
     repos = {
       getContent: mocks.getContent,
       createOrUpdateFileContents: mocks.createOrUpdateFileContents,
+      listForAuthenticatedUser: mocks.listForAuthenticatedUser,
+      get: mocks.repoGet,
     };
+    users = { getAuthenticated: mocks.getAuthenticated };
+    pulls = { create: mocks.pullCreate, get: mocks.pullGet };
   },
 }));
 
-import { applyFixesToRepository } from '@/lib/github';
+import {
+  applyFixesToRepository,
+  isGitHubConfigured,
+  getGitHubOAuthUrl,
+  exchangeCodeForToken,
+  getGitHubUser,
+  getUserRepositories,
+  createBranch,
+  createFile,
+  createPullRequest,
+  generateFixBranchName,
+  generatePRTitle,
+  generatePRBody,
+  validateWriteAccess,
+  getRepositoryDetails,
+  revokeToken,
+  getPullRequestStatus,
+  getMultiplePRStatuses,
+} from '@/lib/github';
 
 function tree(paths: string[]) {
   mocks.getTree.mockResolvedValue({
@@ -154,5 +183,255 @@ describe('applyFixesToRepository', () => {
 
     expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
     expect(result.fixesAppliedTotal).toBe(0);
+  });
+});
+
+describe('GitHub API helpers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv('GITHUB_CLIENT_ID', 'client-id');
+    vi.stubEnv('GITHUB_CLIENT_SECRET', 'client-secret');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it('reports whether the OAuth app is configured', () => {
+    expect(isGitHubConfigured()).toBe(true);
+    vi.stubEnv('GITHUB_CLIENT_SECRET', '');
+    expect(isGitHubConfigured()).toBe(false);
+  });
+
+  it('builds the OAuth URL with the default and a custom redirect', () => {
+    const defaultUrl = getGitHubOAuthUrl('state-1');
+    expect(defaultUrl).toContain('client_id=client-id');
+    expect(defaultUrl).toContain('state=state-1');
+    expect(defaultUrl).toContain(encodeURIComponent('http://localhost:3000/api/github/callback'));
+
+    vi.stubEnv('GITHUB_REDIRECT_URI', 'https://app.example.com/api/github/callback');
+    expect(getGitHubOAuthUrl('state-1')).toContain(
+      encodeURIComponent('https://app.example.com/api/github/callback')
+    );
+  });
+
+  it('exchanges an OAuth code for a token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () => ({ access_token: 'token-1' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(exchangeCodeForToken('code-1')).resolves.toEqual({ access_token: 'token-1' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://github.com/login/oauth/access_token',
+      expect.objectContaining({ method: 'POST' })
+    );
+  });
+
+  it('reports an OAuth exchange failure instead of throwing', async () => {
+    vi.stubEnv('GITHUB_CLIENT_ID', '');
+    await expect(exchangeCodeForToken('code-1')).resolves.toEqual({
+      access_token: '',
+      error: 'GitHub not configured',
+    });
+
+    vi.stubEnv('GITHUB_CLIENT_ID', 'client-id');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ error: 'bad_verification_code', error_description: 'expired' }),
+    }));
+    await expect(exchangeCodeForToken('code-1')).resolves.toEqual({
+      access_token: '',
+      error: 'expired',
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      json: async () => ({ error: 'bad_verification_code' }),
+    }));
+    const fallback = await exchangeCodeForToken('code-1');
+    expect(fallback.error).toBe('bad_verification_code');
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+    const failed = await exchangeCodeForToken('code-1');
+    expect(failed.access_token).toBe('');
+    expect(failed.error).toContain('network down');
+  });
+
+  it('reads the authenticated user and falls back to the login name', async () => {
+    mocks.getAuthenticated.mockResolvedValue({
+      data: { login: 'dev', avatar_url: 'https://avatar', name: 'Dev' },
+    });
+    await expect(getGitHubUser('token')).resolves.toEqual({
+      login: 'dev',
+      avatar_url: 'https://avatar',
+      name: 'Dev',
+    });
+
+    mocks.getAuthenticated.mockResolvedValue({
+      data: { login: 'dev', avatar_url: 'https://avatar', name: null },
+    });
+    await expect(getGitHubUser('token')).resolves.toMatchObject({ name: 'dev' });
+
+    mocks.getAuthenticated.mockRejectedValue(new Error('unauthorized'));
+    await expect(getGitHubUser('token')).resolves.toBeNull();
+  });
+
+  it('lists the user repositories and survives a failure', async () => {
+    mocks.listForAuthenticatedUser.mockResolvedValue({
+      data: [{ full_name: 'owner/repo', name: 'repo', private: true }],
+    });
+    await expect(getUserRepositories('token')).resolves.toEqual([
+      { full_name: 'owner/repo', name: 'repo', private: true },
+    ]);
+
+    mocks.listForAuthenticatedUser.mockRejectedValue(new Error('nope'));
+    await expect(getUserRepositories('token')).resolves.toEqual([]);
+  });
+
+  it('creates a branch from the base ref and reports a failure', async () => {
+    mocks.getRef.mockResolvedValue({ data: { object: { sha: 'sha-1' } } });
+    mocks.createRef.mockResolvedValue({ data: {} });
+
+    await expect(createBranch('token', 'owner', 'repo', 'fix/x')).resolves.toBe(true);
+    expect(mocks.createRef).toHaveBeenCalledWith(
+      expect.objectContaining({ ref: 'refs/heads/fix/x', sha: 'sha-1' })
+    );
+
+    mocks.getRef.mockRejectedValue(new Error('no ref'));
+    await expect(createBranch('token', 'owner', 'repo', 'fix/x')).resolves.toBe(false);
+  });
+
+  it('creates a file with base64 content and reports a refused write', async () => {
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: {} });
+
+    await expect(createFile('token', 'owner', 'repo', 'a.html', 'body', 'msg', 'branch')).resolves.toBe(true);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: Buffer.from('body').toString('base64'),
+        branch: 'branch',
+      })
+    );
+
+    mocks.createOrUpdateFileContents.mockRejectedValue(new Error('403'));
+    await expect(createFile('token', 'owner', 'repo', 'a.html', 'body', 'msg', 'branch')).resolves.toBe(false);
+  });
+
+  it('creates a pull request and reports a failure', async () => {
+    mocks.pullCreate.mockResolvedValue({ data: { html_url: 'https://github.com/owner/repo/pull/1' } });
+    await expect(createPullRequest('token', 'owner', 'repo', 'title', 'body', 'head')).resolves.toEqual({
+      url: 'https://github.com/owner/repo/pull/1',
+    });
+
+    mocks.pullCreate.mockRejectedValue(new Error('422'));
+    await expect(createPullRequest('token', 'owner', 'repo', 'title', 'body', 'head')).resolves.toBeNull();
+  });
+
+  it('generates branch names, titles and bodies', () => {
+    expect(generateFixBranchName('image-alt')).toMatch(/^accessguard\/fix-image-alt-\d+$/);
+    expect(generatePRTitle([{ ruleId: 'image-alt' }])).toBe('Fix accessibility issue: image-alt');
+    expect(generatePRTitle([{ ruleId: 'a' }, { ruleId: 'b' }])).toBe('Fix 2 accessibility issues');
+
+    const withCriteria = generatePRBody(
+      [{ ruleId: 'image-alt', description: 'missing alt', wcagCriteria: '1.1.1' }],
+      'https://example.com'
+    );
+    expect(withCriteria).toContain('WCAG 1.1.1');
+    expect(withCriteria).toContain('https://example.com');
+
+    const withoutCriteria = generatePRBody(
+      [{ ruleId: 'image-alt', description: 'missing alt' }],
+      'https://example.com'
+    );
+    expect(withoutCriteria).not.toContain('WCAG');
+  });
+
+  it('validates write access through push or admin permission', async () => {
+    mocks.repoGet.mockResolvedValue({ data: { permissions: { push: true } } });
+    await expect(validateWriteAccess('token', 'owner', 'repo')).resolves.toBe(true);
+
+    mocks.repoGet.mockResolvedValue({ data: { permissions: { admin: true } } });
+    await expect(validateWriteAccess('token', 'owner', 'repo')).resolves.toBe(true);
+
+    mocks.repoGet.mockResolvedValue({ data: { permissions: { push: false } } });
+    await expect(validateWriteAccess('token', 'owner', 'repo')).resolves.toBe(false);
+
+    mocks.repoGet.mockRejectedValue(new Error('403'));
+    await expect(validateWriteAccess('token', 'owner', 'repo')).resolves.toBe(false);
+  });
+
+  it('reads repository details and defaults the branch to main', async () => {
+    mocks.repoGet.mockResolvedValue({
+      data: { full_name: 'owner/repo', name: 'repo', default_branch: 'develop', private: true },
+    });
+    await expect(getRepositoryDetails('token', 'owner', 'repo')).resolves.toEqual({
+      fullName: 'owner/repo',
+      name: 'repo',
+      defaultBranch: 'develop',
+      private: true,
+    });
+
+    mocks.repoGet.mockResolvedValue({
+      data: { full_name: 'owner/repo', name: 'repo', private: false },
+    });
+    const fallback = await getRepositoryDetails('token', 'owner', 'repo');
+    expect(fallback?.defaultBranch).toBe('main');
+
+    mocks.repoGet.mockRejectedValue(new Error('404'));
+    await expect(getRepositoryDetails('token', 'owner', 'repo')).resolves.toBeNull();
+  });
+
+  it('revokes a token and reports the outcome', async () => {
+    vi.stubEnv('GITHUB_CLIENT_ID', '');
+    await expect(revokeToken('token')).resolves.toBe(false);
+
+    vi.stubEnv('GITHUB_CLIENT_ID', 'client-id');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 204 }));
+    await expect(revokeToken('token')).resolves.toBe(true);
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 202 }));
+    await expect(revokeToken('token')).resolves.toBe(true);
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 500 }));
+    await expect(revokeToken('token')).resolves.toBe(false);
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    await expect(revokeToken('token')).resolves.toBe(false);
+  });
+
+  it('reads pull request statuses', async () => {
+    mocks.pullGet.mockResolvedValue({
+      data: { state: 'closed', merged: true, html_url: 'https://github.com/owner/repo/pull/1' },
+    });
+    await expect(getPullRequestStatus('token', 'owner', 'repo', 1)).resolves.toEqual({
+      state: 'closed',
+      merged: true,
+      html_url: 'https://github.com/owner/repo/pull/1',
+    });
+
+    mocks.pullGet.mockResolvedValue({
+      data: { state: 'open', html_url: 'https://github.com/owner/repo/pull/2' },
+    });
+    const open = await getPullRequestStatus('token', 'owner', 'repo', 2);
+    expect(open?.merged).toBe(false);
+
+    mocks.pullGet.mockRejectedValue(new Error('404'));
+    await expect(getPullRequestStatus('token', 'owner', 'repo', 3)).resolves.toBeNull();
+  });
+
+  it('collects the statuses of several pull requests', async () => {
+    mocks.pullGet.mockImplementation(async ({ pull_number: number }: { pull_number: number }) => {
+      if (number === 2) throw new Error('404');
+      return {
+        data: { state: 'closed', merged: true, html_url: 'https://github.com/owner/repo/pull/1' },
+      };
+    });
+
+    const statuses = await getMultiplePRStatuses('token', [
+      { owner: 'owner', repo: 'repo', prNumber: 1 },
+      { owner: 'owner', repo: 'repo', prNumber: 2 },
+    ]);
+
+    expect(statuses.get('owner/repo/1')).toEqual({ state: 'closed', merged: true });
+    expect(statuses.has('owner/repo/2')).toBe(false);
   });
 });
