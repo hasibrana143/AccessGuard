@@ -32,7 +32,8 @@ A remediation is rejected before it can reach a browser or a repository when it:
 
 - contains a `<script>` tag in any spelling (`<script>`, `<script/x>`, `< script >`),
 - contains an active or embedding element (`iframe`, `object`, `embed`, `applet`,
-  `base`, `svg`, `style`, `link`, `meta`),
+  `base`, `svg`, `style`, `link`, `meta`, `frame`, `frameset`, `noframes`, `portal`,
+  `fencedframe`, `math`),
 - contains **any** event handler attribute (`onerror`, `onclick`, …) — a handler is
   rejected even when the scanned element already carried one, because the handler
   code belongs to the scanned page, not to AccessGuard,
@@ -42,7 +43,11 @@ A remediation is rejected before it can reach a browser or a repository when it:
   a browser ignores before the scheme is read, so `&#106;avascript:` and
   `java\tscript:` are caught,
 - sets a style property that can take over the screen (`position`, `inset`,
-  `z-index`, `transform`, `clip-path`, `mask`, viewport units, `url()`),
+  `z-index`, `transform`, `clip-path`, `mask`, viewport units, `url()`). The value
+  is read the way the browser reads it: the HTML entities of the attribute value
+  are decoded, a CSS comment is treated as whitespace (`position/**/:fixed` is
+  `position: fixed`) and the CSS escapes are resolved (`p\6fsition:fixed` is
+  `position: fixed`),
 - still contains a placeholder (`TODO`, `FIXME`, `{{…}}`, `YOUR_ALT_TEXT`),
 - does not address the rule it claims to fix (per-rule check),
 - is empty or longer than 20k characters.
@@ -60,12 +65,12 @@ spliced at AST-derived offsets, so the rest of the file is untouched.
 | Property | Behaviour |
 | --- | --- |
 | Location | JSX/JS: AST match on the tag and **every** identity attribute the report carries (`src`, `href`, `id`, `name`, `class`, `aria-label`, `role`, `data-testid`, and softly `type`/`alt`); a candidate that lacks a supplied identity attribute does not match. The class list is compared as a set, so two copies of the same image with different classes are never confused. HTML: exact element text. |
-| Occurrence aware | Occurrences are counted per rule **and** per element. Three copies of the same image are patched one by one; two different images are patched independently. |
+| Occurrence aware | Occurrences are counted per rule **and** per element. Three copies of the same image are patched one by one; two different images are patched independently. A fix is only written when **every** occurrence of its element in the file is covered by a selected fix — the fixes are matched to the occurrences in order, so selecting one of two identical elements would otherwise patch the wrong one. Such a fix ships as a review suggestion. |
 | Ambiguity | If the element exists in more than one file of the repository, the fix is **not** written to any file — it ships in the PR as a review suggestion. A wrong file is worse than no patch. |
-| Complete scan | The **whole** source tree is scanned, bounded by a byte budget (5 MB) instead of a file count. A tree that does not fit, or a scan that hits the budget, never patches a file: an incomplete scan cannot prove uniqueness. |
+| Complete scan | The **whole** source tree is scanned, bounded by a byte budget (5 MB) instead of a file count. A tree that does not fit, a tree the API reports as `truncated`, or a source file that could not be read, never patches a file: an incomplete scan cannot prove uniqueness. |
 | Conversion | HTML attributes are renamed to JSX (`class` → `className`, `for` → `htmlFor`), void elements are self-closed, `style="…"` becomes a style object. Style values are allow-listed: braces, quotes, backslashes, `url()` and `expression()` are dropped so a style attribute cannot break out of the JS expression it is written into. |
 | No-op | A patch identical to the original element is not a fix and is not counted. |
-| Content loss | A patch that empties an element that had visible text (a link or a button) is rejected — an axe-verified fix must not delete what the user reads. Text inside a hidden element (`hidden`, `aria-hidden="true"`, `display:none`, `visibility:hidden`) is not visible text, so moving the label into a hidden element is a content loss too. |
+| Content loss | A patch that empties an element that had visible text (a link or a button) is rejected — an axe-verified fix must not delete what the user reads. Text inside a hidden element (`hidden`, `display:none`, `visibility:hidden`) is not visible text, so moving the label into a hidden element is a content loss too. `aria-hidden` removes content from the accessibility tree, **not** from the screen: its text counts as visible text, so a fix may not delete it. |
 | Placeholder | `TODO`, `FIXME`, `{{…}}`, `YOUR_ALT_TEXT` are rejected before patching. |
 | Syntax guard | The patched file is re-parsed; a patch that breaks the file is discarded and reported. |
 
@@ -145,7 +150,10 @@ still ship in the PR as review files. A violation is linked to the PR only when 
 artifact for it was accepted by GitHub — a source file it was patched into, or its own
 fix document. Every opened PR writes an audit log entry (`github_pr_created`) with the
 verified and skipped counts; the entry is written **before** the violations are linked,
-so a later database failure cannot leave an opened PR without a trail.
+so a later database failure cannot leave an opened PR without a trail. The write is
+retried (`createAuditLogWithRetry`, 3 attempts with a growing delay) before the route
+reports `auditRecorded: false`, so a transient database error does not leave a
+repository mutation without a trail.
 
 ## 7. Limits and operations
 
@@ -167,4 +175,8 @@ Descriptions, URLs and explanations come from a scanned page. They are escaped f
 Markdown as well as for HTML (`escapeMarkdownText`): a link, an image, a mention or a
 heading in a violation description would otherwise become part of the PR body. Code
 samples are wrapped in a code fence that is sized to the content it holds, and an
-element selector is written as an inline code span that the value cannot break out of.
+element selector is written as an inline code span that the value cannot break out of
+(the fence is longer than the longest backtick run in the value, and a value that
+starts or ends with a backtick is padded). The review comment that is written into a
+customer file neutralizes the comment terminator (`*/`, `-->`), so untrusted text
+cannot close the comment and become code.

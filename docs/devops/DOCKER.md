@@ -57,7 +57,7 @@ services:
 ## 5. Gaps / hardening items
 | Area | Current | Target |
 | --- | --- | --- |
-| Base image scan | Trivy in `docker.yml` (`aquasecurity/trivy-action@v0.36.0`), fails the job on HIGH/CRITICAL, SARIF uploaded to code scanning | keep — re-pin when the action releases a new major |
+| Base image scan | Trivy in `docker.yml` (`aquasecurity/trivy-action@v0.36.0`, scanner pinned to `v0.76.2`), fails the job on HIGH/CRITICAL, SARIF uploaded to code scanning. The scan sets `limit-severities-for-sarif: true` — without it the action drops the severity filter in SARIF mode and the exit code counts every severity, so a MEDIUM finding fails the job | keep — re-pin when the action releases a new major; re-check the SARIF severity behaviour on every re-pin |
 | SBOM | `anchore/sbom-action@v0.17.3` attests an SBOM to GHCR on every `main` push | keep |
 | Multi-arch | buildx `linux/amd64,linux/arm64` with the GitHub Actions build cache | keep |
 | Runtime user | `nextjs` non-root ✅ | keep |
