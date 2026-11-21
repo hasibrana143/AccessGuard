@@ -1937,7 +1937,7 @@ const paths: Record<string, PathItem> = {
         '200': jsonResponse('VPAT report', { $ref: '#/components/schemas/VpatResponse' }),
         '401': { description: 'Invalid or missing API key' },
         '403': { description: 'Insufficient scope' },
-        '404': { description: 'Project not found' },
+        '404': { description: 'Project not found, or the scan does not belong to that project' },
         '500': { description: 'VPAT generation failed' },
       },
     }),
