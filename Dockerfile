@@ -34,6 +34,13 @@ WORKDIR /app
 # Install OpenSSL and Puppeteer dependencies
 RUN apk add --no-cache openssl chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont
 
+# The base image ships npm 11, whose bundle contains packages with known HIGH
+# CVEs (pacote, sigstore, picomatch, ip-address, brace-expansion) — the Trivy
+# gate in .github/workflows/docker.yml fails on them. npm 12.2.3 bundles fixed
+# versions of all of them and needs Node >= 22.22.2 (node:22-alpine ships
+# 22.23.5). The builder stage keeps the base npm: only the runner ships this.
+RUN npm install -g npm@12.2.3
+
 # Set Puppeteer to use system Chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser

@@ -7,9 +7,20 @@
 - `npm ci` (exact lockfile)
 - Copies full source, runs `prisma generate`
 - `npm run build` → produces `.next/standalone`
+- The build sets the env vars the route collection reads: an **ephemeral**
+  `NEXTAUTH_SECRET` (generated inside the build stage with `openssl rand -hex 64`,
+  never stored, never part of the image), the public `NEXTAUTH_URL` and a
+  placeholder `DATABASE_URL`. The build needs **no reachable database**; the real
+  values come from the runtime environment. Without the secret the build fails at
+  the first route that touches the auth module.
 
 **Stage 2 — Runner** (`node:22-alpine`)
 - Installs runtime deps: `openssl chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont`
+- Upgrades npm to `12.2.3`: the base image's npm 11 bundles packages with known
+  HIGH CVEs (pacote, sigstore, picomatch, ip-address, brace-expansion) and the
+  Trivy gate in `docker.yml` fails on them. npm 12.2.3 bundles fixed versions and
+  needs Node ≥ 22.22.2 (`node:22-alpine` ships 22.23.5). Only the runner is
+  upgraded — the builder keeps the base npm.
 - Sets Puppeteer env: `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true`, `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser`
 - Creates non-root user `nextjs` (UID 1001)
 - Copies from builder:
@@ -46,9 +57,20 @@ services:
 ## 5. Gaps / hardening items
 | Area | Current | Target |
 | --- | --- | --- |
-| Base image scan | none in CI | Trivy/Snyk in docker.yml |
-| SBOM | none | `syft` in build, upload to GHCR |
-| Multi-arch | amd64 only | buildx `linux/amd64,linux/arm64` |
+| Base image scan | Trivy in `docker.yml` (`aquasecurity/trivy-action@v0.36.0`), fails the job on HIGH/CRITICAL, SARIF uploaded to code scanning | keep — re-pin when the action releases a new major |
+| SBOM | `anchore/sbom-action@v0.17.3` attests an SBOM to GHCR on every `main` push | keep |
+| Multi-arch | buildx `linux/amd64,linux/arm64` with the GitHub Actions build cache | keep |
 | Runtime user | `nextjs` non-root ✅ | keep |
 | Read-only rootfs | no | add `readOnlyRootFilesystem: true` in K8s |
-| Health endpoint | none | add `/api/health` (liveness/readiness) |
+| Health endpoint | `/api/health` (liveness/readiness) ✅ | keep |
+
+### The image reference is lowercase
+
+A registry reference must be lowercase. `github.repository` keeps the
+repository's original case (`hasibrana143/AccessGuard`), which the metadata
+action lowercases internally when it pushes — so the workflow pushes
+`ghcr.io/hasibrana143/accessguard:main-<sha>`. The scan steps must use the same
+reference: the workflow resolves it once (lowercase repository path + the sha
+tag that was pushed) and hands it to both the Trivy scan and the Syft
+attestation. Pointing Trivy at the uppercase name makes it fail with
+`could not parse reference` — the scan never runs.
