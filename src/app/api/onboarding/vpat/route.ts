@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { scanUrl } from '@/services/scanner';
 import { generateVPATData } from '@/lib/vpat-generator';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 const vpatRequestSchema = z.object({
@@ -12,6 +13,13 @@ const vpatRequestSchema = z.object({
 // GET /api/onboarding/vpat — Generate sample VPAT for URL (no auth)
 export async function GET(request: NextRequest) {
   try {
+    // Public endpoint that spawns a real browser scan: cap the compute budget
+    // per client. Shared bucket with /api/onboarding/scan.
+    const rl = await checkRateLimit(`onboarding:${getClientIdentifier(request)}`, { interval: 60000, limit: 5 });
+    if (!rl.success) {
+      return createRateLimitResponse(rl);
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const url = searchParams.get('url');
 

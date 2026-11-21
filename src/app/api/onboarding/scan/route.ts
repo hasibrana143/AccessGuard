@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { logger } from '@/lib/error-logger';
 import { scanUrl } from '@/services/scanner';
 import { checkPagesLimit } from '@/lib/plan-limits';
+import { checkRateLimit, getClientIdentifier, createRateLimitResponse } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 const onboardingScanSchema = z.object({
@@ -13,6 +14,14 @@ const onboardingScanSchema = z.object({
 // POST /api/onboarding/scan — Quick scan for onboarding (no auth required, rate-limited)
 export async function POST(request: NextRequest) {
   try {
+    // Public endpoint that spawns a real browser scan: cap the compute budget
+    // per client. Shared bucket with /api/onboarding/vpat so a client cannot
+    // double its allowance by switching endpoints.
+    const rl = await checkRateLimit(`onboarding:${getClientIdentifier(request)}`, { interval: 60000, limit: 5 });
+    if (!rl.success) {
+      return createRateLimitResponse(rl);
+    }
+
     const body = await request.json();
     const parsed = onboardingScanSchema.safeParse(body);
     if (!parsed.success) {

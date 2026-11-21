@@ -55,6 +55,8 @@ const PUBLIC_ALLOWLIST: Record<string, string> = {
   'src/app/api/legal/tos/route.ts': 'public: legal text',
   'src/app/api/docs/route.ts': 'public: OpenAPI document',
   'src/app/api/csp-report/route.ts': 'public: browser violation beacon',
+  'src/app/api/onboarding/scan/route.ts': 'public: product-led onboarding scan without signup (rate-limited 5/min per client, shared bucket with onboarding/vpat)',
+  'src/app/api/onboarding/vpat/route.ts': 'public: product-led onboarding sample VPAT without signup (rate-limited 5/min per client, shared bucket with onboarding/scan)',
   'src/app/api/route.ts': 'public: API index (no sensitive data)',
 };
 
