@@ -44,9 +44,10 @@ Persona-based guide for end users of AccessGuard. Verified against the running a
    - `source: template` = rule template fallback (no LLM key / provider down / no code).
 3. **Apply to GitHub**: connect a repo (Settings → GitHub) → **Create PR** — AccessGuard
    opens a branch + PR with the fix; track via PR status in the UI.
-4. Every fix is re-scanned with axe-core on the patched element before the PR opens.
-   A fix that fails verification, or that cannot be verified (no browser available),
-   is excluded from the PR and reported as `skippedLowConfidence` / `skippedUnverified`.
+4. Every fix passes safety checks and is re-scanned with axe-core for the rule it
+   targets before the PR opens. A fix that fails verification, or that cannot be
+   verified (no browser available), is excluded from the PR and reported as
+   `skippedLowConfidence` / `skippedUnverified`.
 
 ### 3.3 Scheduled scans
 - Configure recurring scans in project settings (daily/weekly) — the scheduler daemon

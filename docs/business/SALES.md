@@ -56,7 +56,7 @@
 |---|---|
 | "We use axe/pa11y free" | Those are tools, not compliance evidence — no history, no reports, no org audit trail, no auto-PR. |
 | "Is it legally valid evidence?" | Reports include scan metadata + timestamps + audit trail (evidentiary chain); SOC2 readiness ongoing. |
-| "AI fixes will break our code" | Verification-gated: each fix is re-scanned with axe-core on the patched element, only verified fixes open a PR, and a human reviews it before merge. |
+| "AI fixes will break our code" | Verification-gated: each fix passes safety checks and is re-scanned with axe-core for the rule it targets, only verified fixes open a PR, and a human reviews it before merge. |
 | "Price" | Compliance contracts stick; a single ADA lawsuit costs $10k–75k to defend. |
 
 ## 7. First 30 customers plan

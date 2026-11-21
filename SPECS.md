@@ -578,7 +578,7 @@ Agent: Re-scanning... All critical resolved ✅
 
 ### 9.3 Safety Guards
 - **Max PRs per run**: 10
-- **Verification gate**: every fix is re-scanned with axe-core on the patched element; only verified fixes open a PR (`MIN_FIX_CONFIDENCE = 0.7` applies to verification confidence, an unknown confidence never passes)
+- **Verification gate**: every fix passes safety, rule and placeholder checks and its remediation snippet is re-scanned with axe-core for the rule it targets; only verified fixes open a PR (`MIN_FIX_CONFIDENCE = 0.7` applies to verification confidence, an unknown confidence never passes)
 - **Human approval required**: For `force_regenerate` or new patterns
 - **Rollback**: One-click revert PR
 - **Budget**: Max $50/run (LLM costs)
