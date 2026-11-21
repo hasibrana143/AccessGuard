@@ -61,6 +61,9 @@ CREATE UNIQUE INDEX "Violation_fingerprint_key" ON "Violation"("fingerprint") WH
 -- Add index on projectId + fingerprint for reconciliation queries
 CREATE INDEX "Violation_projectId_fingerprint_idx" ON "Violation"("projectId", "fingerprint");
 
--- Update Organization pagesQuota default to 100 (if not already)
--- This is a no-op if already 100, but ensures consistency
+-- Organization.pagesQuota: add the column when missing, then ensure the
+-- default is 100. Earlier installs created this column through `prisma db
+-- push` (never through a migration), so the column was absent on a database
+-- built from the migration chain and this statement aborted the deploy.
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "pagesQuota" INTEGER NOT NULL DEFAULT 100;
 ALTER TABLE "Organization" ALTER COLUMN "pagesQuota" SET DEFAULT 100;

@@ -110,6 +110,7 @@ model Project {
   manualChecks      ManualCheck[]
   complianceReports ComplianceReport[]
   scheduledScans    ScheduledScan[]
+  scanAuthConfigs   ScanAuthConfig[]
 
   @@index([orgId, isActive])
   @@index([orgId, createdAt])
@@ -385,6 +386,21 @@ model IntegrationLog {
 
   @@index([integrationId])
   @@index([createdAt])
+}
+
+// Authenticated scan configurations (cookies, login scripts, headers)
+model ScanAuthConfig {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  type        String   // 'cookie' | 'header' | 'script'
+  config      String   // Encrypted JSON (cookies, headers, login script)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 // Guided manual testing: per-project results for checks automation cannot
