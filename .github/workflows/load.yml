@@ -52,6 +52,11 @@ jobs:
       - run: npm run build
         env:
           DATABASE_URL: postgresql://accessguard:accessguard_secret@localhost:5432/accessguard_test
+          # Next.js collects the route configuration at build time and the auth
+          # module throws without a secret. The build needs no reachable
+          # database; the real values come from the runtime environment below.
+          NEXTAUTH_SECRET: load-test-secret
+          NEXTAUTH_URL: http://localhost:3000
 
       - name: Start server
         run: npm run start &
