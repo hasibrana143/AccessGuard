@@ -33,6 +33,8 @@ Scope: the four P0 truth gaps above, shipped as one volume. Dependency order: co
 | 3 | AST patching: JSX/TSX via TypeScript compiler API, occurrence-aware, placeholder + no-op rejection | engineering | DONE |
 | 4 | Fix verification: axe re-run on the patched element gates PR creation | ai | DONE |
 | 5 | Docs + marketing copy aligned with what the engine actually does | docs | DONE |
+| 6 | Post-ship hardening: bounded selection (`MAX_FIXES_PER_PR = 25`), per-reason skip reporting (`skippedInvalid`, `skippedOverLimit`), 10-file write cap, tested `selectVerifiedFixes` | ai | DONE |
+| 7 | Security hardening from the independent QA + security review: validate before render, block verification network access, sandbox + deadlines, cap before the browser work, rate limit, audit trail, ambiguity guard, content-loss guard, honest counters, Markdown escaping, VPAT conformance | security | DONE |
 
 Out of scope for V23 (recorded, not silently dropped): per-file patch persistence to the DB (verification results are reported in the PR + response, not stored on `Violation`), Vue/Svelte/Astro AST support, full-page re-scan verification (verification is rule-level on the patched element).
 - [x] **Green baseline** — Docker up, `vitest` 378 passed (core), lint 0, build 0; commit WIP in slices (`vol:` messages).

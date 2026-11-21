@@ -2,6 +2,39 @@
 
 Last verification: 2026-11-21
 
+## Independent review of V23 (QA + security review, before the hardening pass)
+
+Two independent reviews of the V23 diff (`21a1d00..HEAD`) were run. Both found
+reproducible defects; all of them are fixed in the V23 hardening commit. The security
+review's verdict was **NOT READY (High 3)**; the QA review's verdict was **PARTIAL**
+with three reproduced P0 defects.
+
+### High — fixed
+
+| # | Finding | Reproduction | Fix |
+|---|---|---|---|
+| H1 | Unsafe remediation executed in the verification browser before the safety checks and could fake an axe pass | `<img src="x" alt="A"><script/x>globalThis.__pwned=1</script>` → `verified / confidence 1` | The safety, rule and placeholder checks now run **before** anything is rendered (`verifyFixes` rejects first). The script check covers every spelling (`<script>`, `<script/x>`, `< script >`); active elements (`iframe`, `object`, `embed`, `applet`, `base`, `svg`, `style`, `link`, `meta`) are rejected; `javascript:` / `vbscript:` / `data:text/html` URIs are rejected quoted or unquoted; event handlers written as `onerror = "…"` are caught |
+| H2 | The verification browser was a server-side SSRF and active-content primitive | A local server received `GET /internal` for `<img src="http://127.0.0.1:…/internal">` | The verification context aborts **every** network request; each render and axe run has a 15 s deadline; the Chromium sandbox stays on except where it cannot be used (Docker runs as root) |
+| H3 | The per-request work limit was applied after the expensive work, and the route had no rate limit | Every submitted violation cost a browser launch and an axe run | The cap (`MAX_FIXES_PER_PR = 25`) is applied **before** verification, the request may not carry more than 25 violations, and the route is rate limited per user (`rateLimits.remediation`) |
+
+### Medium / low — fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| M1 | The "verified" / "applied" counters overstated reality | A failed GitHub write is no longer counted as modified or applied; only accepted files are counted; the PR summary now says "the remediation snippet was re-scanned for the rule it targets" and states that verification is rule-level, not a full re-scan |
+| M2 | The locator could patch the wrong element or the wrong file | Every distinguishing attribute the report carries must now match (a candidate missing a supplied `src`/`href`/`id`/`name` does not match); an element found in more than one file is left to a human |
+| M3 | The automated verified-fix path wrote no audit trail | Every opened PR writes a `github_pr_created` audit entry with the verified and skipped counts and the rules involved |
+| M4 | Untrusted descriptions, explanations and remediation text could inject misleading Markdown into the PR | Raw HTML in untrusted fields is escaped and code fences are sized to the content they wrap |
+| L1 | The VPAT could show "Supports" for a criterion that still had a violation | Any unresolved violation now yields "Partially Supports"; only a manual check can clear minor/moderate findings, and never a critical or serious one |
+
+### P0 defects reproduced by QA — fixed
+
+| # | Finding | Fix |
+|---|---|---|
+| P1 | Unsafe remediation was rendered before validation (see H1) | Validation moved before rendering |
+| P2 | The AST matcher returned after the first distinguishing attribute, so two elements with the same `src` but different `id` patched the wrong one | All distinguishing attributes must match |
+| P3 | An axe-verified replacement could delete the visible content of the element (`Read more` → `aria-label` + empty element) | A patch that empties an element with visible text is rejected |
+
 ## Findings fixed in the V23 cycle
 
 | # | Finding | Severity | Status |
@@ -12,6 +45,14 @@ Last verification: 2026-11-21
 | 4 | Patches were exact-string replacements of axe DOM HTML into source files, so JSX was patched by accident or not at all | High (correctness) | FIXED — AST-aware location for JSX/JS, re-parse guard discards a patch that breaks the file |
 | 5 | `applyFixesToRepository` re-read the original file per violation, so a second fix in the same file overwrote the first | High (data loss in the PR) | FIXED — one fetch and one write per file |
 | 6 | The VPAT PDF declared untested criteria out of scope | High (legal) | FIXED — the PDF reuses `generateVPATData` (`not-evaluated` + remarks) and is labelled a draft |
+
+## Residual risk
+
+| Risk | Rating | Why it is accepted |
+|---|---|---|
+| The Docker image runs Chromium as root, so the OS sandbox is disabled there | 🟡 MEDIUM | The verification context blocks all network access, only validated markup is rendered, every run has a deadline, and the route is rate limited. Running the container as a non-root user is the follow-up (it also needs the Chromium sandbox packages). |
+| Verification is rule-level on the remediation snippet, not on the patched file | 🟠 HIGH | Accepted by design: the customer's build is not available to the service. The patched file is re-parsed (syntax guard), ambiguous matches are left to a human, and the PR states exactly what was verified. |
+| The element is located by content, not by a source map from the scanned URL | 🟡 MEDIUM | A multi-file match is now treated as ambiguous and is not patched. The source-map mapping is on the roadmap. |
 
 ## Dependency audit
 

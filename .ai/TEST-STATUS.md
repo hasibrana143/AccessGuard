@@ -1,36 +1,56 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-21 (V23 verified-fix engine cycle)
+Last run: 2026-11-21 (V23 verified-fix engine + security hardening cycle)
 
 ## Vitest
 
 ```
-Test Files  48 passed (48)
-Tests       449 passed (449)
-Duration    ~19.3s
+Test Files  50 passed (50)
+Tests       491 passed (491)
+Duration    ~17.1s
 ```
 
 New coverage in this cycle:
 
-- `src/lib/__tests__/ast-patch.test.ts` (17 tests) — AST location in JSX, occurrence
+- `src/lib/__tests__/ast-patch.test.ts` (23 tests) — AST location in JSX, occurrence
   awareness, HTML exact match, HTML→JSX conversion (`class`→`className`, void
-  self-closing, `style` → object), placeholder rejection, parse guard.
-- `src/lib/__tests__/fix-verification.test.ts` (11 tests) — gate semantics (`null`
+  self-closing, `style` → object), placeholder rejection, parse guard, and the
+  visible-text guard. Regression: two elements with the same `src` but a different
+  `id` must not match each other.
+- `src/lib/__tests__/fix-verification.test.ts` (22 tests) — gate semantics (`null`
   never passes), verdict mapping (verified / failed / unverified), runner failure
-  handling, and three **real browser** axe runs (verified fix, failing fix, link
-  without an accessible name). The browser block is skipped (visibly) when no
-  Chromium is reachable; CI installs Chromium before the unit suite for this reason.
-- `src/lib/__tests__/vpat-generator.test.ts` (5 tests) — conformance labels and a
-  source guard that the PDF route cannot claim a criterion is out of scope.
+  handling, the **check-before-render order** (an unsafe candidate never reaches the
+  runner), mixed batches, and five **real browser** axe runs (verified fix,
+  whitespace-only alt, rejected fixes, injected event handler). The browser block is
+  skipped (visibly) when no Chromium is reachable; CI installs Chromium before the
+  unit suite for this reason.
 - `src/lib/__tests__/github-pr.test.ts` (extended) — occurrence-aware patching,
   independent elements of the same rule, placeholder rejection, no-op rejection,
-  JSX patching through the AST, syntax-guard discard.
+  JSX patching through the AST, syntax-guard discard, content-loss rejection, and
+  the validation bypasses (`<script/x>`, unquoted `javascript:`, `data:text/html`,
+  `onerror = "…"`, `iframe`/`object`/`svg`/`style`/`link`).
+- `src/lib/__tests__/github.test.ts` (new, 5 tests) — the repository writer: one
+  fetch and one write per file, two fixes in one file, two files, an ambiguous match
+  left alone, a refused write not reported as applied, an unsafe fix never written.
+- `src/app/api/github/create-pr/route.test.ts` (new, 7 tests) — the PR route: no PR
+  without remediation, the request cap, no PR when every fix is unverified, no PR when
+  the branch fails, only eligible violations linked to the PR, the audit trail, and
+  honest file counters.
+- `src/lib/__tests__/vpat-generator.test.ts` (extended, 9 tests) — the conformance
+  labels, the source guard, and the generator itself: a project without scans reports
+  everything as not evaluated, a criterion with a violation never claims full
+  support, critical violations are not supported, a manual check overrides the
+  automated result.
 
 ## Playwright
 
 ```
-npx playwright test --project=chromium   → 79 passed, 0 failed (4.3m)
+npx playwright test --project=chromium   → 79 passed, 0 failed (4.2m)
 ```
+
+An earlier run of the same suite showed one retry-only flake
+(`e2e/landing.spec.ts`, authenticated CTA); the spec passes 5/5 in isolation and the
+full suite is green again.
 
 ## Previous cycle
 

@@ -2,27 +2,29 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **P0 — MAKE THE PRODUCT TRUE** ✅ (V23 shipped) |
-| Current task | V23 verified-fix engine shipped: AST patching, axe verification, confidence gate, VPAT truth |
+| Current phase | **P0 — MAKE THE PRODUCT TRUE** ✅ (V23 shipped + hardened) |
+| Current task | V23 verified-fix engine shipped and hardened: AST patching, axe verification, confidence gate, VPAT truth, security hardening (3 High + 4 Medium + 1 Low from an independent review, 3 reproduced P0 defects from QA) |
 | Owner | CTO agent |
-| Status | GREEN — the four P0 truth gaps are closed; the auto-PR claim now matches the shipped engine |
+| Status | GREEN — the four P0 truth gaps are closed, the independent review findings are fixed and covered by tests, and the auto-PR claim matches the shipped engine |
 | Blocked | None |
 | Next action | P1 — regression detection + alerts (`.ai/TASKS.md`), then design partners |
 | Last verification | 2026-11-21 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
 
-## Evidence (2026-11-21, V23 verified-fix engine)
+## Evidence (2026-11-21, V23 verified-fix engine + security hardening)
 
 | Check | Result |
 |---|---|
 | `npx tsc -p tsconfig.check.json --noEmit` | PASS (exit 0) |
 | `npm run lint` | PASS (0 errors) |
-| `npx vitest run` | PASS — 48 files, 449 tests, 0 failed (was 45/410) |
+| `npx vitest run` | PASS — 50 files, 491 tests, 0 failed (was 45/410) |
 | `npm run build` | PASS (exit 0) — Next standalone build |
 | `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
 | `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
-| axe verification in a real browser (vitest) | PASS — verified / failed / link-name cases behave as specified |
+| axe verification in a real browser (vitest) | PASS — verified / failed / rejected cases behave as specified |
+| Independent QA review of the V23 diff | 3 reproduced P0 defects → all fixed and covered by tests |
+| Independent security review of the V23 diff | NOT READY (High 3) → all High/Medium/Low findings fixed and covered by tests |
 
 ## Evidence (2026-11-21, accessibility gate cycle)
 
