@@ -40,6 +40,37 @@ describe('validateRemediation', () => {
     expect(result.valid).toBe(true);
   });
 
+  it('rejects a script tag in any spelling', () => {
+    expect(validateRemediation('<img src="x" alt="A"><script/x>evil()</script>').valid).toBe(false);
+    expect(validateRemediation('<img src="x" alt="A">< script >evil()</script>').valid).toBe(false);
+    expect(validateRemediation('<SCRIPT>evil()</SCRIPT>').valid).toBe(false);
+  });
+
+  it('rejects unquoted javascript: URIs', () => {
+    expect(validateRemediation('<a href=javascript:alert(1)>x</a>').valid).toBe(false);
+    expect(validateRemediation('<a href="javascript :alert(1)">x</a>').valid).toBe(false);
+  });
+
+  it('rejects data:text/html URIs', () => {
+    expect(validateRemediation('<a href="data:text/html;base64,PHNjcmlwdD4=">x</a>').valid).toBe(false);
+  });
+
+  it('rejects event handlers written with spaces around the equals sign', () => {
+    const result = validateRemediation(
+      '<img src="x.jpg" onerror = "alert(1)" alt="desc">',
+      '<img src="x.jpg">'
+    );
+    expect(result.valid).toBe(false);
+  });
+
+  it('rejects active and embedding elements', () => {
+    expect(validateRemediation('<iframe src="http://evil.example"></iframe>').valid).toBe(false);
+    expect(validateRemediation('<object data="x"></object>').valid).toBe(false);
+    expect(validateRemediation('<svg onload="x()"></svg>').valid).toBe(false);
+    expect(validateRemediation('<style>body{}</style>').valid).toBe(false);
+    expect(validateRemediation('<link rel="stylesheet" href="http://evil.example/x.css">').valid).toBe(false);
+  });
+
   it('rejects unclosed HTML tags', () => {
     expect(validateRemediation('<div><span>text</div>').valid).toBe(false);
   });
@@ -152,6 +183,50 @@ describe('applyFixesToFile', () => {
 
     expect(result.fixesApplied).toBe(0);
     expect(result.errors[0]).toContain('no longer parses');
+  });
+
+  it('rejects a patch that deletes the visible text of the element', () => {
+    const original = '<html><body><a href="/about">Read more</a></body></html>';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'link-name',
+        elementHtml: '<a href="/about">Read more</a>',
+        remediationCode: '<a href="/about" aria-label="Read more"></a>',
+      },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.errors[0]).toContain('visible text');
+    expect(result.content).toContain('Read more');
+  });
+
+  it('rejects a JSX patch that deletes the visible text of the element', () => {
+    const original = 'export const Card = () => <a href="/about">Read more</a>;';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'link-name',
+        elementHtml: '<a href="/about">Read more</a>',
+        remediationCode: '<a href="/about" aria-label="Read more"></a>',
+      },
+    ], 'Card.tsx');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.errors[0]).toContain('visible text');
+    expect(result.content).toContain('Read more');
+  });
+
+  it('allows a patch that replaces the text with different text', () => {
+    const original = '<html><body><a href="/about">click here</a></body></html>';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'link-name',
+        elementHtml: '<a href="/about">click here</a>',
+        remediationCode: '<a href="/about">About our team</a>',
+      },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(1);
+    expect(result.content).toContain('About our team');
   });
 });
 

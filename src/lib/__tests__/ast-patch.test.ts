@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   buildReplacement,
   containsPlaceholder,
+  elementTextContent,
   hasSyntaxErrors,
   htmlToJsx,
   locateElement,
   parseElementSignature,
+  preservesVisibleContent,
 } from '@/lib/ast-patch';
 
 const JSX_SOURCE = `export default function Card() {
@@ -53,6 +55,44 @@ describe('locateElement (JSX)', () => {
 
   it('does not match an element with a different source', () => {
     expect(locateElement(JSX_SOURCE, 'Card.tsx', '<img src="other.jpg">', 0)).toBeNull();
+  });
+
+  it('matches every distinguishing attribute, not only the first', () => {
+    const source = '<img src="x" id="a" />\n<img src="x" id="b" />';
+    const location = locateElement(source, 'Card.tsx', '<img src="x" id="b">', 0);
+
+    expect(location).not.toBeNull();
+    expect(source.slice(location!.start, location!.end)).toContain('id="b"');
+  });
+
+  it('does not match an element that is missing a supplied identity attribute', () => {
+    const source = '<img src="x" />';
+    expect(locateElement(source, 'Card.tsx', '<img src="x" id="b">', 0)).toBeNull();
+  });
+});
+
+describe('elementTextContent / preservesVisibleContent', () => {
+  it('reads the visible text of an element', () => {
+    expect(elementTextContent('<a href="/about">Read more</a>')).toBe('Read more');
+    expect(elementTextContent('<button><span>Save</span></button>')).toBe('Save');
+  });
+
+  it('treats void and self-closing elements as having no text', () => {
+    expect(elementTextContent('<img src="a.jpg">')).toBe('');
+    expect(elementTextContent('<img src="a.jpg" />')).toBe('');
+  });
+
+  it('rejects a replacement that empties the element', () => {
+    expect(preservesVisibleContent('<a href="/about">Read more</a>', '<a href="/about" aria-label="Read more"></a>')).toBe(false);
+  });
+
+  it('accepts a replacement that keeps text', () => {
+    expect(preservesVisibleContent('<a href="/about">Read more</a>', '<a href="/about">Read more</a>')).toBe(true);
+    expect(preservesVisibleContent('<a href="/about">click here</a>', '<a href="/about">About us</a>')).toBe(true);
+  });
+
+  it('accepts a replacement of an element that had no text', () => {
+    expect(preservesVisibleContent('<img src="a.jpg">', '<img src="a.jpg" alt="A">')).toBe(true);
   });
 });
 

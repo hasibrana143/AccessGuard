@@ -213,38 +213,55 @@ export async function applyFixesToRepository(
   const assignments = new Map<string, FileFixViolation[]>();
   const localOccurrence = new Map<string, number>();
 
-  const candidates = violations.filter(v => v.remediationCode && v.elementHtml);
+  const loadFile = async (path: string): Promise<string | undefined> => {
+    const cached = contentCache.get(path);
+    if (cached !== undefined) return cached;
+    try {
+      const { data } = await octokit.repos.getContent({ owner, repo, path, ref });
+      if (!('content' in data)) return undefined;
+      const content = Buffer.from(data.content, 'base64').toString('utf8');
+      contentCache.set(path, content);
+      return content;
+    } catch {
+      // Skip files that fail to fetch
+      return undefined;
+    }
+  };
+
+  // At most 10 fixes are written into source files per PR (the rest stay in the PR
+  // as review files). Keeps the number of repository reads and AST parses bounded.
+  const candidates = violations.filter(v => v.remediationCode && v.elementHtml).slice(0, 10);
 
   for (const violation of candidates) {
     if (!validateFixCandidate(violation).valid) continue;
 
+    // Find every file that contains the element. If it exists in more than one
+    // file the match is ambiguous: the fix is left as a review suggestion instead
+    // of patching an arbitrary file.
+    const containing: string[] = [];
+
     for (const file of sourceFiles) {
       if (!file.path) continue;
 
-      let original = contentCache.get(file.path);
-      if (original === undefined) {
-        try {
-          const { data } = await octokit.repos.getContent({ owner, repo, path: file.path, ref });
-          if (!('content' in data)) continue;
-          original = Buffer.from(data.content, 'base64').toString('utf8');
-          contentCache.set(file.path, original);
-        } catch {
-          // Skip files that fail to fetch
-          continue;
-        }
-      }
-
-      const key = `${file.path}::${fixOccurrenceKey(violation)}`;
-      const occurrence = localOccurrence.get(key) ?? 0;
-      const location = locateElement(original, file.path, violation.elementHtml!, occurrence);
-      if (!location) continue;
-
-      const list = assignments.get(file.path) ?? [];
-      list.push(violation);
-      assignments.set(file.path, list);
-      localOccurrence.set(key, occurrence + 1);
-      break;
+      const original = await loadFile(file.path);
+      if (original === undefined) continue;
+      if (!locateElement(original, file.path, violation.elementHtml!, 0)) continue;
+      containing.push(file.path);
     }
+
+    if (containing.length !== 1) continue; // no match, or ambiguous: review file only
+
+    const path = containing[0];
+    const key = `${path}::${fixOccurrenceKey(violation)}`;
+    const occurrence = localOccurrence.get(key) ?? 0;
+    const original = contentCache.get(path);
+    if (original === undefined) continue;
+    if (!locateElement(original, path, violation.elementHtml!, occurrence)) continue;
+
+    const list = assignments.get(path) ?? [];
+    list.push(violation);
+    assignments.set(path, list);
+    localOccurrence.set(key, occurrence + 1);
   }
 
   for (const [path, list] of assignments) {
@@ -254,7 +271,7 @@ export async function applyFixesToRepository(
     const result = applyFixesToFile(original, list, path);
     if (result.fixesApplied <= 0) continue;
 
-    await createFile(
+    const written = await createFile(
       token,
       owner,
       repo,
@@ -263,6 +280,10 @@ export async function applyFixesToRepository(
       `fix(a11y): ${list[0].ruleId}`,
       branch
     );
+    if (!written) {
+      // GitHub refused the write: the file is not modified and the fixes are not applied.
+      continue;
+    }
     filesModified.push({ path, fixesApplied: result.fixesApplied });
     fixesAppliedTotal += result.fixesApplied;
   }

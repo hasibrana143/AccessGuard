@@ -13,16 +13,21 @@ import { logger } from '@/lib/error-logger';
 import { requireVerifiedEmail } from '@/lib/rbac';
 import { PERMISSIONS } from '@/lib/permissions';
 import {
+  codeFence,
   createFixBranchName,
+  escapeMarkdownText,
   generatePrTitle,
   generatePrBody,
   type ViolationForPR,
 } from '@/lib/github-pr';
 import {
-  MIN_FIX_CONFIDENCE,
-  passesConfidenceGate,
+  MAX_FIXES_PER_PR,
+  selectVerifiedFixes,
   verifyFixes,
+  type FixCandidate,
 } from '@/lib/fix-verification';
+import { checkRateLimit, rateLimits } from '@/lib/rate-limit';
+import { createAuditLog } from '@/lib/audit';
 
 // The gate reads verification confidence. An unknown (null) confidence never passes.
 // Re-exported for existing importers.
@@ -80,6 +85,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (violationIds.length > MAX_FIXES_PER_PR) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `At most ${MAX_FIXES_PER_PR} violations can be fixed in one request`,
+        },
+        { status: 400 }
+      );
+    }
+
     const auth = await requireVerifiedEmail(request, { permission: PERMISSIONS.CREATE_PR });
     if (auth instanceof NextResponse) return auth;
 
@@ -110,6 +125,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'One or more violations are not accessible' },
         { status: 403 }
+      );
+    }
+
+    // Rate limit (guard chain: auth -> org access/permission -> rate limit). Each
+    // request launches a browser and runs axe, so the work must be bounded.
+    const rateResult = await checkRateLimit(
+      `github-create-pr:${auth.user.id}`,
+      rateLimits.remediation
+    );
+    if (!rateResult.success) {
+      return NextResponse.json(
+        { success: false, error: 'Too many fix requests, please try again shortly' },
+        { status: 429 }
       );
     }
 
@@ -198,35 +226,46 @@ export async function POST(request: NextRequest) {
     // Verification decides what may be applied: axe is re-run on each patched element.
     // A fix that cannot be verified (no browser, or a rule that cannot be evaluated in
     // isolation) never reaches the repository.
+    const candidates: FixCandidate[] = violationsWithCode.map(v => ({
+      id: v.id,
+      ruleId: v.ruleId,
+      elementHtml: v.elementHtml,
+      remediationCode: v.remediationCode,
+    }));
+
+    // The request is bounded BEFORE the browser work: every candidate costs one
+    // axe run, so the cap has to be applied before verification, not after it.
+    const cappedCandidates = candidates.slice(0, MAX_FIXES_PER_PR);
+    const overLimit = candidates.length - cappedCandidates.length;
+
     const verification = await verifyFixes(
-      violationsWithCode.map(v => ({
-        id: v.id,
-        ruleId: v.ruleId,
-        remediationCode: v.remediationCode as string,
+      cappedCandidates.map(c => ({
+        id: c.id,
+        ruleId: c.ruleId,
+        elementHtml: c.elementHtml,
+        remediationCode: c.remediationCode as string,
       }))
     );
 
-    const violationsWithFixes = violationsWithCode.filter(v =>
-      passesConfidenceGate(verification.get(v.id)?.confidence ?? null)
-    );
-    const skippedLowConfidence = violationsWithCode.filter(v => {
-      const confidence = verification.get(v.id)?.confidence ?? null;
-      return confidence !== null && confidence < MIN_FIX_CONFIDENCE;
-    }).length;
-    const skippedUnverified = violationsWithCode.filter(
-      v => (verification.get(v.id)?.confidence ?? null) === null
-    ).length;
+    const selection = selectVerifiedFixes(cappedCandidates, verification);
+    selection.skippedOverLimit += overLimit;
+    const eligible = new Set(selection.eligibleIds);
+    const violationsWithFixes = violationsWithCode.filter(v => eligible.has(v.id));
 
     if (violationsWithFixes.length === 0) {
       return NextResponse.json(
         {
           success: false,
           error:
-            skippedUnverified > 0
+            selection.skippedUnverified > 0
               ? 'Fix verification could not run for the selected fixes (no browser available, or the rule cannot be evaluated in isolation).'
-              : 'Selected fixes did not pass verification: axe still reports the violation on the patched element.',
-          skippedLowConfidence,
-          skippedUnverified,
+              : selection.skippedInvalid > 0
+                ? 'The selected fixes were rejected by the safety and rule checks (see the skipped counts).'
+                : 'Selected fixes did not pass verification: axe still reports the violation on the patched element.',
+          skippedInvalid: selection.skippedInvalid,
+          skippedOverLimit: selection.skippedOverLimit,
+          skippedLowConfidence: selection.skippedLowConfidence,
+          skippedUnverified: selection.skippedUnverified,
         },
         { status: 400 }
       );
@@ -236,7 +275,13 @@ export async function POST(request: NextRequest) {
     const branchName = customBranch || createFixBranchName('accessibility-fixes');
 
     // Create branch
-    await createBranch(githubToken, owner, repo, branchName, defaultBranch);
+    const branchCreated = await createBranch(githubToken, owner, repo, branchName, defaultBranch);
+    if (!branchCreated) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to create the fix branch on GitHub' },
+        { status: 502 }
+      );
+    }
 
     // Generate PR content
     const prTitle = generatePrTitle(violationsWithFixes.map(toViolationForPR));
@@ -263,7 +308,8 @@ export async function POST(request: NextRequest) {
 
     // Create a summary file with all fixes
     const summaryContent = generateSummaryFile(violationsWithFixes, fixesAppliedTotal, filesModified.length);
-    await createFile(
+    let filesCreated = 0;
+    const summaryWritten = await createFile(
       githubToken,
       owner,
       repo,
@@ -272,13 +318,14 @@ export async function POST(request: NextRequest) {
       `docs: Add accessibility fix summary for ${violationsWithFixes.length} issues`,
       branchName
     );
+    if (summaryWritten) filesCreated++;
 
     // Create individual fix files for violations (docs fallback alongside source edits)
     for (const violation of violationsWithFixes) {
       const fixFileName = `accessguard-fixes/${violation.ruleId}-${violation.id.slice(0, 8)}.md`;
       const fixContent = generateFixFile(violation);
 
-      await createFile(
+      const written = await createFile(
         githubToken,
         owner,
         repo,
@@ -287,6 +334,7 @@ export async function POST(request: NextRequest) {
         `fix(a11y): ${violation.ruleId} - ${violation.description.slice(0, 50)}`,
         branchName
       );
+      if (written) filesCreated++;
     }
 
     // Create pull request
@@ -307,13 +355,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update violations with PR URL
+    // Update violations with PR URL — only the violations whose fix is in the PR.
+    const eligibleViolationIds = violationsWithFixes.map(v => v.id);
     await db.violation.updateMany({
       where: {
-        id: { in: violationIds },
+        id: { in: eligibleViolationIds },
       },
       data: {
         githubPrUrl: pr.url,
+      },
+    });
+
+    // Audit trail: who opened the PR, what was verified, what was skipped.
+    await createAuditLog({
+      orgId: auth.user.orgId,
+      userId: auth.user.id,
+      action: 'github_pr_created',
+      metadata: {
+        repository,
+        branchName,
+        prUrl: pr.url,
+        verifiedFixes: violationsWithFixes.length,
+        fixesAppliedToSource: fixesAppliedTotal,
+        filesModified: filesModified.map(f => f.path),
+        skippedInvalid: selection.skippedInvalid,
+        skippedOverLimit: selection.skippedOverLimit,
+        skippedLowConfidence: selection.skippedLowConfidence,
+        skippedUnverified: selection.skippedUnverified,
+        rules: violationsWithFixes.map(v => v.ruleId),
       },
     });
 
@@ -323,11 +392,13 @@ export async function POST(request: NextRequest) {
         prUrl: pr.url,
         prNumber: 'N/A', // PR number would require additional API call
         branchName,
-        filesCreated: violationsWithFixes.length + 1, // +1 for summary
-        violationsUpdated: violationIds.length,
+        filesCreated,
+        violationsUpdated: eligibleViolationIds.length,
         verifiedFixes: violationsWithFixes.length,
-        skippedLowConfidence,
-        skippedUnverified,
+        skippedInvalid: selection.skippedInvalid,
+        skippedOverLimit: selection.skippedOverLimit,
+        skippedLowConfidence: selection.skippedLowConfidence,
+        skippedUnverified: selection.skippedUnverified,
         filesModified,
         fixesAppliedTotal,
       },
@@ -364,8 +435,9 @@ function generateSummaryFile(violations: ViolationWithProject[], sourceFixesAppl
 
   lines.push('## Verification');
   lines.push('');
-  lines.push('- Every fix in this PR was re-scanned with axe-core on the patched element before the PR was opened.');
-  lines.push('- Fixes that could not be verified were excluded from this PR.');
+  lines.push('- Each fix in this PR passed the safety, placeholder and WCAG-rule checks, and its remediation snippet was re-scanned with axe-core for the rule it targets.');
+  lines.push('- Fixes that failed or could not be verified were excluded from this PR.');
+  lines.push('- Verification is rule-level on the remediation snippet, not a full re-scan of your application.');
   lines.push('');
 
   lines.push('## Issues by Severity');
@@ -397,37 +469,43 @@ function generateSummaryFile(violations: ViolationWithProject[], sourceFixesAppl
 
 // Generate individual fix file content
 function generateFixFile(violation: ViolationWithProject): string {
+  const elementHtml = violation.elementHtml || 'No element HTML available.';
+  const selector = violation.elementSelector || 'No selector available.';
+  const remediation = violation.remediationCode || 'No fix code available.';
+  const htmlFence = codeFence(elementHtml);
+  const codeFenceMarker = codeFence(remediation);
+
   const lines: string[] = [
     `# Fix: ${violation.ruleId}`,
     '',
     '## Issue Details',
     '',
     `**Severity:** ${violation.severity}`,
-    `**WCAG Criteria:** ${violation.wcagCriteria || 'N/A'}`,
-    `**URL:** ${violation.url}`,
+    `**WCAG Criteria:** ${violation.wcagCriteria || 'Not listed'}`,
+    `**URL:** ${escapeMarkdownText(violation.url)}`,
     '',
     '### Description',
-    violation.description,
+    escapeMarkdownText(violation.description),
     '',
     '### Element Selector',
     '```',
-    violation.elementSelector || 'N/A',
+    escapeMarkdownText(selector),
     '```',
     '',
     '### Original HTML',
-    '```html',
-    violation.elementHtml || 'N/A',
-    '```',
+    `${htmlFence}html`,
+    elementHtml,
+    htmlFence,
     '',
     '## Suggested Fix',
     '',
     '### Explanation',
-    violation.aiExplanation || 'No explanation available.',
+    escapeMarkdownText(violation.aiExplanation || 'No explanation available.'),
     '',
     '### Code',
-    '```html',
-    violation.remediationCode || 'No fix code available.',
-    '```',
+    `${codeFenceMarker}html`,
+    remediation,
+    codeFenceMarker,
     '',
     '---',
     '*Generated by AccessGuard*',

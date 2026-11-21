@@ -3,10 +3,13 @@ import fs from 'node:fs';
 import { chromium } from 'playwright';
 import {
   MIN_FIX_CONFIDENCE,
+  MAX_FIXES_PER_PR,
   passesConfidenceGate,
   resolveChromiumExecutable,
+  selectVerifiedFixes,
   verdictToResult,
   verifyFixes,
+  type FixVerificationResult,
   type RuleVerdict,
 } from '@/lib/fix-verification';
 
@@ -56,11 +59,25 @@ describe('verdictToResult', () => {
 describe('verifyFixes', () => {
   it('records a failing verification as confidence 0', async () => {
     const results = await verifyFixes(
-      [{ id: 'v1', ruleId: 'image-alt', remediationCode: '<img src="a.jpg">' }],
+      [{ id: 'v1', ruleId: 'image-alt', remediationCode: '<img src="a.jpg" alt="A">' }],
       async (): Promise<RuleVerdict> => ({ fired: true, evaluated: true })
     );
     expect(results.get('v1')?.status).toBe('failed');
     expect(results.get('v1')?.confidence).toBe(0);
+  });
+
+  it('rejects a fix that cannot address the rule before it is verified', async () => {
+    const rendered: string[] = [];
+    const results = await verifyFixes(
+      [{ id: 'v1', ruleId: 'image-alt', remediationCode: '<img src="a.jpg">' }],
+      async (code): Promise<RuleVerdict> => {
+        rendered.push(code);
+        return { fired: false, evaluated: true };
+      }
+    );
+    expect(rendered).toEqual([]);
+    expect(results.get('v1')?.status).toBe('unverified');
+    expect(results.get('v1')?.reason).toContain('rejected before verification');
   });
 
   it('records a verified fix with full confidence', async () => {
@@ -83,6 +100,127 @@ describe('verifyFixes', () => {
     expect(results.get('v1')?.confidence).toBeNull();
     expect(passesConfidenceGate(results.get('v1')?.confidence ?? null)).toBe(false);
   });
+
+  it('never renders a candidate that fails the safety checks', async () => {
+    const rendered: string[] = [];
+    const results = await verifyFixes(
+      [
+        { id: 'v1', ruleId: 'image-alt', remediationCode: '<img src="a.jpg" alt="A">' },
+        {
+          id: 'v2',
+          ruleId: 'image-alt',
+          elementHtml: '<img src="a.jpg">',
+          remediationCode: '<img src="a.jpg" alt="A" onerror="this.remove()">',
+        },
+        {
+          id: 'v3',
+          ruleId: 'image-alt',
+          elementHtml: '<img src="a.jpg">',
+          remediationCode: '<img src="a.jpg" alt="A"><script/x>evil()</script>',
+        },
+      ],
+      async (code): Promise<RuleVerdict> => {
+        rendered.push(code);
+        return { fired: false, evaluated: true };
+      }
+    );
+
+    // Only the safe candidate reached the runner.
+    expect(rendered).toEqual(['<img src="a.jpg" alt="A">']);
+    expect(results.get('v2')?.status).toBe('unverified');
+    expect(results.get('v2')?.reason).toContain('rejected before verification');
+    expect(results.get('v3')?.status).toBe('unverified');
+  });
+
+  it('maps an unknown rule to unverified', async () => {
+    const results = await verifyFixes(
+      [{ id: 'v1', ruleId: 'not-a-real-rule', remediationCode: '<img src="a.jpg" alt="A">' }],
+      async (): Promise<RuleVerdict> => ({ fired: false, evaluated: false, detail: 'unknown rule' })
+    );
+    expect(results.get('v1')?.status).toBe('unverified');
+    expect(passesConfidenceGate(results.get('v1')?.confidence ?? null)).toBe(false);
+  });
+
+  it('keeps a mixed batch independent', async () => {
+    const results = await verifyFixes(
+      [
+        { id: 'ok', ruleId: 'image-alt', remediationCode: '<img src="a.jpg" alt="A">' },
+        { id: 'bad', ruleId: 'image-alt', remediationCode: '<img src="a.jpg" alt="B">' },
+      ],
+      async (code): Promise<RuleVerdict> =>
+        code.includes('alt="B"')
+          ? { fired: true, evaluated: true }
+          : { fired: false, evaluated: true }
+    );
+    expect(results.get('ok')?.status).toBe('verified');
+    expect(results.get('bad')?.status).toBe('failed');
+  });
+});
+
+describe('selectVerifiedFixes', () => {
+  const verified = (id: string): [string, FixVerificationResult] => [
+    id,
+    { status: 'verified', confidence: 1, reason: 'ok' },
+  ];
+
+  const candidate = (id: string, remediationCode = '<img src="a.jpg" alt="A">') => ({
+    id,
+    ruleId: 'image-alt',
+    elementHtml: '<img src="a.jpg">',
+    remediationCode,
+  });
+
+  it('keeps only verified fixes', () => {
+    const verification = new Map([verified('v1')]);
+    const selection = selectVerifiedFixes([candidate('v1'), candidate('v2')], verification);
+
+    expect(selection.eligibleIds).toEqual(['v1']);
+    expect(selection.skippedUnverified).toBe(1);
+  });
+
+  it('counts a fix that failed verification as low confidence', () => {
+    const verification = new Map<string, FixVerificationResult>([
+      ['v1', { status: 'failed', confidence: 0, reason: 'still fires' }],
+    ]);
+    const selection = selectVerifiedFixes([candidate('v1')], verification);
+
+    expect(selection.eligibleIds).toEqual([]);
+    expect(selection.skippedLowConfidence).toBe(1);
+    expect(selection.skippedUnverified).toBe(0);
+  });
+
+  it('rejects a fix that fails the safety or rule checks before it is verified', () => {
+    const verification = new Map([verified('v1'), verified('v2')]);
+    const selection = selectVerifiedFixes(
+      [
+        candidate('v1'),
+        candidate('v2', '<img src="a.jpg"><script>evil()</script>'),
+        candidate('v3', '<img src="a.jpg" alt="TODO: describe">'),
+      ],
+      verification
+    );
+
+    expect(selection.eligibleIds).toEqual(['v1']);
+    expect(selection.skippedInvalid).toBe(2);
+  });
+
+  it('caps the batch and reports the overflow', () => {
+    const many = Array.from({ length: MAX_FIXES_PER_PR + 3 }, (_, i) => candidate(`v${i}`));
+    const verification = new Map(many.map(c => verified(c.id)));
+    const selection = selectVerifiedFixes(many, verification);
+
+    expect(selection.eligibleIds).toHaveLength(MAX_FIXES_PER_PR);
+    expect(selection.skippedOverLimit).toBe(3);
+  });
+
+  it('ignores violations that carry no remediation at all', () => {
+    const selection = selectVerifiedFixes(
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img>', remediationCode: null }],
+      new Map()
+    );
+    expect(selection.eligibleIds).toEqual([]);
+    expect(selection.skippedInvalid).toBe(0);
+  });
 });
 
 // Real browser evidence. Skipped when no Chromium is reachable (documented in
@@ -96,18 +234,41 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     expect(results.get('v1')?.confidence).toBe(1);
   });
 
-  it('fails a fix that leaves the image without alt text', async () => {
+  it('rejects a fix that leaves the image without alt text before rendering it', async () => {
     const results = await verifyFixes([
       { id: 'v2', ruleId: 'image-alt', remediationCode: '<img src="hero.jpg">' },
     ]);
-    expect(results.get('v2')?.status).toBe('failed');
-    expect(results.get('v2')?.confidence).toBe(0);
+    expect(results.get('v2')?.status).toBe('unverified');
+    expect(results.get('v2')?.confidence).toBeNull();
+    expect(passesConfidenceGate(results.get('v2')?.confidence ?? null)).toBe(false);
   });
 
-  it('fails a link fix that leaves the link without an accessible name', async () => {
+  it('rejects a link fix that leaves the link without an accessible name', async () => {
     const results = await verifyFixes([
       { id: 'v3', ruleId: 'link-name', remediationCode: '<a href="/about"></a>' },
     ]);
-    expect(results.get('v3')?.status).toBe('failed');
+    expect(results.get('v3')?.status).toBe('unverified');
+    expect(passesConfidenceGate(results.get('v3')?.confidence ?? null)).toBe(false);
+  });
+
+  it('fails a fix whose alt text is only whitespace', async () => {
+    const results = await verifyFixes([
+      { id: 'v4', ruleId: 'image-alt', remediationCode: '<img src="hero.jpg" alt=" ">' },
+    ]);
+    expect(results.get('v4')?.status).toBe('failed');
+    expect(results.get('v4')?.confidence).toBe(0);
+  });
+
+  it('never renders a candidate that injects an event handler', async () => {
+    const results = await verifyFixes([
+      {
+        id: 'v5',
+        ruleId: 'image-alt',
+        elementHtml: '<img src="hero.jpg">',
+        remediationCode: '<img src="hero.jpg" alt="A" onerror="document.title=\'pwned\'">',
+      },
+    ]);
+    expect(results.get('v5')?.status).toBe('unverified');
+    expect(results.get('v5')?.reason).toContain('rejected before verification');
   });
 });

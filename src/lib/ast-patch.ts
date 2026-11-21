@@ -55,6 +55,10 @@ const BOOLEAN_ATTRS = new Set([
 // Attributes that identify one element among several with the same tag.
 const DISTINGUISHING_ATTRS = ['src', 'href', 'id', 'name', 'type', 'alt'];
 
+// Attributes that must match when the candidate reports them: an element without
+// them is a different element (two <img> with the same src but different ids).
+const STRICT_IDENTITY_ATTRS = new Set(['src', 'href', 'id', 'name']);
+
 const PLACEHOLDER_PATTERN =
   /\b(TODO|FIXME|XXX|PLACEHOLDER|LOREM IPSUM)\b|\bYOUR[_\s-]?(ALT|TEXT|LABEL|DESCRIPTION|NAME)|\bINSERT[_\s-]?(HERE|TEXT|ALT|LABEL)\b|<\s*insert|\{\{[^}]*\}\}/i;
 function canonicalAttr(name: string): string {
@@ -164,14 +168,25 @@ function collectJsxCandidates(content: string, filePath: string): JsxCandidate[]
 function candidateMatches(candidate: JsxCandidate, signature: ElementSignature): boolean {
   if (candidate.tag !== signature.tag) return false;
 
+  // Every distinguishing attribute the report carries has to match. Comparing only
+  // the first one patched the wrong copy when two elements shared it (same src,
+  // different id).
+  let compared = 0;
   for (const key of DISTINGUISHING_ATTRS) {
     const want = signature.attrs[key];
     if (want === undefined || want === '') continue;
     const have = candidate.attrs[key];
-    if (have === undefined) return false;
+    if (have === undefined) {
+      // A missing identity attribute means a different element; a missing type/alt
+      // is common (the violation may be exactly that the alt is missing).
+      if (STRICT_IDENTITY_ATTRS.has(key)) return false;
+      continue;
+    }
     if (have.trim() !== want.trim()) return false;
-    return true;
+    compared++;
   }
+
+  if (compared > 0) return true;
 
   const wantClass = signature.attrs['class'];
   if (wantClass) {
@@ -224,6 +239,11 @@ export function locateElement(
   return { start: index, end: index + needle.length };
 }
 
+// A style value is emitted into a JS expression, so it must not be able to close
+// the expression context. Only plain CSS values are allowed.
+const SAFE_CSS_PROP = /^[a-zA-Z][a-zA-Z0-9-]*$/;
+const SAFE_CSS_VALUE = /^[a-zA-Z0-9\s#%.,()\/_-]*$/;
+
 function styleToJsx(value: string): string {
   const declarations = value
     .split(';')
@@ -238,6 +258,10 @@ function styleToJsx(value: string): string {
         .replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
       const val = part.slice(idx + 1).trim();
       if (!prop || !val) return null;
+      // No braces, quotes or backslashes (they would escape the expression) and no
+      // url()/expression() (they load remote content or execute in legacy engines).
+      if (!SAFE_CSS_PROP.test(prop) || !SAFE_CSS_VALUE.test(val)) return null;
+      if (/url\s*\(|expression\s*\(/i.test(val)) return null;
       return `${prop}: '${val.replace(/'/g, "\\'")}'`;
     })
     .filter((d): d is string => !!d);
@@ -282,6 +306,34 @@ export function htmlToJsx(html: string): string {
 /** The text that replaces the located element in the target file. */
 export function buildReplacement(filePath: string, remediationCode: string): string {
   return isJsxLikeFile(filePath) ? htmlToJsx(remediationCode) : remediationCode;
+}
+
+/**
+ * The visible text of an element snippet (tags stripped). Empty for void and
+ * self-closing elements.
+ */
+export function elementTextContent(element: string): string {
+  const open = element.match(/^<([a-zA-Z][a-zA-Z0-9:._-]*)\b([^>]*)>/);
+  if (!open) return '';
+  const tag = open[1].toLowerCase();
+  if (VOID_TAGS.has(tag)) return '';
+  if (/\/\s*$/.test(open[2] ?? '')) return '';
+  const close = new RegExp(`</${tag}\\s*>`, 'i');
+  const closeIndex = element.search(close);
+  if (closeIndex === -1) return '';
+  const inner = element.slice(open[0].length, closeIndex);
+  return inner.replace(/<[^>]*>/g, '').replace(/\{[^{}]*\}/g, '').trim();
+}
+
+/**
+ * A replacement may not delete the visible text of the element it replaces. An
+ * axe-verified fix that empties a link or a button would pass the rule check while
+ * removing what the user reads.
+ */
+export function preservesVisibleContent(original: string, replacement: string): boolean {
+  const before = elementTextContent(original);
+  if (!before) return true;
+  return elementTextContent(replacement).length > 0;
 }
 
 /** True when the patched content no longer parses (TypeScript/JSX syntax errors). */

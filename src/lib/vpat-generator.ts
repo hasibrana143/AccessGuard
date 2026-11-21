@@ -240,18 +240,11 @@ function getConformance(violations: Array<{ wcagCriteria: string | null; severit
       count,
     };
   }
-  
-  if (count > 2) {
-    return {
-      conformance: 'partially-supports',
-      remarks: `${count} minor/moderate violation(s) found.`,
-      count,
-    };
-  }
-  
+
+  // Any unresolved violation means the criterion cannot claim full support.
   return {
-    conformance: 'supports',
-    remarks: `${count} minor violation(s) found.`,
+    conformance: 'partially-supports',
+    remarks: `${count} minor/moderate violation(s) found.`,
     count,
   };
 }
@@ -304,11 +297,13 @@ export async function generateVPATData(projectId: string, scanId?: string, optio
     let finalConformance = conformance;
     if (manualCheck?.status === 'fail' && conformance !== 'does-not-support') {
       finalConformance = 'does-not-support';
-    } else if (manualCheck?.status === 'pass' && conformance === 'does-not-support') {
-      // Manual pass can't override automated critical/serious, but can for moderate/minor
-      if (count <= 2 && !violations.some(v => v.wcagCriteria === criterion.id && (v.severity === 'critical' || v.severity === 'serious'))) {
-        finalConformance = 'supports';
-      }
+    } else if (manualCheck?.status === 'pass' && conformance !== 'does-not-support') {
+      // A manual pass can clear minor/moderate findings, but never critical or
+      // serious ones.
+      const hasCriticalOrSerious = violations.some(
+        v => v.wcagCriteria === criterion.id && (v.severity === 'critical' || v.severity === 'serious')
+      );
+      if (!hasCriticalOrSerious) finalConformance = 'supports';
     }
 
     if (finalConformance === 'supports') supports++;

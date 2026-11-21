@@ -2603,6 +2603,8 @@ const schemas = {
           filesCreated: { type: 'integer' },
           violationsUpdated: { type: 'integer' },
           verifiedFixes: { type: 'integer' },
+          skippedInvalid: { type: 'integer' },
+          skippedOverLimit: { type: 'integer' },
           skippedLowConfidence: { type: 'integer' },
           skippedUnverified: { type: 'integer' },
           filesModified: {
