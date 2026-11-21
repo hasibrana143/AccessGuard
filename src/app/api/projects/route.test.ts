@@ -36,22 +36,25 @@ describe('Projects API', () => {
     });
     testOrgId = org.id;
 
-    // Ensure the test user exists with a verified email (write endpoints enforce it)
+    // Ensure the test user exists with a verified email (write endpoints enforce it).
+    // Unique email per test file: the violations suite used to share this row
+    // and point it at a different org, so whichever file ran first decided the
+    // user's orgId and the other suite failed with 403.
     const testUser = await db.user.upsert({
-      where: { email: 'test-user@accessguard.dev' },
+      where: { email: 'projects-test-user@accessguard.dev' },
       create: {
-        email: 'test-user@accessguard.dev',
+        email: 'projects-test-user@accessguard.dev',
         name: 'Test User',
         password: 'not-used',
         role: 'admin',
         orgId: testOrgId,
         emailVerifiedAt: new Date(),
       },
-      update: { emailVerifiedAt: new Date() },
+      update: { emailVerifiedAt: new Date(), role: 'admin', orgId: testOrgId, name: 'Test User' },
     });
 
     mockedGetServerSession.mockResolvedValue({
-      user: { id: testUser.id, email: 'test-user@accessguard.dev', role: 'admin', orgId: testOrgId, orgSlug: 'test-org' },
+      user: { id: testUser.id, email: 'projects-test-user@accessguard.dev', role: 'admin', orgId: testOrgId, orgSlug: 'test-org' },
     } as never);
   });
 
@@ -71,7 +74,7 @@ describe('Projects API', () => {
     });
 
     await db.user.deleteMany({
-      where: { email: 'test-user@accessguard.dev' },
+      where: { email: 'projects-test-user@accessguard.dev' },
     });
   });
 

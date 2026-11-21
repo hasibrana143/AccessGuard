@@ -37,9 +37,56 @@ const memberSession = {
   user: { id: 'u-member', email: 'member@x.com', role: 'member', orgId: 'org-1' },
 };
 
+type SessionUser = { id: string; email: string; role: string; orgId: string };
+
+// requireAuth re-reads the user from the database instead of trusting the
+// session payload, so the mock row must carry the full user fields (role,
+// orgId…). Returning only { emailVerifiedAt } made every guarded call see an
+// undefined role/org and fail closed with 401/403.
+function userRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'u-admin',
+    email: 'admin@x.com',
+    role: 'admin',
+    orgId: 'org-1',
+    organization: { slug: 'org-1' },
+    customRole: null,
+    emailVerifiedAt: new Date(),
+    ...overrides,
+  };
+}
+
+async function currentSessionUser(): Promise<SessionUser | undefined> {
+  const impl = mockedGetServerSession.getMockImplementation();
+  if (!impl) return undefined;
+  const result = (await impl()) as { user?: SessionUser } | null;
+  return result?.user;
+}
+
+// Prisma's findUnique resolves to a thenable client type, so a plain async
+// implementation does not satisfy the mocked signature. Cast it once here
+// instead of repeating the cast at every call site.
+function mockUser(impl: () => Promise<Record<string, unknown>>): void {
+  mockedFindUnique.mockImplementation(impl as never);
+}
+
+// Default row mirrors the active session (requireAuth re-reads the user).
+function mockSessionUser(): void {
+  mockUser(async () => {
+    const su = await currentSessionUser();
+    return userRow(su ? { id: su.id, email: su.email, role: su.role, orgId: su.orgId } : {}) as never;
+  });
+}
+
+// Row with fixed fields (e.g. an unverified email).
+function mockUserRow(overrides: Record<string, unknown>): void {
+  mockUser(async () => userRow(overrides) as never);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mockedFindUnique.mockResolvedValue({ emailVerifiedAt: new Date() } as never);
+  // Mirror the active session into the DB row, like the real database does.
+  mockSessionUser();
 });
 
 afterEach(() => {
@@ -67,9 +114,9 @@ describe('requireAuth (contract)', () => {
 
   it('accepts a valid Bearer API token with an existing user', async () => {
     mockedGetServerSession.mockResolvedValue(null as never);
-    mockedFindUnique.mockResolvedValue({
-      id: 'u-api', email: 'api@x.com', role: 'admin', orgId: 'org-1',
-    } as never);
+    mockedFindUnique.mockResolvedValue(
+      userRow({ id: 'u-api', email: 'api@x.com', role: 'admin', orgId: 'org-1' }) as never,
+    );
 
     const request = createRequest();
     // Sign a real JWT with the app secret so verifyToken accepts it
@@ -129,7 +176,7 @@ describe('requireRole (contract)', () => {
 describe('email verification enforcement', () => {
   it('blocks write requests with 403 when the email is unverified', async () => {
     mockedGetServerSession.mockResolvedValue(adminSession as never);
-    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+    mockUserRow({ emailVerifiedAt: null });
 
     const result = await requireRole(createRequest('POST'));
     expect(result instanceof NextResponse).toBe(true);
@@ -140,7 +187,7 @@ describe('email verification enforcement', () => {
 
   it('allows writes when the email is verified', async () => {
     mockedGetServerSession.mockResolvedValue(adminSession as never);
-    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01') } as never);
+    mockUserRow({ emailVerifiedAt: new Date('2026-01-01') });
 
     const result = await requireRole(createRequest('POST'));
     expect(result instanceof NextResponse).toBe(false);
@@ -148,7 +195,7 @@ describe('email verification enforcement', () => {
 
   it('does not enforce verification on read requests', async () => {
     mockedGetServerSession.mockResolvedValue(adminSession as never);
-    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+    mockUserRow({ emailVerifiedAt: null });
 
     const result = await requireRole(createRequest('GET'));
     expect(result instanceof NextResponse).toBe(false);
@@ -156,7 +203,7 @@ describe('email verification enforcement', () => {
 
   it('enforces verification on org-scoped writes', async () => {
     mockedGetServerSession.mockResolvedValue(adminSession as never);
-    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+    mockUserRow({ emailVerifiedAt: null });
     mockedOrgFindFirst.mockResolvedValue({
       id: 'org-1', slug: 'org-1', name: 'Org', plan: 'agency', settings: null,
     } as never);
@@ -170,13 +217,13 @@ describe('email verification enforcement', () => {
   it('requireVerifiedEmail rejects unverified users and accepts verified ones', async () => {
     mockedGetServerSession.mockResolvedValue(adminSession as never);
 
-    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+    mockUserRow({ emailVerifiedAt: null });
     const rejected = await requireVerifiedEmail(createRequest());
     expect(rejected instanceof NextResponse).toBe(true);
     if (!(rejected instanceof NextResponse)) return;
     expect(rejected.status).toBe(403);
 
-    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: new Date() } as never);
+    mockUserRow({ emailVerifiedAt: new Date() });
     const accepted = await requireVerifiedEmail(createRequest());
     expect(accepted instanceof NextResponse).toBe(false);
   });
@@ -185,7 +232,7 @@ describe('email verification enforcement', () => {
 describe('requireProjectAccess (project IDOR guard)', () => {
   beforeEach(() => {
     mockedGetServerSession.mockResolvedValue(adminSession as never);
-    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: new Date() } as never);
+    mockUserRow({ emailVerifiedAt: new Date() });
     mockedProjectFindFirst.mockResolvedValue({ id: 'proj-1', orgId: 'org-1' } as never);
   });
 
@@ -225,7 +272,7 @@ describe('requireProjectAccess (project IDOR guard)', () => {
   });
 
   it('rejects write access for unverified users with 403', async () => {
-    mockedFindUnique.mockResolvedValue({ emailVerifiedAt: null } as never);
+    mockUserRow({ emailVerifiedAt: null });
     const result = await requireProjectAccess(createRequest('POST'), 'proj-1');
     expect(result instanceof NextResponse).toBe(true);
     if (!(result instanceof NextResponse)) return;
@@ -240,8 +287,12 @@ describe('requireProjectAccess (project IDOR guard)', () => {
   });
 
   it('rejects access when the required permission is missing', async () => {
+    // MANAGE_BILLING is the one permission the admin tier does not hold
+    // (see ADMIN_PERMISSIONS in src/lib/permissions.ts). Any other permission
+    // is granted to admins, so asserting on one of those would not exercise
+    // the permission guard at all.
     const result = await requireProjectAccess(createRequest('POST'), 'proj-1', {
-      permission: PERMISSIONS.CREATE_PROJECTS,
+      permission: PERMISSIONS.MANAGE_BILLING,
     });
     expect(result instanceof NextResponse).toBe(true);
     if (!(result instanceof NextResponse)) return;

@@ -1,8 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
-const { processorRef, queueRef, FakeQueue } = vi.hoisted(() => {
+const { processorRef, queueRef, FakeQueue, violationCreateMany, violationFindMany, violationUpdateMany } = vi.hoisted(() => {
   const processorRef: { current: ((job: unknown) => Promise<void>) | null } = { current: null };
   const queueRef: { current: FakeQueue | null } = { current: null };
+  // Shared spies so assertions on db.violation.* also see the calls made
+  // through the transaction client.
+  const violationCreateMany = vi.fn(async () => ({ count: 0 }));
+  const violationFindMany = vi.fn(async () => []);
+  const violationUpdateMany = vi.fn(async () => ({ count: 0 }));
   class FakeQueue {
     add = vi.fn(async () => ({ id: 'fake-job' }));
     getWaitingCount = vi.fn(async () => 1);
@@ -11,7 +16,7 @@ const { processorRef, queueRef, FakeQueue } = vi.hoisted(() => {
     getFailedCount = vi.fn(async () => 1);
     async close() {}
   }
-  return { processorRef, queueRef, FakeQueue };
+  return { processorRef, queueRef, FakeQueue, violationCreateMany, violationFindMany, violationUpdateMany };
 });
 
 vi.mock('bullmq', () => ({
@@ -54,10 +59,15 @@ vi.mock('@/lib/db', () => ({
       return { id: 'scan-1', ...(argsRecord.data as Record<string, unknown>) };
     }),
       update: vi.fn(async () => ({})),
+      // Previous-scan lookup used by violation reconciliation.
+      findFirst: vi.fn(async () => null),
     },
-    violation: { createMany: vi.fn(async () => ({ count: 0 })) },
+    violation: { createMany: violationCreateMany, findMany: violationFindMany, updateMany: violationUpdateMany },
     auditLog: { create: vi.fn(async () => ({})) },
     user: { findMany: vi.fn(async () => [{ email: 'a@x.com' }]) },
+    // Authenticated scans read the project's active auth configs before running.
+    scanAuthConfig: { findMany: vi.fn(async () => []) },
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({ violation: { createMany: violationCreateMany, findMany: violationFindMany, updateMany: violationUpdateMany } })),
   },
 }));
 
@@ -69,6 +79,7 @@ vi.mock('@/services/scanner', () => ({
   scanFromHTML: vi.fn(),
   scanUrl: vi.fn(),
   scanUrlServer: vi.fn(),
+  crawlSite: vi.fn(),
 }));
 
 import { getRedis } from '@/lib/redis';

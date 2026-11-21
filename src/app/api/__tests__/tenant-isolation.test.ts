@@ -27,6 +27,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
   let orgBId: string;
   let projectBId: string;
   let scanBId: string;
+  let userAId: string;
 
   beforeAll(async () => {
     const orgA = await db.organization.upsert({
@@ -41,6 +42,23 @@ describe('Tenant isolation (IDOR prevention)', () => {
     });
     orgAId = orgA.id;
     orgBId = orgB.id;
+
+    // requireAuth re-reads the user from the database, so the session must
+    // reference a real row. A fabricated id ('u-a') made every request fail
+    // with 401 before the cross-tenant assertion could be reached.
+    const userA = await db.user.upsert({
+      where: { email: 'tenant-isolation-a@accessguard.dev' },
+      create: {
+        email: 'tenant-isolation-a@accessguard.dev',
+        name: 'Tenant A Admin',
+        password: 'not-used',
+        role: 'admin',
+        orgId: orgAId,
+        emailVerifiedAt: new Date(),
+      },
+      update: { emailVerifiedAt: new Date(), role: 'admin', orgId: orgAId },
+    });
+    userAId = userA.id;
 
     const projectB = await db.project.upsert({
       where: { id: `project-b-${orgB.id.slice(0, 8)}` },
@@ -61,6 +79,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
   });
 
   afterAll(async () => {
+    await db.user.deleteMany({ where: { email: 'tenant-isolation-a@accessguard.dev' } });
     await db.scan.deleteMany({ where: { projectId: projectBId } });
     await db.project.deleteMany({ where: { id: projectBId } });
     await db.organization.deleteMany({ where: { slug: { in: ['tenant-a', 'tenant-b'] } } });
@@ -74,7 +93,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks reading another tenant via orgId/slug param (projects)', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await getProjects(createRequest(`/api/projects?orgId=${orgBId}`));
@@ -83,7 +102,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks reading another tenant via slug', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await getProjects(createRequest('/api/projects?orgId=tenant-b'));
@@ -92,7 +111,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks creating projects in another tenant', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await postProjects(createRequest('/api/projects', {
@@ -104,7 +123,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks deleting projects in another tenant', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await deleteProjects(createRequest(`/api/projects?id=${projectBId}`));
@@ -113,7 +132,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks reading violations of another tenant project', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await getViolations(createRequest(`/api/violations?projectId=${projectBId}`));
@@ -122,7 +141,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks reading scans of another tenant project', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await getScans(createRequest(`/api/scans?projectId=${projectBId}`));
@@ -131,7 +150,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks stats trends for another tenant project', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await getStatsTrends(createRequest(`/api/stats/trends?projectId=${projectBId}`));
@@ -140,7 +159,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks schedule listing scoped to own org only', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await getSchedule(createRequest(`/api/schedule?orgId=${orgBId}`));
@@ -151,7 +170,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks settings of another tenant', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await getSettings(createRequest(`/api/settings?orgId=${orgBId}`));
@@ -160,7 +179,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('blocks team members listing of another tenant', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await getMembers(createRequest('/api/team/members?orgSlug=tenant-b'));
@@ -169,7 +188,7 @@ describe('Tenant isolation (IDOR prevention)', () => {
 
   it('returns 404 when a project does not exist (no info leak)', async () => {
     mockedGetServerSession.mockResolvedValue({
-      user: { id: 'u-a', role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
+      user: { id: userAId, role: 'admin', orgId: orgAId, orgSlug: 'tenant-a' },
     } as never);
 
     const res = await getViolations(createRequest('/api/violations?projectId=nonexistent-project-id'));

@@ -22,23 +22,26 @@ describe('Violations API', () => {
     const org = await db.organization.findFirst({ where: { slug: 'default-org' } });
     testOrgId = org?.id || '';
 
-    // Ensure the test user exists with a verified email (write endpoints enforce it)
+    // Ensure the test user exists with a verified email (write endpoints enforce it).
+    // Unique email per test file: this row used to be shared with the projects
+    // suite while pointing at a different org, so whichever suite ran first
+    // decided the user's orgId and the other failed with 403.
     if (testOrgId) {
       const testUser = await db.user.upsert({
-        where: { email: 'test-user@accessguard.dev' },
+        where: { email: 'violations-test-user@accessguard.dev' },
         create: {
-          email: 'test-user@accessguard.dev',
+          email: 'violations-test-user@accessguard.dev',
           name: 'Test User',
           password: 'not-used',
           role: 'admin',
           orgId: testOrgId,
           emailVerifiedAt: new Date(),
         },
-        update: { emailVerifiedAt: new Date() },
+        update: { emailVerifiedAt: new Date(), role: 'admin', orgId: testOrgId, name: 'Test User' },
       });
 
       mockedGetServerSession.mockResolvedValue({
-        user: { id: testUser.id, email: 'test-user@accessguard.dev', role: 'admin', orgId: testOrgId, orgSlug: 'default-org' },
+        user: { id: testUser.id, email: 'violations-test-user@accessguard.dev', role: 'admin', orgId: testOrgId, orgSlug: 'default-org' },
       } as never);
     }
   });
