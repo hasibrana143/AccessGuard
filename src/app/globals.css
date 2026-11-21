@@ -99,17 +99,20 @@
   --sidebar-border: oklch(0.9 0 0);
   --sidebar-ring: oklch(0.55 0.2 25);
   
-  /* AccessGuard Severity Colors */
-  --critical: oklch(0.55 0.22 25);
-  --serious: oklch(0.65 0.18 50);
-  --moderate: oklch(0.75 0.15 85);
-  --minor: oklch(0.6 0.12 250);
+  /* AccessGuard Severity Colors
+     Severity colours are used as 12px badge text on their own 10% tint
+     (bg-<severity>/10), so the lightness is tuned for 4.5:1 text contrast
+     against both the tint and the white card — not just for fills/icons. */
+  --critical: oklch(0.52 0.22 25);
+  --serious: oklch(0.53 0.18 50);
+  --moderate: oklch(0.52 0.15 85);
+  --minor: oklch(0.51 0.12 250);
   --pass: oklch(0.65 0.18 160);
   
   /* AccessGuard Brand Colors */
   --coral: oklch(0.55 0.2 25);
   --coral-foreground: oklch(0.99 0 0);
-  --emerald: oklch(0.65 0.18 160);
+  --emerald: oklch(0.5 0.14 160);
   --emerald-foreground: oklch(0.15 0 0);
 
   /* Semantic Status Colors */
@@ -171,8 +174,10 @@
   --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.65 0.2 25);
   
-  /* AccessGuard Severity Colors - Dark Mode */
-  --critical: oklch(0.6 0.22 25);
+  /* AccessGuard Severity Colors - Dark Mode
+     Same rule as the light palette: the value must clear 4.5:1 as 12px text
+     on its own 10% tint over the dark surfaces. */
+  --critical: oklch(0.67 0.21 25);
   --serious: oklch(0.7 0.18 50);
   --moderate: oklch(0.8 0.15 85);
   --minor: oklch(0.65 0.12 250);

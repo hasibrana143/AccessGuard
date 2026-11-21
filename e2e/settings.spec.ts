@@ -12,9 +12,11 @@ test.describe('Settings', () => {
 
   test('privacy tab shows data region selector and GDPR export', async ({ page }) => {
     const privacyTab = page.getByRole('tab', { name: /privacy/i });
-    if (await privacyTab.count()) {
-      await privacyTab.click();
-    }
+    await expect(privacyTab).toBeVisible();
+    await privacyTab.click();
+    // Radix only swaps the panel once React has hydrated, so wait for the
+    // trigger to report the active state before reading the panel copy.
+    await expect(privacyTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('body')).toContainText(/Export My Data|Data Region|EU/i, { timeout: 8000 });
   });
 
