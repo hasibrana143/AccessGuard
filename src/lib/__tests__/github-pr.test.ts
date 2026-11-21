@@ -6,7 +6,39 @@ import {
   parsePrUrl,
   generatePrTitle,
   generatePrBody,
+  escapeMarkdownText,
+  codeFence,
 } from '@/lib/github-pr';
+
+describe('PR text escaping', () => {
+  it('neutralizes raw HTML in untrusted text', () => {
+    const escaped = escapeMarkdownText('<img src=x onerror=alert(1)>');
+    expect(escaped).not.toContain('<');
+    expect(escaped).not.toContain('>');
+    expect(escaped).toContain('lt;img');
+    expect(escaped).toContain('gt;');
+  });
+
+  it('sizes the code fence to the content it wraps', () => {
+    expect(codeFence('plain')).toBe('```');
+    expect(codeFence('has ``` fence')).toBe('````');
+    expect(codeFence('has ```` fence')).toBe('`````');
+  });
+
+  it('keeps untrusted HTML out of the PR body', () => {
+    const body = generatePrBody([
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        severity: 'serious',
+        url: 'https://example.com/',
+        description: '<img src=x onerror="steal()">',
+        wcagCriteria: '1.1.1',
+      },
+    ]);
+    expect(body).not.toContain('<img src=x');
+  });
+});
 
 describe('validateRemediation', () => {
   it('rejects empty remediation code', () => {
