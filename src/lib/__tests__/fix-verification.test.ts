@@ -225,6 +225,11 @@ describe('selectVerifiedFixes', () => {
 
 // Real browser evidence. Skipped when no Chromium is reachable (documented in
 // .ai/TEST-STATUS.md); CI installs Chromium before the unit suite for this reason.
+// The timeout is raised because the first Chromium launch on a cold CI runner
+// takes longer than Vitest's 10 s default (the verification itself has its own
+// 15 s deadline inside the product code).
+const BROWSER_TEST_TIMEOUT = 60_000;
+
 describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
   it('verifies a fix that adds alt text', async () => {
     const results = await verifyFixes([
@@ -232,7 +237,7 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     ]);
     expect(results.get('v1')?.status).toBe('verified');
     expect(results.get('v1')?.confidence).toBe(1);
-  });
+  }, BROWSER_TEST_TIMEOUT);
 
   it('rejects a fix that leaves the image without alt text before rendering it', async () => {
     const results = await verifyFixes([
@@ -241,7 +246,7 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     expect(results.get('v2')?.status).toBe('unverified');
     expect(results.get('v2')?.confidence).toBeNull();
     expect(passesConfidenceGate(results.get('v2')?.confidence ?? null)).toBe(false);
-  });
+  }, BROWSER_TEST_TIMEOUT);
 
   it('rejects a link fix that leaves the link without an accessible name', async () => {
     const results = await verifyFixes([
@@ -249,7 +254,7 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     ]);
     expect(results.get('v3')?.status).toBe('unverified');
     expect(passesConfidenceGate(results.get('v3')?.confidence ?? null)).toBe(false);
-  });
+  }, BROWSER_TEST_TIMEOUT);
 
   it('fails a fix whose alt text is only whitespace', async () => {
     const results = await verifyFixes([
@@ -257,7 +262,7 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     ]);
     expect(results.get('v4')?.status).toBe('failed');
     expect(results.get('v4')?.confidence).toBe(0);
-  });
+  }, BROWSER_TEST_TIMEOUT);
 
   it('never renders a candidate that injects an event handler', async () => {
     const results = await verifyFixes([
@@ -270,5 +275,5 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     ]);
     expect(results.get('v5')?.status).toBe('unverified');
     expect(results.get('v5')?.reason).toContain('rejected before verification');
-  });
+  }, BROWSER_TEST_TIMEOUT);
 });
