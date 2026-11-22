@@ -105,6 +105,21 @@ The code-scanning dashboard after this run: **0 open High, 0 open Critical**
 (9 historical High and 20 Medium alerts, all closed). The Trivy step is the gate
 and it passed.
 
+## The seventh-review closure run (2026-11-22)
+
+All four workflows are green on `08ab9ef` (the seventh-review closure cycle):
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45019857629 | CI | ✅ success — lint, source-only typecheck, vitest + coverage, `next build`, `npm audit`, Playwright |
+| 45019857630 | Deploy | ✅ success |
+| 45019857601 | AccessGuard Scan | ✅ success (skips without the API key) |
+| 45019857658 | Docker | ✅ success — `Trivy image scan (fail on HIGH/CRITICAL)` ✅, `Upload Trivy SARIF` ✅, `Syft SBOM attest` ✅ |
+
+The Docker job is the proof for the image gate: every step of `build-and-push`
+is green, including the Trivy step that fails on HIGH/CRITICAL. The code-scanning
+dashboard after this run: **0 open alerts** (0 High, 0 Critical).
+
 ### How this cycle was shipped
 
 The `/ship` skill was invoked for this cycle, but its helper binaries
