@@ -29,6 +29,8 @@ vi.mock('@octokit/rest', () => ({
 
 import {
   applyFixesToRepository,
+  planRepositoryFixes,
+  applyRepositoryFixPlan,
   isGitHubConfigured,
   getGitHubOAuthUrl,
   exchangeCodeForToken,
@@ -541,6 +543,69 @@ describe('applyFixesToRepository', () => {
     expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
     expect(result.fixesAppliedTotal).toBe(0);
     expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when an inline script reacts to the attribute the fix adds', async () => {
+    // The inline block is repository runtime code even though no script file is linked.
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><head><style>.overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647}</style></head><body><img id="target" src="x"><script>
+document.querySelectorAll("img").forEach(function(img){if(img.hasAttribute("alt"))img.classList.add("overlay")});
+</script></body></html>`
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.appliedFixIds).toEqual([]);
+  });
+
+  it('does not patch an element when a script reads the attribute property the fix adds', async () => {
+    // The DOM property reflects the attribute just like getAttribute does.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      'document.querySelectorAll("img").forEach(function(img){if(img.alt)img.classList.add("overlay")});'
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.appliedFixIds).toEqual([]);
   });
 
   it('does not patch an element when a script activates a sibling with the attribute the fix adds', async () => {
@@ -1128,6 +1193,79 @@ describe('applyFixesToRepository', () => {
 
     expect(result.filesModified).toEqual([]);
     expect(mocks.getContent).not.toHaveBeenCalled();
+  });
+
+  it('reports a destination-refused candidate without writing anything', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'styles.css',
+      '[alt]{position:fixed;inset:0;width:100%;height:100%;z-index:999999}'
+    );
+
+    const plan = await planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      },
+    ]);
+
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+  });
+
+  it('reports a candidate with no provable source file for review', async () => {
+    tree(['index.html']);
+    fileContent('index.html', '<html><body><p>No image here</p></body></html>');
+
+    const plan = await planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img src="a.jpg">',
+        remediationCode: '<img src="a.jpg" alt="A">',
+      },
+    ]);
+
+    expect(plan.reviewFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+  });
+
+  it('writes the planned files and returns their applied ids', async () => {
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', {
+      fileWrites: [
+        {
+          path: 'index.html',
+          content: '<html><body><img src="a.jpg" alt="A"></body></html>',
+          message: 'fix(a11y): image-alt',
+          fixesApplied: 1,
+        },
+      ],
+      appliedFixIds: ['v1'],
+      refusedFixIds: [],
+      reviewFixIds: [],
+    });
+
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: 'index.html',
+        branch: 'accessguard/fix-x',
+        content: Buffer.from('<html><body><img src="a.jpg" alt="A"></body></html>').toString('base64'),
+      })
+    );
+    expect(result).toEqual({
+      filesModified: [{ path: 'index.html', fixesApplied: 1 }],
+      fixesAppliedTotal: 1,
+      appliedFixIds: ['v1'],
+    });
   });
 });
 

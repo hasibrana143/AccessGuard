@@ -16,7 +16,8 @@ const mocks = vi.hoisted(() => ({
   checkRateLimit: vi.fn(),
   createAuditLogWithRetry: vi.fn(),
   verifyFixes: vi.fn(),
-  applyFixesToRepository: vi.fn(),
+  planRepositoryFixes: vi.fn(),
+  applyRepositoryFixPlan: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -43,7 +44,8 @@ vi.mock('@/lib/github', () => ({
   createFile: mocks.createFile,
   createPullRequest: mocks.createPullRequest,
   getUserRepositories: mocks.getUserRepositories,
-  applyFixesToRepository: mocks.applyFixesToRepository,
+  planRepositoryFixes: mocks.planRepositoryFixes,
+  applyRepositoryFixPlan: mocks.applyRepositoryFixPlan,
 }));
 vi.mock('@/lib/fix-verification', async importOriginal => {
   const actual = await importOriginal<typeof import('@/lib/fix-verification')>();
@@ -100,7 +102,21 @@ describe('POST /api/github/create-pr', () => {
     mocks.createPullRequest.mockResolvedValue({ url: 'https://github.com/owner/repo/pull/1' });
     mocks.updateMany.mockResolvedValue({ count: 1 });
     mocks.createAuditLogWithRetry.mockResolvedValue(true);
-    mocks.applyFixesToRepository.mockResolvedValue({
+    mocks.planRepositoryFixes.mockImplementation(
+      async (
+        _token: string,
+        _owner: string,
+        _repo: string,
+        _ref: string,
+        violations: Array<{ id: string }>
+      ) => ({
+        fileWrites: [],
+        appliedFixIds: [],
+        refusedFixIds: [],
+        reviewFixIds: violations.map(violation => violation.id),
+      })
+    );
+    mocks.applyRepositoryFixPlan.mockResolvedValue({
       filesModified: [],
       fixesAppliedTotal: 0,
       appliedFixIds: [],
@@ -143,6 +159,143 @@ describe('POST /api/github/create-pr', () => {
     expect(mocks.createBranch).not.toHaveBeenCalled();
     expect(mocks.createPullRequest).not.toHaveBeenCalled();
     expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('opens no branch, document or pull request when every candidate is refused', async () => {
+    mocks.findMany.mockResolvedValue([violation('v1')]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mocks.planRepositoryFixes.mockResolvedValue({
+      fileWrites: [],
+      appliedFixIds: [],
+      refusedFixIds: ['v1'],
+      reviewFixIds: [],
+    });
+
+    const res = await POST(request(['v1']));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("repository's own stylesheet or runtime");
+    expect(mocks.createBranch).not.toHaveBeenCalled();
+    expect(mocks.createFile).not.toHaveBeenCalled();
+    expect(mocks.createPullRequest).not.toHaveBeenCalled();
+    expect(mocks.createAuditLogWithRetry).not.toHaveBeenCalled();
+  });
+
+  it('writes the audit intent before creating the branch', async () => {
+    mocks.findMany.mockResolvedValue([violation('v1')]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+
+    const res = await POST(request(['v1']));
+
+    expect(res.status).toBe(200);
+    expect(mocks.createAuditLogWithRetry.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        action: 'github_pr_intent',
+        metadata: expect.objectContaining({
+          repository: 'owner/repo',
+          branchName: expect.any(String),
+          rules: ['image-alt'],
+          plannedArtifacts: 2,
+        }),
+      })
+    );
+    expect(mocks.planRepositoryFixes.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.createAuditLogWithRetry.mock.invocationCallOrder[0]
+    );
+    expect(mocks.createAuditLogWithRetry.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.createBranch.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('opens no pull request when the audit intent cannot be written', async () => {
+    mocks.findMany.mockResolvedValue([violation('v1')]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mocks.createAuditLogWithRetry.mockResolvedValue(false);
+
+    const res = await POST(request(['v1']));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toContain('audit trail could not be written');
+    expect(mocks.createBranch).not.toHaveBeenCalled();
+    expect(mocks.applyRepositoryFixPlan).not.toHaveBeenCalled();
+    expect(mocks.createFile).not.toHaveBeenCalled();
+    expect(mocks.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('creates no fix document for a refused candidate', async () => {
+    mocks.findMany.mockResolvedValue([
+      violation('v1'),
+      violation('v2', {
+        ruleId: 'button-name',
+        elementHtml: '<button>Save</button>',
+        remediationCode: '<button aria-label="Save">Save</button>',
+        description: 'Button has no accessible name',
+      }),
+    ]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([
+        ['v1', { status: 'verified', confidence: 1, reason: 'ok' }],
+        ['v2', { status: 'verified', confidence: 1, reason: 'ok' }],
+      ])
+    );
+    mocks.planRepositoryFixes.mockResolvedValue({
+      fileWrites: [
+        {
+          path: 'index.html',
+          content: '<html><body><img src="a.jpg" alt="A photo"></body></html>',
+          message: 'fix(a11y): image-alt',
+          fixesApplied: 1,
+        },
+      ],
+      appliedFixIds: ['v1'],
+      refusedFixIds: ['v2'],
+      reviewFixIds: [],
+    });
+    mocks.applyRepositoryFixPlan.mockResolvedValue({
+      filesModified: [{ path: 'index.html', fixesApplied: 1 }],
+      fixesAppliedTotal: 1,
+      appliedFixIds: ['v1'],
+    });
+
+    const res = await POST(request(['v1', 'v2']));
+    const body = await res.json();
+    const writtenPaths = mocks.createFile.mock.calls.map(call => call[3]);
+
+    expect(res.status).toBe(200);
+    expect(writtenPaths).toContain('accessguard-fixes/image-alt-v1.md');
+    expect(writtenPaths).not.toContain('accessguard-fixes/button-name-v2.md');
+    const summaryCall = mocks.createFile.mock.calls.find(call => call[3] === 'accessguard-fixes/summary.md');
+    expect(summaryCall?.[4]).not.toContain('button-name');
+    expect(mocks.createPullRequest.mock.calls[0][4]).not.toContain('button-name');
+    expect(mocks.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['v1'] } } })
+    );
+    expect(body.data.skippedRefused).toBe(1);
+  });
+
+  it('opens no PR when repository planning fails', async () => {
+    mocks.findMany.mockResolvedValue([violation('v1')]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mocks.planRepositoryFixes.mockRejectedValue(new Error('scan failed'));
+
+    const res = await POST(request(['v1']));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('no fix can be applied safely');
+    expect(mocks.createBranch).not.toHaveBeenCalled();
+    expect(mocks.createPullRequest).not.toHaveBeenCalled();
   });
 
   it('opens no PR when the branch cannot be created', async () => {
@@ -237,7 +390,20 @@ describe('POST /api/github/create-pr', () => {
     mocks.verifyFixes.mockResolvedValue(
       new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
     );
-    mocks.applyFixesToRepository.mockResolvedValue({
+    mocks.planRepositoryFixes.mockResolvedValue({
+      fileWrites: [
+        {
+          path: 'index.html',
+          content: '<html><body><img src="a.jpg" alt="A photo"></body></html>',
+          message: 'fix(a11y): image-alt',
+          fixesApplied: 1,
+        },
+      ],
+      appliedFixIds: ['v1'],
+      refusedFixIds: [],
+      reviewFixIds: [],
+    });
+    mocks.applyRepositoryFixPlan.mockResolvedValue({
       filesModified: [{ path: 'index.html', fixesApplied: 1 }],
       fixesAppliedTotal: 1,
       appliedFixIds: ['v1'],
@@ -255,18 +421,20 @@ describe('POST /api/github/create-pr', () => {
     );
   });
 
-  it('reports an audit failure instead of claiming a trail', async () => {
+  it('reports the degraded closing audit state while keeping the intent trail', async () => {
     mocks.findMany.mockResolvedValue([violation('v1')]);
     mocks.verifyFixes.mockResolvedValue(
       new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
     );
-    mocks.createAuditLogWithRetry.mockResolvedValue(false);
+    mocks.createAuditLogWithRetry.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     const res = await POST(request(['v1']));
     const body = await res.json();
 
     expect(res.status).toBe(200);
+    expect(body.data.prUrl).toBe('https://github.com/owner/repo/pull/1');
     expect(body.data.auditRecorded).toBe(false);
+    expect(body.data.auditNotice).toContain('github_pr_intent');
   });
 
   it('keeps the audit trail when the violation update fails', async () => {

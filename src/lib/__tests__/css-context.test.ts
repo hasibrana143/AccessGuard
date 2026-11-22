@@ -518,3 +518,80 @@ describe('destination CSS: the ninth review regressions', () => {
     ).toContain('hide');
   });
 });
+
+describe('destination CSS: the tenth review regressions', () => {
+  const ORIGINAL = '<img id="target" src="x">';
+  const PATCHED = '<img id="target" src="x" alt="Photo">';
+  const INPUT = '<input id="target" type="text">';
+  const FOCUSED = '<input id="target" type="text" aria-label="Name" autofocus>';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('decodes an escaped attribute name the way the browser decodes it', () => {
+    // `[a\6ct]` is `[alt]`, so the rule starts matching when the fix lands.
+    expect(
+      harm('[a\\6ct]{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647;background:#f0f}')
+    ).toContain('overlay');
+  });
+
+  it('composes a scale above one into the painted box', () => {
+    expect(
+      harm('[alt]{position:fixed;width:50vw;height:50vh;scale:3;background:#f0f}')
+    ).toContain('overlay');
+  });
+
+  it('composes a border into the painted box', () => {
+    expect(
+      harm('[alt]{position:fixed;width:50vw;height:50vh;border:10000px solid #f0f}')
+    ).not.toBeNull();
+  });
+
+  it('composes a padding into the painted box', () => {
+    expect(
+      harm('[alt]{position:fixed;padding:10000px;background:#f0f}')
+    ).not.toBeNull();
+  });
+
+  it('does not flag a box that grows a little', () => {
+    expect(
+      harm('[alt]{padding:4px;border:1px solid #ccc;scale:1}')
+    ).toBeNull();
+  });
+
+  it('judges a rule the added autofocus activates on another element', () => {
+    expect(
+      harm(
+        'input:focus ~ .overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647;background:#f0f}',
+        INPUT,
+        FOCUSED
+      )
+    ).toContain('another element');
+  });
+
+  it('does not flag a focus rule that only draws an outline', () => {
+    expect(
+      harm('input:focus{outline:2px solid #06c}', INPUT, FOCUSED)
+    ).toBeNull();
+  });
+
+  it('judges a paused animation on the frame the customer sees', () => {
+    // A paused animation stays on its first frame, so the element is invisible.
+    expect(
+      harm('[alt]{animation:hide 1s paused}@keyframes hide{from{opacity:0}to{opacity:1}}')
+    ).toContain('hide');
+  });
+
+  it('does not flag a running animation that ends visible', () => {
+    expect(
+      harm('[alt]{animation:hide 1s running}@keyframes hide{from{opacity:0}to{opacity:1}}')
+    ).toBeNull();
+  });
+
+  it('refuses a focus rule that loads a resource in the customer browser', () => {
+    expect(
+      harm('input:focus{background-image:url(http://127.0.0.1:9/focus-pixel)}', INPUT, FOCUSED)
+    ).toContain('customer-side request');
+  });
+});

@@ -8,6 +8,9 @@ import {
   validateWriteAccess,
   isGitHubConfigured,
   getRepositoryDetails,
+  planRepositoryFixes,
+  applyRepositoryFixPlan,
+  type RepositoryFixPlan,
 } from '@/lib/github';
 import { logger } from '@/lib/error-logger';
 import { requireVerifiedEmail } from '@/lib/rbac';
@@ -272,8 +275,76 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create branch name
+    // Prove every repository change before the first irreversible mutation.
+    let repositoryPlan: RepositoryFixPlan;
+    try {
+      repositoryPlan = await planRepositoryFixes(
+        githubToken,
+        owner,
+        repo,
+        defaultBranch,
+        violationsWithFixes.map(toViolationForPR)
+      );
+    } catch (err) {
+      logger.error({ err }, 'Failed to plan repository fixes');
+      repositoryPlan = {
+        fileWrites: [],
+        appliedFixIds: [],
+        refusedFixIds: [],
+        reviewFixIds: [],
+      };
+    }
+
+    const artifactFixIds = new Set([
+      ...repositoryPlan.appliedFixIds,
+      ...repositoryPlan.reviewFixIds,
+    ]);
+    if (artifactFixIds.size === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "The repository's own stylesheet or runtime can change the patched element, or the fix does not pass the safety checks, so no fix can be applied safely to this repository.",
+          skippedRefused: repositoryPlan.refusedFixIds.length,
+        },
+        { status: 400 }
+      );
+    }
+
+    const artifactViolations = violationsWithFixes.filter(v => artifactFixIds.has(v.id));
     const branchName = customBranch || createFixBranchName('accessibility-fixes');
+
+    // The intent record makes a later PR recoverable even if its closing
+    // record cannot be written.
+    let intentRecorded = false;
+    try {
+      intentRecorded = await createAuditLogWithRetry({
+        orgId: auth.user.orgId,
+        userId: auth.user.id,
+        action: 'github_pr_intent',
+        metadata: {
+          repository,
+          branchName,
+          rules: artifactViolations.map(v => v.ruleId),
+          plannedArtifacts: repositoryPlan.fileWrites.length + artifactViolations.length + 1,
+          plannedFixIds: artifactViolations.map(v => v.id),
+          plannedSourceFiles: repositoryPlan.fileWrites.map(write => write.path),
+          plannedReviewFixIds: repositoryPlan.reviewFixIds,
+          refusedFixIds: repositoryPlan.refusedFixIds,
+        },
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to write the GitHub pull request audit intent');
+    }
+    if (!intentRecorded) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Pull request was not created because the audit trail could not be written.',
+        },
+        { status: 500 }
+      );
+    }
 
     // Create branch
     const branchCreated = await createBranch(githubToken, owner, repo, branchName, defaultBranch);
@@ -284,23 +355,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate PR content
-    const prTitle = generatePrTitle(violationsWithFixes.map(toViolationForPR));
-    const prBody = generatePrBody(violationsWithFixes.map(toViolationForPR), violations[0].project);
+    // Generate PR content from the candidates that may carry an artifact.
+    const prTitle = generatePrTitle(artifactViolations.map(toViolationForPR));
+    const prBody = generatePrBody(artifactViolations.map(toViolationForPR), violations[0].project);
 
-    // Apply fixes to real source files where the offending HTML can be located
+    // Apply the proved source changes.
     let filesModified: Array<{ path: string; fixesApplied: number }> = [];
     let fixesAppliedTotal = 0;
     let appliedFixIds: string[] = [];
     try {
-      const { applyFixesToRepository } = await import('@/lib/github');
-      const fixResult = await applyFixesToRepository(
+      const fixResult = await applyRepositoryFixPlan(
         githubToken,
         owner,
         repo,
         branchName,
-        defaultBranch,
-        violationsWithFixes.map(toViolationForPR)
+        repositoryPlan
       );
       filesModified = fixResult.filesModified;
       fixesAppliedTotal = fixResult.fixesAppliedTotal;
@@ -317,7 +386,7 @@ export async function POST(request: NextRequest) {
     let filesCreated = 0;
 
     // Create individual fix files for violations (docs fallback alongside source edits)
-    for (const violation of violationsWithFixes) {
+    for (const violation of artifactViolations) {
       const fixFileName = `accessguard-fixes/${violation.ruleId}-${violation.id.slice(0, 8)}.md`;
       const fixContent = generateFixFile(violation);
 
@@ -340,7 +409,7 @@ export async function POST(request: NextRequest) {
     // Create a summary file with all fixes. It lists the fixes whose own fix
     // document was accepted, so it never points at a file GitHub refused.
     const summaryContent = generateSummaryFile(
-      violationsWithFixes.filter(v => fixFileIds.has(v.id)),
+      artifactViolations.filter(v => fixFileIds.has(v.id)),
       fixesAppliedTotal,
       filesModified.length
     );
@@ -373,10 +442,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Audit trail first: the PR exists from here on, so the record of it must
-    // not depend on a later database write succeeding. A transient database
-    // error is retried before the PR is reported as unaudited — a repository
-    // mutation without a trail must not be the normal outcome.
+    // Close the intent trail with the PR that now exists. The intent record
+    // remains the recoverable trail when this closing write fails.
     const auditEntry = {
       orgId: auth.user.orgId,
       userId: auth.user.id,
@@ -385,7 +452,7 @@ export async function POST(request: NextRequest) {
         repository,
         branchName,
         prUrl: pr.url,
-        verifiedFixes: violationsWithFixes.length,
+        verifiedFixes: artifactViolations.length,
         fixesAppliedToSource: fixesAppliedTotal,
         filesModified: filesModified.map(f => f.path),
         linkedViolations: [...acceptedViolationIds],
@@ -393,12 +460,20 @@ export async function POST(request: NextRequest) {
         skippedOverLimit: selection.skippedOverLimit,
         skippedLowConfidence: selection.skippedLowConfidence,
         skippedUnverified: selection.skippedUnverified,
-        rules: violationsWithFixes.map(v => v.ruleId),
+        skippedRefused: repositoryPlan.refusedFixIds.length,
+        rules: artifactViolations.map(v => v.ruleId),
       },
     };
 
     let auditRecorded = false;
-    auditRecorded = await createAuditLogWithRetry(auditEntry);
+    try {
+      auditRecorded = await createAuditLogWithRetry(auditEntry);
+    } catch (err) {
+      logger.error({ err }, 'Failed to close the GitHub pull request audit trail');
+    }
+    const auditNotice = auditRecorded
+      ? 'The pull request and its pre-mutation intent are recorded in the audit trail.'
+      : 'The closing pull-request audit record could not be written; the pre-mutation github_pr_intent record holds the recoverable trail.';
 
     // Update violations with PR URL — only the violations whose fix is in the PR.
     const eligibleViolationIds = [...acceptedViolationIds];
@@ -429,15 +504,17 @@ export async function POST(request: NextRequest) {
         branchName,
         filesCreated,
         violationsUpdated,
-        verifiedFixes: violationsWithFixes.length,
+        verifiedFixes: artifactViolations.length,
         skippedInvalid: selection.skippedInvalid,
         skippedOverLimit: selection.skippedOverLimit,
         skippedLowConfidence: selection.skippedLowConfidence,
         skippedUnverified: selection.skippedUnverified,
+        skippedRefused: repositoryPlan.refusedFixIds.length,
         filesModified,
         fixesAppliedTotal,
-        fixesWithoutArtifact: violationsWithFixes.length - acceptedViolationIds.size,
+        fixesWithoutArtifact: artifactViolations.length - acceptedViolationIds.size,
         auditRecorded,
+        auditNotice,
       },
     });
   } catch (error) {

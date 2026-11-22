@@ -10,7 +10,7 @@ export const AUDIT_ACTIONS = [
   'manual_checks_updated',
   'settings_updated',
   'subscription_changed', 'subscription_created', 'subscription_cancelled',
-  'github_connected', 'github_disconnected', 'github_connection_sync', 'github_pr_created',
+  'github_connected', 'github_disconnected', 'github_connection_sync', 'github_pr_intent', 'github_pr_created',
   'report_generated', 'vpat_generated', 'executive_summary_generated',
   'remediation_generated', 'remediation_ai_cost',
   'email_verified', 'mfa_enabled', 'mfa_disabled',

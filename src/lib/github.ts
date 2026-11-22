@@ -1,6 +1,5 @@
 // GitHub integration for AccessGuard
 import { Octokit } from '@octokit/rest';
-import type { FileFixViolation } from '@/lib/github-pr';
 
 // Check if GitHub is configured
 export function isGitHubConfigured(): boolean {
@@ -212,6 +211,33 @@ const PREPROCESSOR_FILE_PATTERN = /\.(scss|sass|less|styl|stylus)$/i;
 const SCRIPT_FILE_PATTERN = /\.(js|jsx|mjs|cjs|ts|tsx|cts|mts)$/i;
 
 /**
+ * Inline scripts are runtime code too; an unclosed block cannot be followed
+ * safely.
+ */
+function extractInlineScripts(content: string): { scripts: string[]; incomplete: boolean } {
+  const scripts: string[] = [];
+  let cursor = 0;
+
+  while (cursor < content.length) {
+    const opening = /<script(?=[\s/>])(?:"[^"]*"|'[^']*'|[^'">])*>/gi;
+    opening.lastIndex = cursor;
+    const open = opening.exec(content);
+    if (!open) break;
+
+    const bodyStart = open.index + open[0].length;
+    const closing = /<\/script\s*>/gi;
+    closing.lastIndex = bodyStart;
+    const close = closing.exec(content);
+    if (!close) return { scripts, incomplete: true };
+
+    scripts.push(content.slice(bodyStart, close.index));
+    cursor = close.index + close[0].length;
+  }
+
+  return { scripts, incomplete: false };
+}
+
+/**
  * The paths that create a style element at runtime.
  *
  * The CSS of such a style is built at runtime, so the analyser cannot read it
@@ -257,6 +283,38 @@ function scriptNamesAttribute(content: string, names: Set<string>): boolean {
   for (const name of names) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (new RegExp(`\\b${escaped}\\b`, 'i').test(content)) return true;
+  }
+  return false;
+}
+
+/**
+ * True when a script reads an attribute through the DOM property that
+ * reflects it.
+ */
+function scriptReadsAttributeProperty(content: string, names: Set<string>): boolean {
+  for (const name of names) {
+    const lower = name.toLowerCase();
+    const aliases: string[] = [];
+
+    if (lower.startsWith('data-')) {
+      const key = name
+        .slice(5)
+        .replace(/-([a-z0-9])/gi, (_, character: string) => character.toUpperCase());
+      if (key) aliases.push(`dataset.${key}`);
+    } else {
+      aliases.push(name.replace(/-([a-z0-9])/gi, (_, character: string) => character.toUpperCase()));
+      if (lower === 'class') aliases.push('className');
+      if (lower === 'for') aliases.push('htmlFor');
+    }
+
+    for (const alias of aliases) {
+      const [object, property] = alias.includes('.') ? alias.split('.', 2) : ['', alias];
+      const escapedProperty = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const expression = object
+        ? `\\.\\s*${object}\\s*\\.\\s*${escapedProperty}\\b`
+        : `\\.\\s*${escapedProperty}\\b`;
+      if (new RegExp(expression, 'i').test(content)) return true;
+    }
   }
   return false;
 }
@@ -311,29 +369,37 @@ function resolveRepositoryPath(basePath: string, reference: string): string | nu
   return resolved.join('/');
 }
 
-// Apply accessibility fixes to real source files in the repository
-export async function applyFixesToRepository(
+export interface RepositoryFixPlan {
+  /** The files to write and their patched content. */
+  fileWrites: Array<{ path: string; content: string; message: string; fixesApplied: number }>;
+  /** The ids of the fixes that will be written into a source file. */
+  appliedFixIds: string[];
+  /** The ids of the candidates the destination or the runtime analysis refused. */
+  refusedFixIds: string[];
+  /** The ids of the candidates that need a human review (no provable source file). */
+  reviewFixIds: string[];
+}
+
+interface RepositoryFixCandidate {
+  id: string;
+  ruleId: string;
+  elementHtml?: string | null;
+  remediationCode?: string | null;
+}
+
+/** Plan repository source changes before the first irreversible GitHub write. */
+export async function planRepositoryFixes(
   token: string,
   owner: string,
   repo: string,
-  branch: string,
   ref: string,
-  violations: Array<{
-    id: string;
-    ruleId: string;
-    elementHtml?: string | null;
-    remediationCode?: string | null;
-  }>
-): Promise<{
-  filesModified: Array<{ path: string; fixesApplied: number }>;
-  fixesAppliedTotal: number;
-  /** Ids of the fixes that were written into a source file. */
-  appliedFixIds: string[];
-}> {
+  violations: RepositoryFixCandidate[]
+): Promise<RepositoryFixPlan> {
   const octokit = getOctokit(token);
-  const filesModified: Array<{ path: string; fixesApplied: number }> = [];
-  const appliedFixIds: string[] = [];
-  let fixesAppliedTotal = 0;
+  const fileWrites: RepositoryFixPlan['fileWrites'] = [];
+  const appliedFixIds = new Set<string>();
+  const refusedFixIds = new Set<string>();
+  const reviewFixIds = new Set<string>();
 
   const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate, conflictingRemediationKeys } =
     await import('@/lib/github-pr');
@@ -341,13 +407,45 @@ export async function applyFixesToRepository(
   const { buildCssContext, destinationCssHarm, collectStyleSources, extractStylesheetLinks, extractCssImports, stripCssLineComments, describeElements } =
     await import('@/lib/css-context');
 
+  const candidates = violations.filter(v => v.remediationCode && v.elementHtml);
+  // The source patch budget is ten; the rest stay review documents.
+  const sourceCandidates = candidates.slice(0, 10);
+  const pendingFixIds = new Set<string>();
+  for (const [index, violation] of candidates.entries()) {
+    if (index >= 10) {
+      reviewFixIds.add(violation.id);
+      continue;
+    }
+    if (!validateFixCandidate(violation).valid) {
+      refusedFixIds.add(violation.id);
+      continue;
+    }
+    pendingFixIds.add(violation.id);
+  }
+  for (const violation of violations) {
+    if (!violation.remediationCode || !violation.elementHtml) {
+      refusedFixIds.add(violation.id);
+    }
+  }
+
+  const finishPlan = (): RepositoryFixPlan => {
+    // An unresolved candidate has no provable source file: it needs review.
+    for (const id of pendingFixIds) reviewFixIds.add(id);
+    return {
+      fileWrites,
+      appliedFixIds: [...appliedFixIds],
+      refusedFixIds: [...refusedFixIds],
+      reviewFixIds: [...reviewFixIds],
+    };
+  };
+
   // List source files in the default branch tree
   const { data: tree } = await octokit.git.getTree({ owner, repo, tree_sha: ref, recursive: '1' });
 
   // A truncated tree is an incomplete list: an element may live in a file that
   // is not in it, so no match can be proven unique and nothing is patched.
   if (tree.truncated) {
-    return { filesModified, fixesAppliedTotal, appliedFixIds };
+    return finishPlan();
   }
 
   // Every text file of the tree is scanned, even the ones a fix is never
@@ -374,16 +472,16 @@ export async function applyFixesToRepository(
   // truncated scan patched the wrong file before.
   const treeBytes = textFiles.reduce((sum, file) => sum + (file.size ?? 0), 0);
   if (treeBytes > MAX_SOURCE_SCAN_BYTES) {
-    return { filesModified, fixesAppliedTotal, appliedFixIds };
+    return finishPlan();
   }
 
-  if (textFiles.length === 0) return { filesModified, fixesAppliedTotal, appliedFixIds };
+  if (textFiles.length === 0) return finishPlan();
 
   // One fetch per file: the content is cached so several fixes can land in the same
   // file without the later write overwriting the earlier fix.
   const contentCache = new Map<string, string>();
   const binaryFiles = new Set<string>();
-  const assignments = new Map<string, FileFixViolation[]>();
+  const assignments = new Map<string, RepositoryFixCandidate[]>();
   const localOccurrence = new Map<string, number>();
   let scannedBytes = 0;
   let scanTruncated = false;
@@ -472,6 +570,28 @@ export async function applyFixesToRepository(
     cssSources.push({ path, css: preprocessor ? stripCssLineComments(css) : css });
   };
 
+  const inspectRuntimeScript = (sourcePath: string, content: string): void => {
+    // Runtime code owns effects the isolated verification browser cannot see.
+    if (RUNTIME_STYLE_PATTERN.test(content)) {
+      styleProblems.push(`the script ${sourcePath} creates a style at runtime, which the analyser cannot resolve`);
+    }
+    if (SERVICE_WORKER_PATTERN.test(content)) {
+      styleProblems.push(`the script ${sourcePath} can deliver styles at runtime, which the analyser cannot resolve`);
+    }
+    if (CSS_IN_JS_PATTERN.test(content)) {
+      styleProblems.push(`the script ${sourcePath} builds CSS at runtime, which the analyser cannot resolve`);
+    }
+    if (RUNTIME_MUTATION_PATTERN.test(content)) {
+      // A script that mutates an element can take the patched element over
+      // even without a state read, so the scripts are kept for the check
+      // that decides whether the fix activates them.
+      runtimeMutationScripts.push(content);
+      if (RUNTIME_STATE_READ_PATTERN.test(content)) {
+        conditionalMutationScripts.push(content);
+      }
+    }
+  };
+
   for (const [path, content] of contentCache) {
     if (CSS_FILE_PATTERN.test(path)) addCssSource(path, content);
   }
@@ -495,26 +615,16 @@ export async function applyFixesToRepository(
       addCssSource(target, contentCache.get(target) as string);
     }
     if (SCRIPT_FILE_PATTERN.test(path)) {
-      // A script that creates a style at runtime owns CSS the analyser cannot
-      // read: the destination is unprovable and no source patch is written.
-      if (RUNTIME_STYLE_PATTERN.test(content)) {
-        styleProblems.push(`the script ${path} creates a style at runtime, which the analyser cannot resolve`);
+      inspectRuntimeScript(path, content);
+    } else {
+      // Inline script blocks carry the same runtime code as a linked script.
+      const inline = extractInlineScripts(content);
+      if (inline.incomplete) {
+        styleProblems.push(`the inline script in ${path} is incomplete, which the analyser cannot resolve`);
       }
-      if (SERVICE_WORKER_PATTERN.test(content)) {
-        styleProblems.push(`the script ${path} can deliver styles at runtime, which the analyser cannot resolve`);
-      }
-      if (CSS_IN_JS_PATTERN.test(content)) {
-        styleProblems.push(`the script ${path} builds CSS at runtime, which the analyser cannot resolve`);
-      }
-      if (RUNTIME_MUTATION_PATTERN.test(content)) {
-        // A script that mutates an element can take the patched element over
-        // even without a state read, so the scripts are kept for the check
-        // that decides whether the fix activates them.
-        runtimeMutationScripts.push(content);
-        if (RUNTIME_STATE_READ_PATTERN.test(content)) {
-          conditionalMutationScripts.push(content);
-        }
-      }
+      inline.scripts.forEach((script, index) => {
+        inspectRuntimeScript(`${path}#inline-script-${index + 1}`, script);
+      });
     }
   }
 
@@ -537,17 +647,12 @@ export async function applyFixesToRepository(
   const cssContext = buildCssContext(cssSources.map(source => source.css).join('\n'));
   cssContext.unprovable.push(...styleProblems);
 
-  // At most 10 fixes are written into source files per PR (the rest stay in the PR
-  // as review files). Keeps the number of repository reads and AST parses bounded.
-  const candidates = violations.filter(v => v.remediationCode && v.elementHtml).slice(0, 10);
-
   // Selected fixes for the same element with different remediations cannot be
   // mapped to the occurrences of that element.
   const conflictingKeys = conflictingRemediationKeys(violations);
 
-  for (const violation of candidates) {
-    if (!validateFixCandidate(violation).valid) continue;
-    if (conflictingKeys.has(fixOccurrenceKey(violation))) continue;
+  for (const violation of sourceCandidates) {
+    if (!pendingFixIds.has(violation.id)) continue;
 
     // A script that names the patched element can take it over at runtime even
     // without a state read, so this destination cannot be proved safe.
@@ -558,6 +663,8 @@ export async function applyFixesToRepository(
         originalElement.id &&
         runtimeMutationScripts.some(content => scriptRefersToElementId(content, originalElement.id as string))
       ) {
+        pendingFixIds.delete(violation.id);
+        refusedFixIds.add(violation.id);
         continue;
       }
 
@@ -568,15 +675,31 @@ export async function applyFixesToRepository(
       for (const [name, value] of patchedElement.attributes) {
         if (originalElement.attributes.get(name) !== value) added.add(name);
       }
-      if (added.size > 0 && conditionalMutationScripts.some(content => scriptNamesAttribute(content, added))) {
+      if (
+        added.size > 0 &&
+        (conditionalMutationScripts.some(content => scriptNamesAttribute(content, added)) ||
+          runtimeMutationScripts.some(content => scriptReadsAttributeProperty(content, added)))
+      ) {
+        pendingFixIds.delete(violation.id);
+        refusedFixIds.add(violation.id);
         continue;
       }
     }
 
     // The repository's own stylesheet can restyle the patched element: the
-    // isolated verification does not see it. A fix that the destination can
-    // turn into an overlay or hide it stays a review suggestion.
-    if (destinationCssHarm(cssContext, violation.elementHtml, violation.remediationCode)) continue;
+    // isolated verification does not see it. A refused destination gets no
+    // artifact at all.
+    if (destinationCssHarm(cssContext, violation.elementHtml, violation.remediationCode)) {
+      pendingFixIds.delete(violation.id);
+      refusedFixIds.add(violation.id);
+      continue;
+    }
+
+    if (conflictingKeys.has(fixOccurrenceKey(violation))) {
+      pendingFixIds.delete(violation.id);
+      reviewFixIds.add(violation.id);
+      continue;
+    }
 
     // Find every file that contains the element. If it exists in more than one
     // file the match is ambiguous: the fix is left as a review suggestion instead
@@ -591,6 +714,8 @@ export async function applyFixesToRepository(
     }
 
     if (containing.length !== 1 || scanTruncated || scanIncomplete) {
+      pendingFixIds.delete(violation.id);
+      reviewFixIds.add(violation.id);
       continue; // no match, ambiguous or incomplete: review file only
     }
 
@@ -599,13 +724,25 @@ export async function applyFixesToRepository(
     // component file that mixes markup and code has none: the element text can
     // sit inside a string or an expression there, and the fix would become
     // code. Such a fix ships as a review suggestion.
-    if (!isPatchableFile(path)) continue;
+    if (!isPatchableFile(path)) {
+      pendingFixIds.delete(violation.id);
+      reviewFixIds.add(violation.id);
+      continue;
+    }
 
     const key = `${path}::${fixOccurrenceKey(violation)}`;
     const occurrence = localOccurrence.get(key) ?? 0;
     const original = contentCache.get(path);
-    if (original === undefined) continue;
-    if (!locateElement(original, path, violation.elementHtml!, occurrence)) continue;
+    if (original === undefined) {
+      pendingFixIds.delete(violation.id);
+      reviewFixIds.add(violation.id);
+      continue;
+    }
+    if (!locateElement(original, path, violation.elementHtml!, occurrence)) {
+      pendingFixIds.delete(violation.id);
+      reviewFixIds.add(violation.id);
+      continue;
+    }
 
     const list = assignments.get(path) ?? [];
     list.push(violation);
@@ -615,35 +752,100 @@ export async function applyFixesToRepository(
 
   for (const [path, list] of assignments) {
     const original = contentCache.get(path);
-    if (original === undefined) continue;
+    if (original === undefined) {
+      for (const violation of list) {
+        pendingFixIds.delete(violation.id);
+        reviewFixIds.add(violation.id);
+      }
+      continue;
+    }
 
     const result = applyFixesToFile(original, list, path);
-    if (result.fixesApplied <= 0) continue;
+    if (result.fixesApplied !== list.length) {
+      // A partial or failed patch cannot prove which candidate reached the
+      // source file, so the whole file stays for human review.
+      for (const violation of list) {
+        pendingFixIds.delete(violation.id);
+        reviewFixIds.add(violation.id);
+      }
+      continue;
+    }
+
+    fileWrites.push({
+      path,
+      content: result.content,
+      message: `fix(a11y): ${list[0].ruleId}`,
+      fixesApplied: result.fixesApplied,
+    });
+    for (const violation of list) {
+      pendingFixIds.delete(violation.id);
+      appliedFixIds.add(violation.id);
+    }
+  }
+
+  return finishPlan();
+}
+
+/** Write only the source files that the plan proved. */
+export async function applyRepositoryFixPlan(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string,
+  plan: RepositoryFixPlan
+): Promise<{
+  filesModified: Array<{ path: string; fixesApplied: number }>;
+  fixesAppliedTotal: number;
+  /** Ids of the fixes that were written into a source file. */
+  appliedFixIds: string[];
+}> {
+  const filesModified: Array<{ path: string; fixesApplied: number }> = [];
+  const appliedFixIds: string[] = [];
+  let fixesAppliedTotal = 0;
+  let fixIdOffset = 0;
+
+  for (const write of plan.fileWrites) {
+    // The planner emits ids in file-write order, so a refused write cannot
+    // make the next accepted file claim its fixes.
+    const fixIds = plan.appliedFixIds.slice(fixIdOffset, fixIdOffset + write.fixesApplied);
+    fixIdOffset += write.fixesApplied;
 
     const written = await createFile(
       token,
       owner,
       repo,
-      path,
-      result.content,
-      `fix(a11y): ${list[0].ruleId}`,
+      write.path,
+      write.content,
+      write.message,
       branch
     );
-    if (!written) {
-      // GitHub refused the write: the file is not modified and the fixes are not applied.
-      continue;
-    }
-    filesModified.push({ path, fixesApplied: result.fixesApplied });
-    fixesAppliedTotal += result.fixesApplied;
-    // Only a complete, accepted write proves that the fix is in the repository.
-    if (result.fixesApplied === list.length) {
-      for (const violation of list) {
-        if (violation.id) appliedFixIds.push(violation.id);
-      }
-    }
+    if (!written) continue;
+
+    filesModified.push({ path: write.path, fixesApplied: write.fixesApplied });
+    fixesAppliedTotal += write.fixesApplied;
+    // Only an accepted write proves that its fixes reached the repository.
+    appliedFixIds.push(...fixIds);
   }
 
   return { filesModified, fixesAppliedTotal, appliedFixIds };
+}
+
+/** Keep the original writer contract while separating proof from mutation. */
+export async function applyFixesToRepository(
+  token: string,
+  owner: string,
+  repo: string,
+  branch: string,
+  ref: string,
+  violations: RepositoryFixCandidate[]
+): Promise<{
+  filesModified: Array<{ path: string; fixesApplied: number }>;
+  fixesAppliedTotal: number;
+  /** Ids of the fixes that were written into a source file. */
+  appliedFixIds: string[];
+}> {
+  const plan = await planRepositoryFixes(token, owner, repo, ref, violations);
+  return applyRepositoryFixPlan(token, owner, repo, branch, plan);
 }
 
 // Revoke GitHub OAuth token

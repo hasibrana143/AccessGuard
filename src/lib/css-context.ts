@@ -574,9 +574,14 @@ interface SelectorRequirements {
   attributes: Array<{ name: string; operator: string | null; value: string | null }>;
   /** The selector contains a pseudo-class or a pseudo-element. */
   conditional: boolean;
+  /** The compound contains a focus pseudo-class. */
+  focusPseudo: boolean;
   /** The selector could not be read. */
   malformed: boolean;
 }
+
+/** The pseudo-classes the `autofocus` remediation can activate. */
+const FOCUS_PSEUDO_CLASSES = new Set(['focus', 'focus-within', 'focus-visible']);
 
 /** The requirements of the subject compound of a selector. */
 function parseSubject(selector: string): SelectorRequirements {
@@ -586,6 +591,7 @@ function parseSubject(selector: string): SelectorRequirements {
     id: null,
     attributes: [],
     conditional: false,
+    focusPseudo: false,
     malformed: false,
   };
 
@@ -602,25 +608,25 @@ function parseSubject(selector: string): SelectorRequirements {
     }
 
     if (char === '.') {
-      const name = readIdentifier(selector, i + 1);
-      if (!name) {
+      const identifier = readIdentifier(selector, i + 1);
+      if (!identifier) {
         requirements.malformed = true;
         return requirements;
       }
-      requirements.classes.push(name.toLowerCase());
-      i += 1 + name.length;
+      requirements.classes.push(identifier.value.toLowerCase());
+      i = identifier.end;
       expectTag = false;
       continue;
     }
 
     if (char === '#') {
-      const name = readIdentifier(selector, i + 1);
-      if (!name) {
+      const identifier = readIdentifier(selector, i + 1);
+      if (!identifier) {
         requirements.malformed = true;
         return requirements;
       }
-      requirements.id = name;
-      i += 1 + name.length;
+      requirements.id = identifier.value;
+      i = identifier.end;
       expectTag = false;
       continue;
     }
@@ -641,7 +647,7 @@ function parseSubject(selector: string): SelectorRequirements {
       }
       const value = parsed[3] ?? parsed[4] ?? parsed[5] ?? null;
       requirements.attributes.push({
-        name: (parsed[1] ?? '').toLowerCase(),
+        name: decodeCssEscapes(parsed[1] ?? '').toLowerCase(),
         operator: parsed[2] ?? null,
         value: value === null ? null : decodeCssEscapes(decodeHtmlEntities(value)),
       });
@@ -655,8 +661,15 @@ function parseSubject(selector: string): SelectorRequirements {
       // A pseudo-class or a pseudo-element: the rule may or may not apply.
       requirements.conditional = true;
       i += selector[i + 1] === ':' ? 2 : 1;
-      const name = readIdentifier(selector, i);
-      i += name.length;
+      const identifier = readIdentifier(selector, i);
+      if (!identifier) {
+        requirements.malformed = true;
+        return requirements;
+      }
+      if (FOCUS_PSEUDO_CLASSES.has(identifier.value.toLowerCase())) {
+        requirements.focusPseudo = true;
+      }
+      i = identifier.end;
       if (selector[i] === '(') {
         const end = skipParentheses(selector, i);
         if (end === -1) {
@@ -677,13 +690,13 @@ function parseSubject(selector: string): SelectorRequirements {
     }
 
     if (expectTag && /[a-zA-Z]/.test(char)) {
-      const name = readIdentifier(selector, i);
-      if (!name) {
+      const identifier = readIdentifier(selector, i);
+      if (!identifier) {
         requirements.malformed = true;
         return requirements;
       }
-      requirements.tag = name.toLowerCase();
-      i += name.length;
+      requirements.tag = identifier.value.toLowerCase();
+      i = identifier.end;
       expectTag = false;
       continue;
     }
@@ -697,7 +710,7 @@ function parseSubject(selector: string): SelectorRequirements {
 }
 
 /** A CSS identifier (a name, an escape or a character). */
-function readIdentifier(source: string, from: number): string {
+function readIdentifier(source: string, from: number): { value: string; end: number } | null {
   let out = '';
   let i = from;
 
@@ -715,7 +728,7 @@ function readIdentifier(source: string, from: number): string {
     i++;
   }
 
-  return out;
+  return out ? { value: out, end: i } : null;
 }
 
 /** The offset behind the parenthesis that closes the one at `from`. */
@@ -858,6 +871,8 @@ function matchSelector(selector: string, element: ElementDescriptor): Match {
 interface ElementChanges {
   attributes: Map<string, string>;
   classes: Set<string>;
+  /** The fix gives the patched element focus without user interaction. */
+  focus: boolean;
 }
 
 /**
@@ -880,7 +895,9 @@ function changesBetween(
     if (!before?.classes.has(token)) classes.add(token);
   }
 
-  return { attributes, classes };
+  const focus = after.attributes.has('autofocus') && !before?.attributes.has('autofocus');
+
+  return { attributes, classes, focus };
 }
 
 /**
@@ -903,6 +920,18 @@ function compoundActivatedByFix(compound: string, changes: ElementChanges): bool
   }
 
   return false;
+}
+
+/**
+ * True when a focus state the fix creates can activate a compound.
+ *
+ * `autofocus` focuses the patched element on load, so a focus compound that
+ * can match it starts applying without any user interaction.
+ */
+function compoundActivatedByFocus(compound: string, element: ElementDescriptor): boolean {
+  const requirements = parseSubject(compound);
+  if (!requirements.focusPseudo) return false;
+  return matchSubject(requirements, element) !== 'no';
 }
 
 /** A declaration of a rule. */
@@ -1318,22 +1347,34 @@ function animationNameOf(value: string): string | null {
   return null;
 }
 
-/** The animations that may run on an element. */
-function animationNamesOf(state: ElementState): string[] {
-  const names = new Set<string>();
-  const values = [
-    ...(state.values.get('animation') ?? []),
-    ...(state.values.get('animation-name') ?? []),
-  ];
-
+/** The animation names in a list of animation values. */
+function animationNamesFromValues(values: string[]): string[] {
+  const names: string[] = [];
   for (const value of values) {
     for (const part of splitTopLevel(value, ',')) {
       const name = animationNameOf(part);
-      if (name) names.add(name);
+      if (name && !names.includes(name)) names.push(name);
     }
   }
+  return names;
+}
 
-  return [...names];
+/** The animations that may run on an element. */
+function animationNamesOf(state: ElementState): string[] {
+  return [
+    ...new Set([
+      ...animationNamesFromValues(state.values.get('animation') ?? []),
+      ...animationNamesFromValues(state.values.get('animation-name') ?? []),
+    ]),
+  ];
+}
+
+/** The animation list whose positions the longhands use. */
+function orderedAnimationNamesOf(state: ElementState): string[] {
+  const explicit = animationNamesFromValues(state.values.get('animation-name') ?? []);
+  return explicit.length > 0
+    ? explicit
+    : animationNamesFromValues(state.values.get('animation') ?? []);
 }
 
 /**
@@ -1363,6 +1404,32 @@ function animationDirectionOf(state: ElementState, name: string): string {
   }
 
   return 'normal';
+}
+
+/**
+ * The play state of an animation.
+ *
+ * A paused animation stays on its first frame, so the state the customer sees
+ * is not the endpoint the direction would otherwise select.
+ */
+function animationPlayStateOf(state: ElementState, name: string): 'running' | 'paused' {
+  const names = orderedAnimationNamesOf(state);
+  const index = names.indexOf(name);
+
+  for (const value of state.values.get('animation-play-state') ?? []) {
+    const states = splitTopLevel(value, ',').map(part => part.trim().toLowerCase());
+    const playState = states.length === 1 ? states[0] : states[index];
+    if (playState === 'paused') return 'paused';
+  }
+
+  for (const value of state.values.get('animation') ?? []) {
+    for (const part of splitTopLevel(value, ',')) {
+      if (animationNameOf(part) !== name) continue;
+      if (part.split(/\s+/).some(token => token.toLowerCase() === 'paused')) return 'paused';
+    }
+  }
+
+  return 'running';
 }
 
 /** True when a value is a length or percentage the analyser can recognise. */
@@ -1523,6 +1590,481 @@ function hasZeroOpacity(value: string): boolean {
   });
 }
 
+/** The painted bounds of an element on one axis. */
+interface PaintedBox {
+  coversX: boolean;
+  coversY: boolean;
+  unprovableX: boolean;
+  unprovableY: boolean;
+}
+
+/** A CSS length and its unit. */
+interface CssLength {
+  amount: number;
+  unit: string;
+}
+
+/** The growth a length adds to one axis of a painted box. */
+interface AxisGrowth {
+  ratio: number;
+  fixedPx: number;
+  unknown: boolean;
+}
+
+/** A declared size on one axis of a painted box. */
+interface AxisSize {
+  ratio: number;
+  fixedPx: number;
+  known: boolean;
+  unknown: boolean;
+}
+
+/** The scale factors of the horizontal and vertical axes. */
+interface ScaleFactors {
+  x: number;
+  y: number;
+}
+
+/** The lengths and unprovable values declared for each side of a box. */
+interface SideInputs {
+  top: { lengths: CssLength[]; unknown: boolean };
+  right: { lengths: CssLength[]; unknown: boolean };
+  bottom: { lengths: CssLength[]; unknown: boolean };
+  left: { lengths: CssLength[]; unknown: boolean };
+}
+
+/** Parse a CSS length, leaving values the analyser cannot read as null. */
+function parseCssLength(value: string): CssLength | null {
+  const match = /^(-?(?:\d+|\d*\.\d+))([a-z%]*)$/.exec(value);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  const unit = match[2] ?? '';
+  if (!unit && amount !== 0) return null;
+  if (unit && unit !== '%' && !LENGTH_UNITS.has(unit)) return null;
+  return { amount, unit };
+}
+
+/** The fixed pixel equivalent of a length at the analyser's conservative defaults. */
+function fixedPixelsOf(length: CssLength): number | null {
+  if (length.unit === '' || length.unit === 'px') return length.amount;
+
+  const absolute: Record<string, number> = {
+    cm: 96 / 2.54,
+    mm: 96 / 25.4,
+    q: 96 / 101.6,
+    in: 96,
+    pt: 96 / 72,
+    pc: 16,
+  };
+  if (absolute[length.unit] !== undefined) return length.amount * absolute[length.unit];
+
+  // The viewport thresholds define the default font size used here.
+  if (length.unit === 'em' || length.unit === 'rem') {
+    return length.amount * (VIEWPORT_LENGTH / VIEWPORT_EM);
+  }
+
+  return null;
+}
+
+/** The growth a length adds to one axis of a painted box. */
+function growthForLength(length: CssLength, axis: 'x' | 'y'): AxisGrowth {
+  if (length.amount < 0) return { ratio: 0, fixedPx: 0, unknown: true };
+
+  const fixedPx = fixedPixelsOf(length);
+  if (fixedPx !== null) return { ratio: 0, fixedPx, unknown: false };
+
+  if (length.unit === '%') {
+    return { ratio: length.amount, fixedPx: 0, unknown: false };
+  }
+
+  if (VIEWPORT_UNITS.has(length.unit)) {
+    const horizontal = VIEWPORT_X_UNITS.has(length.unit) || VIEWPORT_EITHER_UNITS.has(length.unit);
+    const vertical = VIEWPORT_Y_UNITS.has(length.unit) || VIEWPORT_EITHER_UNITS.has(length.unit);
+    if ((axis === 'x' && horizontal) || (axis === 'y' && vertical)) {
+      return { ratio: length.amount, fixedPx: 0, unknown: false };
+    }
+  }
+
+  return { ratio: 0, fixedPx: 0, unknown: true };
+}
+
+/** Merge two possible declarations of the same side without adding them together. */
+function mergeGrowth(left: AxisGrowth, right: AxisGrowth): AxisGrowth {
+  return {
+    ratio: Math.max(left.ratio, right.ratio),
+    fixedPx: Math.max(left.fixedPx, right.fixedPx),
+    unknown: left.unknown || right.unknown,
+  };
+}
+
+/** Split a one-to-four-value shorthand. */
+function splitBoxShorthand(value: string): string[] | null {
+  if (value.includes('(')) return null;
+  const parts = value.split(/\s+/).filter(Boolean);
+  return parts.length >= 1 && parts.length <= 4 ? parts : null;
+}
+
+/** A border width keyword or length. */
+function borderWidthToken(value: string): CssLength | null {
+  const keyword: Record<string, number> = { thin: 1, medium: 3, thick: 5 };
+  if (keyword[value] !== undefined) return { amount: keyword[value], unit: 'px' };
+
+  const length = parseCssLength(value);
+  return length && length.amount >= 0 ? length : null;
+}
+
+/** The width component of a border shorthand. */
+function borderWidthOf(value: string): CssLength | null | 'none' {
+  const tokens = value.match(/[^\s]+/g) ?? [];
+  if (tokens.some(token => token === 'none' || token === 'hidden')) return 'none';
+
+  for (const token of tokens) {
+    const width = borderWidthToken(token);
+    if (width) return width;
+    if (/^(?:calc|min|max|clamp)\(/i.test(token)) return null;
+  }
+
+  return { amount: 3, unit: 'px' };
+}
+
+/** The padding and border widths declared for every side of the element. */
+function sideInputsOf(state: ElementState): SideInputs {
+  const sides: SideInputs = {
+    top: { lengths: [], unknown: false },
+    right: { lengths: [], unknown: false },
+    bottom: { lengths: [], unknown: false },
+    left: { lengths: [], unknown: false },
+  };
+
+  const add = (side: keyof SideInputs, length: CssLength | null): void => {
+    if (!length) sides[side].unknown = true;
+    else sides[side].lengths.push(length);
+  };
+  const addShorthand = (
+    values: string[],
+    mapping: Array<[keyof SideInputs, number]>
+  ): void => {
+    for (const [side, index] of mapping) {
+      const length = parseCssLength(values[index] ?? '');
+      add(side, length);
+    }
+  };
+
+  for (const value of state.values.get('padding') ?? []) {
+    const values = splitBoxShorthand(value);
+    if (!values) {
+      for (const side of Object.keys(sides) as Array<keyof SideInputs>) add(side, null);
+      continue;
+    }
+    if (values.length === 1) addShorthand(values, [['top', 0], ['right', 0], ['bottom', 0], ['left', 0]]);
+    else if (values.length === 2) addShorthand(values, [['top', 0], ['right', 1], ['bottom', 0], ['left', 1]]);
+    else if (values.length === 3) addShorthand(values, [['top', 0], ['right', 1], ['bottom', 2], ['left', 1]]);
+    else addShorthand(values, [['top', 0], ['right', 1], ['bottom', 2], ['left', 3]]);
+  }
+
+  for (const [property, side] of [
+    ['padding-top', 'top'],
+    ['padding-right', 'right'],
+    ['padding-bottom', 'bottom'],
+    ['padding-left', 'left'],
+  ] as Array<[string, keyof SideInputs]>) {
+    for (const value of state.values.get(property) ?? []) {
+      add(side, parseCssLength(value));
+    }
+  }
+
+  for (const value of state.values.get('padding-block') ?? []) {
+    const values = splitBoxShorthand(value);
+    if (!values) {
+      add('top', null);
+      add('bottom', null);
+    } else {
+      add('top', parseCssLength(values[0] ?? ''));
+      add('bottom', parseCssLength(values[Math.min(1, values.length - 1)] ?? ''));
+    }
+  }
+
+  for (const value of state.values.get('padding-inline') ?? []) {
+    const values = splitBoxShorthand(value);
+    if (!values) {
+      add('left', null);
+      add('right', null);
+    } else {
+      add('left', parseCssLength(values[0] ?? ''));
+      add('right', parseCssLength(values[Math.min(1, values.length - 1)] ?? ''));
+    }
+  }
+
+  for (const value of state.values.get('border') ?? []) {
+    const width = borderWidthOf(value);
+    if (width === 'none') continue;
+    for (const side of Object.keys(sides) as Array<keyof SideInputs>) add(side, width);
+  }
+
+  for (const value of state.values.get('border-width') ?? []) {
+    const values = splitBoxShorthand(value);
+    if (!values) {
+      for (const side of Object.keys(sides) as Array<keyof SideInputs>) add(side, null);
+      continue;
+    }
+    const widths = values.map(borderWidthToken);
+    const mapping: Array<[keyof SideInputs, number]> =
+      widths.length === 1
+        ? [['top', 0], ['right', 0], ['bottom', 0], ['left', 0]]
+        : widths.length === 2
+          ? [['top', 0], ['right', 1], ['bottom', 0], ['left', 1]]
+          : widths.length === 3
+            ? [['top', 0], ['right', 1], ['bottom', 2], ['left', 1]]
+            : [['top', 0], ['right', 1], ['bottom', 2], ['left', 3]];
+    addShorthand(
+      widths.map(width => (width ? `${width.amount}${width.unit}` : '')),
+      mapping
+    );
+  }
+
+  for (const [property, side] of [
+    ['border-top', 'top'],
+    ['border-right', 'right'],
+    ['border-bottom', 'bottom'],
+    ['border-left', 'left'],
+  ] as Array<[string, keyof SideInputs]>) {
+    for (const value of state.values.get(property) ?? []) {
+      const width = borderWidthOf(value);
+      if (width === 'none') continue;
+      add(side, width);
+    }
+  }
+
+  for (const [property, side] of [
+    ['border-top-width', 'top'],
+    ['border-right-width', 'right'],
+    ['border-bottom-width', 'bottom'],
+    ['border-left-width', 'left'],
+  ] as Array<[string, keyof SideInputs]>) {
+    for (const value of state.values.get(property) ?? []) {
+      add(side, borderWidthToken(value));
+    }
+  }
+
+  return sides;
+}
+
+/** The padding and border growth on one axis of the painted box. */
+function axisGrowthOf(sides: SideInputs, axis: 'x' | 'y'): AxisGrowth {
+  const relevant = axis === 'x' ? ['left', 'right'] : ['top', 'bottom'];
+  const sideGrowth = relevant.map(side => {
+    const input = sides[side as keyof SideInputs];
+    let growth: AxisGrowth = { ratio: 0, fixedPx: 0, unknown: input.unknown };
+    for (const length of input.lengths) {
+      growth = mergeGrowth(growth, growthForLength(length, axis));
+    }
+    return growth;
+  });
+
+  return {
+    ratio: sideGrowth.reduce((sum, growth) => sum + growth.ratio, 0),
+    fixedPx: sideGrowth.reduce((sum, growth) => sum + growth.fixedPx, 0),
+    unknown: sideGrowth.some(growth => growth.unknown),
+  };
+}
+
+/** The declared size on one axis of the painted box. */
+function axisSizeOf(state: ElementState, axis: 'x' | 'y'): AxisSize {
+  const properties =
+    axis === 'x'
+      ? ['width', 'inline-size', 'min-width', 'min-inline-size']
+      : ['height', 'block-size', 'min-height', 'min-block-size'];
+  const size: AxisSize = { ratio: 0, fixedPx: 0, known: false, unknown: false };
+
+  for (const property of properties) {
+    for (const value of state.values.get(property) ?? []) {
+      if (['auto', 'min-content', 'max-content', 'fit-content', 'stretch'].includes(value)) continue;
+      const length = parseCssLength(value);
+      if (!length) {
+        size.unknown = true;
+        continue;
+      }
+      const growth = growthForLength(length, axis);
+      size.ratio = Math.max(size.ratio, growth.ratio);
+      size.fixedPx = Math.max(size.fixedPx, growth.fixedPx);
+      size.known = true;
+      size.unknown ||= growth.unknown;
+      // A size that may be as long as the customer's screen cannot be pinned
+      // down, so it stays unprovable instead of becoming a painted overlay.
+      size.unknown ||= maySpanViewport(value, property);
+    }
+  }
+
+  return size;
+}
+
+/** The scale factors of the independent `scale` property. */
+function propertyScaleFactors(value: string): ScaleFactors | null {
+  if (value === 'none') return { x: 1, y: 1 };
+  const parts = value.split(/\s+/).filter(Boolean);
+  if (parts.length < 1 || parts.length > 2) return null;
+  const numbers = parts.map(part => (/^-?(?:\d+|\d*\.\d+)$/.test(part) ? Number(part) : null));
+  if (numbers.some(number => number === null)) return null;
+  if (numbers.length === 1) return { x: numbers[0] as number, y: numbers[0] as number };
+  return { x: numbers[0] as number, y: numbers[1] as number };
+}
+
+/** The scale factors of a transform made only of scale functions. */
+function transformScaleFactors(value: string): ScaleFactors | null {
+  if (value === 'none') return { x: 1, y: 1 };
+
+  let remainder = value;
+  let factors: ScaleFactors = { x: 1, y: 1 };
+  let found = false;
+  const pattern = /([a-z0-9]+)\(([^)]*)\)/gi;
+
+  for (const match of value.matchAll(pattern)) {
+    found = true;
+    remainder = remainder.replace(match[0], '');
+    const name = (match[1] ?? '').toLowerCase();
+    const args = (match[2] ?? '')
+      .split(',')
+      .map(part => part.trim())
+      .filter(Boolean);
+    const numbers = args.map(part => (/^-?(?:\d+|\d*\.\d+)$/.test(part) ? Number(part) : null));
+    if (numbers.some(number => number === null)) return null;
+
+    if (name === 'scale') {
+      if (numbers.length !== 1 && numbers.length !== 2) return null;
+      factors.x *= numbers[0] as number;
+      factors.y *= numbers.length === 1 ? (numbers[0] as number) : (numbers[1] as number);
+    } else if (name === 'scalex') {
+      if (numbers.length !== 1) return null;
+      factors.x *= numbers[0] as number;
+    } else if (name === 'scaley') {
+      if (numbers.length !== 1) return null;
+      factors.y *= numbers[0] as number;
+    } else if (name === 'scale3d') {
+      if (numbers.length !== 3) return null;
+      factors.x *= numbers[0] as number;
+      factors.y *= numbers[1] as number;
+    } else {
+      return null;
+    }
+  }
+
+  return found && remainder.trim() === '' ? factors : null;
+}
+
+/** Keep the larger scale factor while preserving a collapse to zero. */
+function largerScaleFactor(current: number, candidate: number): number {
+  if (current === 0 || candidate === 0) return 0;
+  return Math.max(Math.abs(current), Math.abs(candidate));
+}
+
+/** The effective scale on each axis of the painted box. */
+function scaleFactorsOf(state: ElementState): ScaleFactors {
+  let property: ScaleFactors = { x: 1, y: 1 };
+  for (const value of state.values.get('scale') ?? []) {
+    const factors = propertyScaleFactors(value);
+    if (!factors) continue;
+    property.x = largerScaleFactor(property.x, factors.x);
+    property.y = largerScaleFactor(property.y, factors.y);
+  }
+
+  let transform: ScaleFactors = { x: 1, y: 1 };
+  for (const value of state.values.get('transform') ?? []) {
+    const factors = transformScaleFactors(value);
+    if (!factors) continue;
+    transform.x = largerScaleFactor(transform.x, factors.x);
+    transform.y = largerScaleFactor(transform.y, factors.y);
+  }
+
+  return { x: property.x * transform.x, y: property.y * transform.y };
+}
+
+/** The box-sizing rule that decides whether padding and borders grow the box. */
+function boxSizingOf(state: ElementState): 'content-box' | 'border-box' {
+  const values = state.values.get('box-sizing') ?? [];
+  if (values.includes('border-box') && !values.includes('content-box')) return 'border-box';
+  return 'content-box';
+}
+
+/**
+ * The painted bounds of the element.
+ *
+ * Padding, borders, box sizing and scale all change the box the customer
+ * sees, so the content-box dimensions alone cannot prove that a rule is safe.
+ */
+function paintedBoxOf(state: ElementState): PaintedBox {
+  const box: PaintedBox = {
+    coversX: false,
+    coversY: false,
+    unprovableX: false,
+    unprovableY: false,
+  };
+  if (!state.positioned) return box;
+
+  const sides = sideInputsOf(state);
+  const growthX = axisGrowthOf(sides, 'x');
+  const growthY = axisGrowthOf(sides, 'y');
+  const sizeX = axisSizeOf(state, 'x');
+  const sizeY = axisSizeOf(state, 'y');
+  const factors = scaleFactorsOf(state);
+  const borderBox = boxSizingOf(state) === 'border-box';
+
+  if (state.coversX) {
+    sizeX.ratio = Math.max(sizeX.ratio, 100);
+    sizeX.known = true;
+  }
+  if (state.coversY) {
+    sizeY.ratio = Math.max(sizeY.ratio, 100);
+    sizeY.known = true;
+  }
+
+  const paintAxis = (
+    size: AxisSize,
+    growth: AxisGrowth,
+    factor: number
+  ): { covers: boolean; unprovable: boolean } => {
+    let ratio = size.ratio;
+    let fixedPx = size.fixedPx;
+    let unknown = size.unknown;
+
+    if (!borderBox) {
+      ratio += growth.ratio;
+      fixedPx += growth.fixedPx;
+      unknown ||= growth.unknown;
+    } else if (!size.known && (growth.ratio >= 100 || growth.fixedPx >= VIEWPORT_LENGTH || growth.unknown)) {
+      // A border-box does not grow past a known declaration, but an unknown
+      // declared size leaves the large padding or border unprovable.
+      unknown = true;
+    }
+
+    const scaledRatio = ratio * factor;
+    const scaledFixedPx = fixedPx * factor;
+    // A declared size above the viewport cannot be computed: the screen of the
+    // customer is unknown, so the destination is unprovable, never harmless.
+    const oversized = ratio > 100;
+    const covers = scaledRatio >= 100 && !oversized;
+    const growthMaySpan =
+      growth.fixedPx >= VIEWPORT_LENGTH || growth.ratio > 100 || growth.unknown;
+
+    return {
+      covers,
+      unprovable:
+        unknown ||
+        oversized ||
+        scaledFixedPx >= VIEWPORT_LENGTH ||
+        (!borderBox && growthMaySpan),
+    };
+  };
+
+  const x = paintAxis(sizeX, growthX, factors.x);
+  const y = paintAxis(sizeY, growthY, factors.y);
+  box.coversX = x.covers;
+  box.coversY = y.covers;
+  box.unprovableX = x.unprovable;
+  box.unprovableY = y.unprovable;
+  return box;
+}
+
 /** The rendering state of an element under a set of rules. */
 interface ElementState {
   positioned: boolean;
@@ -1532,6 +2074,8 @@ interface ElementState {
   heightZero: boolean;
   hidden: boolean;
   unprovable: Set<string>;
+  /** The painted bounds the customer sees. */
+  painted: PaintedBox;
   /** The values of every property, by property name. */
   values: Map<string, string[]>;
 }
@@ -1552,6 +2096,7 @@ function stateOf(
     heightZero: false,
     hidden: false,
     unprovable: new Set(),
+    painted: { coversX: false, coversY: false, unprovableX: false, unprovableY: false },
     values: new Map(),
   };
 
@@ -1684,11 +2229,13 @@ function stateOf(
     // alternating one ends at either of them.
     const direction = animationDirectionOf(state, name);
     const endpoints =
-      direction === 'reverse'
+      animationPlayStateOf(state, name) === 'paused'
         ? [frames[0]]
-        : direction === 'normal'
-          ? [frames[frames.length - 1]]
-          : [frames[0], frames[frames.length - 1]];
+        : direction === 'reverse'
+          ? [frames[0]]
+          : direction === 'normal'
+            ? [frames[frames.length - 1]]
+            : [frames[0], frames[frames.length - 1]];
 
     for (const frame of endpoints) {
       if (!frame) continue;
@@ -1710,12 +2257,17 @@ function stateOf(
   // paints nothing where the user looks.
   if (state.widthZero || state.heightZero) state.hidden = true;
 
+  state.painted = paintedBoxOf(state);
   return state;
 }
 
 /** True when the state covers the whole viewport. */
 function coversViewport(state: ElementState): boolean {
-  return state.positioned && state.coversX && state.coversY;
+  return (
+    state.positioned &&
+    (state.coversX || state.painted.coversX) &&
+    (state.coversY || state.painted.coversY)
+  );
 }
 
 /**
@@ -1785,13 +2337,20 @@ export function destinationCssHarm(
       return 'the repository stylesheet can hide the patched element';
     }
 
+    if (after.painted.unprovableX && !earlier?.painted.unprovableX) {
+      return 'the repository stylesheet cannot be judged: the painted width may span the viewport';
+    }
+    if (after.painted.unprovableY && !earlier?.painted.unprovableY) {
+      return 'the repository stylesheet cannot be judged: the painted height may span the viewport';
+    }
+
     // A rule the fix activates may reach another element or load a resource.
     // The isolated verification does not see the repository's stylesheet, so
     // neither the other element nor the request can be judged: the
     // destination is unprovable.
     const changes = changesBetween(before, element);
 
-    if (changes.attributes.size > 0 || changes.classes.size > 0) {
+    if (changes.attributes.size > 0 || changes.classes.size > 0 || changes.focus) {
       for (const rule of context.rules) {
         for (const part of splitTopLevel(rule.selector, ',')) {
           const trimmed = part.trim();
@@ -1799,7 +2358,12 @@ export function destinationCssHarm(
 
           const compounds = splitCompounds(trimmed);
           const subject = compounds[compounds.length - 1] ?? trimmed;
-          if (!compounds.some(compound => compoundActivatedByFix(compound, changes))) continue;
+          const activated = compounds.some(
+            compound =>
+              compoundActivatedByFix(compound, changes) ||
+              (changes.focus && compoundActivatedByFocus(compound, element))
+          );
+          if (!activated) continue;
 
           if (matchSubject(parseSubject(subject), element) === 'no') {
             return 'the repository stylesheet can activate a rule on another element';
