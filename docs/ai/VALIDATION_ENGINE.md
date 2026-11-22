@@ -23,7 +23,9 @@ A fix passes five layers before it can touch a repository. Each layer can stop i
    (`type="im&#97;ge"` is `image`) or whose type carries an entity the decoder
    does not know, and a remediation that **adds a class** the original element
    does not have (a class is a hook into the repository's stylesheet, whose effect
-   is not part of the isolated verification); it rejects unclosed tags; size cap
+   is not part of the isolated verification; the JSX spelling `className` is the
+   same hook, because React maps it to the browser's `class` attribute); it rejects
+   unclosed tags; size cap
    20k chars. The style check rejects a
    value that carries an **entity, a CSS escape or a CSS comment** instead of
    guessing what the browser resolves it to — a partial entity table cannot mirror
@@ -32,14 +34,20 @@ A fix passes five layers before it can touch a repository. Each layer can stop i
    (`hidden`, `display:none`, `visibility:hidden`) or hides the element or its
    text in any other way (`font-size:0`, `line-height:0`,
    `content-visibility:hidden`, `scale:0`, `filter:opacity(0)`, an off-screen
-   `translate` or `text-indent`), when it makes the **text transparent**
-   (`color:transparent`, a colour with an alpha of zero,
+   `translate` or `text-indent`), when it gives the patched element a **zero
+   size** (`width:0`, `height:0`) or moves it off-screen with a **large negative
+   margin**, when it makes the **text transparent**
+   (`color:transparent`, a colour with an alpha of zero — in the modern syntaxes
+   as well, so `oklch(0 0 0 / 0%)` is transparent — and
    `-webkit-text-fill-color:transparent`), when it carries **HTML comment
    syntax** (`<!--`, `-->`, `--!>` — a comment swallows the markup behind it),
    when it **changes, drops or adds a destination** of a URI attribute (the
    comparison is made on the URL the way the browser resolves it, so the
    protocol-relative, single-slash and backslash spelling of a remote URL cannot
-   slip past it, and a changed `href` may not point the user somewhere else),
+   slip past it, and a changed `href` may not point the user somewhere else;
+   **every** duplicate of the attribute is compared in source order, because the
+   browser uses the first one, and `ping` is parsed as the space-separated URL
+   list the browser parses),
    and when it does not create a **live element** for the rule it claims to fix
    (an `<img>` inside `textarea`, `title` or a bogus comment is not a fix, and an
    `image-alt` fix has to keep the media source of the original image).
@@ -91,18 +99,26 @@ writes anything into a customer's repository:
   (`display:none`, `visibility:hidden`, `opacity:0`, `content-visibility:hidden`,
   a zero `scale`, a `filter: opacity(0)`, an off-screen `translate`, a zero
   `font-size`/`line-height` on a text-bearing element, a large negative
-  `text-indent`) keeps the fix out of the repository. The rules of a utility
-  stylesheet are read together, so `fixed inset-0 w-screen h-screen` is caught
-  even when no single rule covers the viewport, and the verdict does not depend
-  on the order the stylesheets were read in. The reader follows the browser: the
-  CSS priority suffix is stripped (`fixed!important` is `fixed`), every logical,
-  small and large viewport unit is known (`100vi`, `100vb`, `100svw`, `100lvh`),
-  CSS escapes are decoded, a comment opener inside a string is text, native
-  nesting is flattened and the frames of an animation are judged when the element
-  animates with them. A stylesheet the analyser cannot judge, a value it cannot
-  compute for a property the fix changes, a **relational selector** (`:has(…)`,
-  whose DOM context the fix can change) and a **dynamic style source** (a JSX
-  `<style>{expression}</style>`) are **unprovable** — an unprovable destination
+  `text-indent`, a large negative margin) keeps the fix out of the repository.
+  The rules of a utility stylesheet are read together, so `fixed inset-0 w-screen
+  h-screen` is caught even when no single rule covers the viewport, and the verdict
+  does not depend on the order the stylesheets were read in. The reader follows the
+  browser: the CSS priority suffix is stripped (`fixed!important` is `fixed`), every
+  logical, small and large viewport unit is known (`100vi`, `100vb`, `100svw`,
+  `100lvh`), the `inset` shorthand sets its edges the way the browser assigns them
+  (`inset:0 0` sets the block edges and the inline edges), the logical sizing
+  properties (`inline-size`, `block-size`) are known, CSS escapes are decoded, a
+  comment opener inside a string is text, native nesting is flattened and the frames
+  of an animation are judged when the element animates with them — including the
+  **end state**, which is what the user sees after the animation runs. The effective
+  style of the patched element is the repository's rules **plus the remediation's
+  own inline declarations**, and the custom properties the fix defines resolve the
+  `var()` references of the repository's rules. A stylesheet the analyser cannot
+  judge, a value it cannot compute for a property the fix changes, a **relational
+  selector** (`:has(…)`, whose DOM context the fix can change), a **dynamic style
+  source** (a JSX `<style>{expression}</style>`) and a **runtime-created style**
+  (a repository script that calls `createElement('style')`, `insertRule(…)` or
+  assigns `style.textContent`) are **unprovable** — an unprovable destination
   never receives a source patch.
 
 An incomplete scan never patches a file; the fix stays a review suggestion. The
@@ -156,8 +172,11 @@ PR writes a `github_pr_created` audit log entry; the write is retried
   no-op, content-loss and syntax-guard rejection, validation bypasses (CSS escaped
   overlays, `frame`/`frameset`), the destination comparison of a URI attribute
   (protocol-relative, single-slash and backslash spelling, a changed `href`, a
-  dropped source), the hiding styles, the FreeMarker directive, Markdown escaping
-  and the inline code span.
+  dropped source, a remote destination behind a **duplicate** attribute and a
+  remote URL inside a **ping list**), the hiding styles, the modern colour alpha
+  syntaxes, a zero-size patched element, a large negative margin, the JSX
+  `className` hook, the FreeMarker directive, Markdown escaping and the inline
+  code span.
 - `src/lib/__tests__/fix-validation.test.ts` — injection and per-rule checks, the
   live-element and media-source requirement of the `image-alt` rule.
 - `src/lib/__tests__/ast-patch.test.ts` — AST location (every identity attribute the
@@ -172,20 +191,26 @@ PR writes a `github_pr_created` audit log entry; the write is retried
   the rules the browser applies and the analyser used to miss (escaped selectors,
   properties and values, negated selectors, dynamic and logical viewport units,
   minimum viewport sizing, custom properties, native nesting, a changed attribute
-  value, the CSS priority suffix, a relational selector, a dynamic style source),
+  value, the CSS priority suffix, a relational selector, a dynamic style source,
+  the **inset shorthand edge assignment**, the **logical sizing properties**, the
+  **composition with the remediation's own inline style**, the **custom properties
+  the fix defines**, the **JSX class carrier**, an **animation end state**, a large
+  negative margin and a viewport-unit translation),
   the independence of the verdict from the order of the stylesheets and the
   animation frames.
 - `src/lib/__tests__/fix-verification.test.ts` — gate semantics, the
   check-before-render order, the browser isolation (no HTTP, no WebSocket), the
   visible-text verdict, the rendered-element verdict (a hidden element, transparent
-  text, a zero-size text, an unpainted element, an element moved off-screen) and
-  real axe runs.
+  text in the modern syntaxes, a zero-size text, an unpainted element, an element
+  moved off-screen, a zero-area element, a clipped text, an animation that ends
+  invisible) and real axe runs.
 - `src/lib/__tests__/github.test.ts` — the repository writer: one fetch and one write
   per file, the complete tree scan, ambiguous matches left alone, an incomplete scan
   (unreadable file, truncated tree, submodule) never patching, the destination
-  stylesheet guard (a preprocessor stylesheet, a linked stylesheet), the blob whose
-  extension does not say whether it is binary, the template destination, failed
-  writes not reported as applied.
+  stylesheet guard (a preprocessor stylesheet, a linked stylesheet, a **style the
+  repository script creates at runtime**), the blob whose extension does not say
+  whether it is binary, the template destination, failed writes not reported as
+  applied.
 - `src/lib/__tests__/audit-retry.test.ts` — the audit write is retried before a
   missing trail is reported.
 - `src/app/api/github/create-pr/route.test.ts` — the PR route: no PR without verified
