@@ -1,6 +1,35 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-22 (fifth-review closure)
+Last run: 2026-11-22 (sixth-review closure)
+
+## Sixth-review closure evidence
+
+| Check | Result |
+|---|---|
+| Temporary reviewer-payload re-run | PASS — 1 file, 36/36 assertions: 6 fifth-review payloads, 12 fourth-review payloads, 8 sixth-review reproductions (all blocked in the unsafe direction) and 8 legitimate behaviours (all still pass). The file was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 667/667 tests, 0 failed (was 53/634) |
+| Coverage | PASS — statements 64.80% (threshold 55) · branches 56.21% (50) · functions 66.80% (58) · lines 66.34% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.1 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+
+### Permanent regressions added for the sixth review
+
+| Finding | Regression | File |
+|---|---|---|
+| 6-H1 — a preprocessor stylesheet and a linked stylesheet are part of the destination | the fix is not written when either turns the patched element into an overlay; a stylesheet whose syntax cannot be resolved does the same | `src/lib/__tests__/github.test.ts` |
+| 6-H2 — the analyser missed ten browser-valid rule variants | escaped selector, escaped property, escaped value, negated selector, dynamic viewport units, minimum viewport sizing, custom properties, native nesting, changed attribute value, comment opener inside a string, stylesheet order, a harmless animation and an animation that covers the screen | `src/lib/__tests__/css-context.test.ts` |
+| 6-M1 — HTML comment syntax in a remediation | the remediation is invalid | `src/lib/__tests__/github-pr.test.ts` |
+| 6-M2 — a fix that hides its own target | the remediation is invalid, the write is skipped and the rendered element is caught in a real browser | `src/lib/__tests__/github-pr.test.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/fix-verification.test.ts` |
+| 6-M3 — transparent text | the four spellings are invalid and the computed colour is caught in a real browser | `src/lib/__tests__/github-pr.test.ts`, `src/lib/__tests__/fix-verification.test.ts` |
+| 6-M4 — a new remote URL | a new remote URL is invalid, the URL of the original element is valid | `src/lib/__tests__/github-pr.test.ts` |
+| 6-M5 — non-live contexts | the bogus comment, the CDATA section and the quoted end tag each count zero occurrences | `src/lib/__tests__/ast-patch.test.ts` |
+| 6-M6 — an ambiguous blob | the blob is read in both cases; a text blob makes the match ambiguous, a binary blob does not | `src/lib/__tests__/github.test.ts` |
+
+No temporary test file remains: every reproduction of the sixth review is covered
+by a shipped regression.
 
 ## Fifth-review closure evidence
 

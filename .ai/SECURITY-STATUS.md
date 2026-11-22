@@ -2,6 +2,218 @@
 
 Last verification: 2026-11-22
 
+## Sixth independent security review (2026-11-22)
+
+**Verdict: NOT READY — Critical 0, High 2, Medium 6, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree is **not releasable** until both High
+findings below are fixed at their root causes and every working reproduction is
+blocked in the unsafe direction.
+
+The reviewed tree was `0650188` (`vol: releases — V23: volume log entry for the
+fifth-review closure cycle`). The source under review is the fifth-review
+closure (`c62dc08..0650188` changes the five expected security modules, their
+regressions and documentation). No shipped source was changed by this reviewer.
+Every attack used local synthetic data, mocked GitHub writes, local Chromium and
+`127.0.0.1` listeners. No production, third-party or public target was scanned,
+no live repository was mutated, no external GitHub Markdown service was called,
+and no Strix result is claimed.
+
+### Reproduced findings
+
+| ID | Severity | Surface | Working reproduction and observed result | Root cause / impact |
+|---|---|---|---|---|
+| 6-H1 | **High** | Destination CSS collection | Repository `index.html` contained `<img id="target" src="x">`; repository `site.scss` contained `[alt]{position:fixed;inset:0;width:100%;height:100%;z-index:999999}`; remediation was `<img id="target" src="x" alt="Photo">`. Observed: `{"fixesAppliedTotal":1,"writeCount":1,"writtenPath":"index.html","reads":["index.html","site.scss"],"scssReadForUniqueness":true,"scssIncludedInDestinationCssContext":false,"directHarmIfScssWereScanned":"the repository stylesheet can turn the patched element into a full-viewport overlay","computed":{"position":"fixed","width":1280,"height":720}}`. A linked local stylesheet variant produced `{"fixesAppliedTotal":1,"writes":1,"cssHits":1,"computed":{"position":"fixed","width":1280,"height":720}}`. | `src/lib/github.ts` reads every text blob for uniqueness but builds the destination CSS context only from `.css` files and `<style>` blocks in `.html`. A repository-owned preprocessor stylesheet is therefore read but never judged; the linked stylesheet is not fetched. The linked/CDN case was already disclosed as residual risk, but the SCSS case shows repository-owned style is also outside the promised destination context. The patch can turn the customer page into a full-viewport UI takeover. |
+| 6-H2 | **High** | Browser-equivalent CSS semantics | Ten browser-valid rules were accepted by the writer with `harm:null` while Chromium computed `position:fixed`, `width:1280`, `height:720`: a comment opener inside a CSS string, escaped selector `[a\\6c t]`, escaped property `p\\6fsition`, escaped value `fix\\65 d`, negated selector, `100dvw`/`100dvh`, `min-width:100vw`/`min-height:100vh`, custom properties, native nested CSS, and `[alt="Photo"]` when `alt` already existed with another value. The writer applied the first variant once. The cascade variant observed `{"completedReads":["index.html","danger.css","safe.css"],"writerContextOrder":"danger.css then safe.css (completion order)","browserCascadeOrder":"safe.css then danger.css (link order)","harmInWriterOrder":null,"computedInBrowserOrder":{"position":"fixed","width":1280,"height":720}}`; the writer applied it once. | The hand-written analyzer is not browser-equivalent: it strips comments without string awareness, does not resolve CSS escapes/nesting/custom properties/modern viewport or minimum sizing, does not model a changed attribute value, and merges declarations in fetch-completion order rather than the destination cascade and specificity. The fifth-review class-token overlay remains reachable through equivalent `.css` syntax and stylesheet order. |
+| 6-M1 | Medium | HTML source integrity / content loss | Remediation `<img id="target" src="x" alt="Photo"><!--` in `<html><body><img id="target" src="x"><button>Continue</button></body></html>` produced `{"validation":{"valid":true},"verification":{"status":"verified","confidence":1},"fixesApplied":1,"before":{"buttonCount":1},"after":{"buttonCount":0},"writtenContainsCommentOpener":true}`. | The remediation validator accepts an HTML comment opener. In the destination, the unclosed `<!--` comments out the rest of the document. The isolated snippet verifies because it contains no later UI, while the customer page loses the content after the target. This is the source-integrity equivalent of 4-M2's `plaintext` content loss. |
+| 6-M2 | Medium | Visible-content preservation | Both `<img id="target" src="x" alt="Photo" hidden>` and `<img id="target" src="x" alt="Photo" style="display:none">` produced validation `valid:true`, axe `status:"verified"`, `confidence:1`, `fixesApplied:1`, computed `display:"none"`, `width:0`, `height:0`, `clientRects:0`. | The style guard rejects `opacity:0` but not `display:none`; the `hidden` attribute is not rejected in a remediation. The visible-text guard only protects text, and an image is a void element. Axe excludes the hidden image, so the fix is reported verified while removing the customer image. |
+| 6-M3 | Medium | Visible-content preservation | Remediation `<a id="target" href="/about" aria-label="Read more" style="color:transparent">Read more</a>` produced `{"validation":{"valid":true},"verification":{"status":"verified","confidence":1},"fixesApplied":1,"computed":{"opacity":"1","visibility":"visible","color":"rgba(0, 0, 0, 0)","width":69.75,"height":17,"clientRects":1}}`. | `color:transparent` is not rejected, and the verification browser's computed-visibility check does not inspect text color. The link keeps its layout box and accessible name but the user can no longer read it. This is the color-equivalent of the opacity variants closed in 4-M6 and 5-M2. |
+| 6-M4 | Medium | Customer-side network isolation | Remediation `<img id="target" src="http://127.0.0.1:<port>/sixth-review/pixel?token=local" alt="Photo">` produced `{"validation":{"valid":true},"verification":{"status":"verified","confidence":1},"fixesApplied":1,"hitsAfterVerification":0,"hitsAfterCustomerRender":1,"paths":["/sixth-review/pixel?token=local"]}`. | The URI allowlist permits HTTP(S) on an ordinary image and does not compare a proposed URI with the original element. The isolated verification browser blocks the request, so verification proves nothing about the customer browser; after merge, the customer browser makes the request. This reopens 4-M3's customer-side tracking/internal-request primitive through a still-accepted element type. |
+| 6-M5 | Medium | Live HTML context | Sources `<!bogus <img src="x">>`, `<![CDATA[<img src="x">]]>` and `<template><div data-x="</template>"><img src="x"></template>` each produced `countedOccurrences:1`, `fixesApplied:1`, `browserImageCount:0`. | The live-tag scanner does not implement bogus-comment or HTML-CDATA parsing and treats a `</template>` sequence inside a quoted attribute as the real template end. Non-live markup is patched and counted as applied although Chromium creates no document image. This reopens 5-M3's false-applied/wrong-target path. |
+| 6-M6 | Medium | Complete source scan | A tree with `index.html` and `payload.dat`, both containing `<img src="x">`, produced `{"fixesAppliedTotal":1,"writes":1,"writtenPath":"index.html","reads":["index.html"],"payloadDatRead":false}`. | The binary-extension denylist trusts the `.dat` suffix and skips the blob before it is read. A `.dat` file can be text or serve source-like content, so the duplicate is omitted and the remaining match looks unique. This is the same wrong-file path as 4-M5 and 5-M4. |
+
+Variants that share one root cause are grouped above rather than counted more
+than once. No Critical finding was reproduced.
+
+### Exact fifth-review payload re-run
+
+All six fifth-review payloads were re-run against `0650188`. The temporary suite
+observed **6/6 blocked**; none reached a repository write in the unsafe
+direction.
+
+| Fifth-review item | Current-tree result |
+|---|---|
+| 5-H1 — added class and repository destination CSS | **BLOCKED**: added-class validation is false; the destination-CSS case applies 0 fixes and performs 0 writes. |
+| 5-H2 — server-template remediation and destination | **BLOCKED**: template remediation validation is false; the template destination applies 0 fixes and performs 0 writes. |
+| 5-M1 — entity-encoded input type | **BLOCKED**: validation is false with reason `remediation code introduces an <input> whose type carries an entity`. |
+| 5-M2 — `opacity:0!important` | **BLOCKED**: validation is false with reason `remediation code hides the element with opacity: 0`. |
+| 5-M3 — live HTML contexts | **BLOCKED**: template, iframe, script-prefix and never-closed-script cases each count 0 occurrences and apply 0 fixes. |
+| 5-M4 — complete text-blob scan | **BLOCKED**: the unknown-extension duplicate and the submodule each apply 0 fixes and perform 0 writes. |
+
+### Exact fourth-review payload re-run
+
+All twelve fourth-review cases were re-run against `0650188`. The temporary
+suite observed **12/12 blocked**; the three-H and nine-M payloads did not reach
+a repository write in their unsafe direction.
+
+| Fourth-review item | Current-tree result |
+|---|---|
+| 4-H1 — named-entity CSS overlay | **BLOCKED**: validation is false and 0 fixes are applied. |
+| 4-H2 — alternate `--!>` comment terminator | **BLOCKED**: 0 fixes are applied and the literal alternate terminator is absent. |
+| 4-H3 — JSX brace / TypeScript quote injection | **BLOCKED**: JSX validation is false; the unproven TypeScript destination applies 0 fixes and performs 0 writes. |
+| 4-M1 — GFM bare URL | **BLOCKED**: escaped output is `https&#58;//evil.test/phishing` and contains no bare live URL. |
+| 4-M2 — `plaintext` | **BLOCKED**: validation is false. |
+| 4-M3 — `video` / `audio` / `source` / `track` / `input[type=image]` | **BLOCKED**: all five validations are false. The ordinary-image HTTP(S) equivalent is 6-M4. |
+| 4-M4 — `encoding:'none'` | **BLOCKED**: the scan is incomplete; 0 fixes and 0 writes. |
+| 4-M5 — duplicate in `.mjs` | **BLOCKED**: both files are read, the match is ambiguous, and 0 fixes/0 writes occur. The skipped-extension equivalent is 6-M6. |
+| 4-M6 — `opacity:0` | **BLOCKED**: validation is false. The transparent-color equivalent is 6-M3. |
+| 4-M7 — “Read more” reduced to “R” | **BLOCKED**: 0 fixes are applied and the original text remains. |
+| 4-M8 — swapped remediations for identical copies | **BLOCKED**: 0 fixes are applied and neither copy receives the other's remediation. |
+| 4-M9 — element inside an HTML comment | **BLOCKED**: 0 fixes are applied and no write occurs. The other non-live contexts are 6-M5. |
+
+### Legitimate behavior checked
+
+| Behavior | Result |
+|---|---|
+| Ordinary `image-alt` fix in HTML | PASS — one fix is applied and `alt="Photo"` is written. |
+| Ordinary `image-alt` fix in TSX and in a `.js` file containing JSX | PASS — one fix is applied in each. |
+| Legitimate `https:` and `mailto:` hrefs | PASS — both remediations validate. |
+| Three identical copies selected together | PASS — all three are patched. |
+| Two of three identical copies selected | PASS — neither is patched; the match is not provable. |
+| Twelve additional server-template spellings | PASS — `<%`, `<?`, `{{`, `{%`, `{#`, whitespace-control and `{{!` forms are all rejected. |
+| Symlink whose mocked GitHub response has no inline content | PASS — the scan is incomplete, so 0 fixes and 0 writes occur. |
+
+### Verification evidence
+
+| Command / check | Result |
+|---|---|
+| `npx vitest run src/lib/__tests__/tmp-sixth-security-review-evidence.test.ts --reporter=verbose` | exit 0 — 1 temporary file, 14/14 tests; includes all six fifth-review payloads, all twelve fourth-review payloads, every reproduced finding and the legitimate checks. The file was deleted after the run. |
+| Focused symlink closure check in the same temporary suite | exit 0 — 1/1 test; 0 fixes and 0 writes. |
+| `npx vitest run --coverage --reporter=dot` | exit 0 — 53 shipped files, 634/634 tests passed. |
+| Coverage | PASS — statements 63.83% (threshold 55) · branches 55.16% (50) · functions 66.04% (58) · lines 65.29% (57). |
+| `npx tsc -p tsconfig.check.json --noEmit` | exit 0. |
+| `npm run lint` | exit 0 — 0 errors. |
+| `npm run build` | exit 0 — Next 16.4.6 compiled successfully and generated 116 static pages. |
+| `npm audit --audit-level=high --json` | exit 0 — Critical 0, High 0, Moderate 15, Low 0. |
+| Tracked-file secret scan | 773 tracked files scanned without printing values. No live high-confidence secret was found. One AWS-key-shaped string is the known documentation example under `.openclaw/skills/`; the tracked `.env.example` contains placeholder instructions, not a discovered live credential. |
+
+### OWASP/security-surface disposition for this scoped pass
+
+| Surface | Result |
+|---|---|
+| Injection / XSS / source integrity | **FAIL** — 6-H1, 6-H2 and 6-M1 write destination-controlled behavior or remove source content; 6-M5 also reports a non-live target as applied. |
+| SSRF / network isolation | The service-side verification isolation still blocked the local request, but the **customer-repository boundary fails** through 6-M4. |
+| Broken access control / RBAC / tenant isolation | PASS in the scoped route: the existing `requireVerifiedEmail(..., CREATE_PR)` guard, repository allow-list and `project.orgId = auth.user.orgId` scope were unchanged. This is not a fresh full-product authorization audit. |
+| Auth / sessions / OAuth / CSRF / cookies / CORS / headers | No changed code in these surfaces in this scoped diff. The route retains authenticated, verified-email and permission checks. No fresh full-product CSRF, OAuth, cookie, CORS or security-header audit is claimed. |
+| SQL injection | The reviewed route uses Prisma parameters and the scoped modules contain no raw SQL; no SQLi reproduction was found. |
+| Command injection / uploads | No shell execution or upload path changed in the reviewed baseline; no reproduction was attempted outside scope. |
+| Rate limits / resource bounds | The existing request cap, per-user rate limit and two-browser semaphore were unchanged; no new concurrency reproduction was found. |
+| Audit trail | The route ordering and three-attempt retry semantics were unchanged; no new persistent-audit failure was injected in this pass. |
+| Dependencies / secrets | `npm audit` has no High/Critical finding; the tracked-file scan found no live secret. |
+
+### Required closure criteria
+
+1. Make the destination CSS decision cover every repository-owned style source
+   (including preprocessors and style blocks outside HTML), or fail closed when
+   such a source cannot be judged. A linked/CDN residual must not be the reason a
+   repository-owned stylesheet is omitted.
+2. Use browser-equivalent CSS parsing and cascade evaluation, or fail closed for
+   syntax the analyzer cannot prove. CSS escapes, comments in strings, nesting,
+   custom properties, modern/minimum viewport sizing, changed attribute values,
+   stylesheet order and specificity must be covered by permanent regressions.
+3. Reject an unterminated HTML comment opener in a remediation; reject a
+   remediation that hides its own target; and extend the visibility decision to
+   transparent text and equivalent visual hiding methods.
+4. Do not introduce a new HTTP(S) resource URL. Compare proposed URI attributes
+   with the original element and keep customer-side network isolation effective
+   after merge.
+5. Replace the remaining live-context approximations with browser-equivalent
+   HTML parsing or fail closed for contexts the scanner cannot prove.
+6. Do not trust an extension suffix as proof that a blob cannot contain
+   source-like text. An omitted/ambiguous blob must make uniqueness fail closed.
+7. Add permanent regressions for every reproduction above and re-run all six
+   fifth-review and twelve fourth-review payloads before the next independent
+   review.
+
+### Untested / out of scope
+
+- No production, third-party or public target was scanned; live GitHub writes
+  were mocked. No Strix finding is claimed.
+- No Sass/Less compiler was run. The SCSS proof uses a valid plain-CSS subset
+  in a `.scss` file and proves the collection omission; it does not claim a
+  particular build pipeline's output.
+- FreeMarker-style `<#...>` grammar is not recognized by
+  `containsTemplateGrammar`, but no FreeMarker execution proof was available;
+  it is not counted as a finding.
+- GitHub Markdown rendering was not exercised because external services were
+  out of scope; only local escaping behavior and the exact 4-M1 payload were
+  checked.
+- The symlink result uses the documented no-inline-content GitHub response
+  shape; no live GitHub repository was queried.
+- The `<select><img>` candidate was not counted: local Chromium created the
+  image (`browserImageCount:1`), so it was not a non-live context.
+- No full Playwright E2E, Docker image/SBOM, multi-instance concurrency or
+  container-Chromium run was performed in this pass.
+- This was a focused V23 verified-fix/GitHub-writer audit, not a fresh
+  full-product review of authentication, session lifecycle, CSRF, OAuth, CORS,
+  uploads, SQLi or command injection.
+
+### Cleanup
+
+The temporary review file was deleted. Immediately after deletion,
+`git diff --name-only -- src` and `git ls-files --others --exclude-standard` were
+both empty. No commit, push, checkout, reset, destructive Git command, Strix
+run, production change or secret modification was performed. This report is the
+only intended repository change.
+
+## Sixth-review closure (2026-11-22)
+
+**Status: all eight sixth-review findings (High 2, Medium 6) are fixed at their
+root cause and every working reproduction is blocked in the unsafe direction.**
+The release gate stays **closed**: it reopens only when a **seventh independent
+review** returns READY (Critical 0, High 0). The findings themselves are kept
+verbatim above.
+
+| ID | Severity | Root-cause closure | Permanent regression |
+|---|---|---|---|
+| 6-H1 | High | The destination CSS context is no longer built from `.css` files alone. `src/lib/github.ts` collects **every** repository-owned style source: the stylesheet files (`.css`, `.scss`, `.sass`, `.less`, `.pcss`, `.styl`, `.stylus`, `.sss`, `.postcss`), the `<style>` block of **every** file type, the stylesheets a file links (`<link rel="stylesheet">`, resolved against the tree) and the stylesheets they import (`@import`). A source that cannot be read or resolved (an external or unresolvable reference) makes the destination **unprovable**, so no source patch is written into it. | `src/lib/__tests__/github.test.ts` — a preprocessor stylesheet and a linked stylesheet each keep the fix out of the repository; a stylesheet whose syntax the analyser cannot resolve does the same. |
+| 6-H2 | High | The hand-written analyzer was replaced by a browser-equivalent reader in `src/lib/css-context.ts`: CSS escapes are decoded in selectors, properties and values; comments are stripped outside strings only; native nesting is flattened (`&` is the parent selector, a nested selector without `&` is a descendant); the dynamic viewport units (`dvw`/`dvh`/`svw`/`lvh`), the minimum viewport sizing and the viewport edges are read; a changed attribute value is compared with the original element; the cascade is not simulated — the values of the rules that apply are unioned, so the verdict does not depend on the order the stylesheets were read in; the frames of an animation are judged when the element animates with them (only their geometry, so an ordinary fade does not block a fix). A value the analyser cannot compute (`var()`, an unknown function) makes the destination unprovable **when the fix changes that property** — an unchanged `width:var(--w)` of the customer is not something the fix introduced. | `src/lib/__tests__/css-context.test.ts` — the ten variants of the finding (escaped selector, escaped property, escaped value, negated selector, dynamic viewport units, minimum viewport sizing, custom properties, native nesting, changed attribute value, comment opener inside a string), the independence of the verdict from the stylesheet order, the harmless animation and the animation that covers the screen. |
+| 6-M1 | Medium | `validateRemediation` rejects HTML comment syntax (`<!--`, `-->`, `--!>`): a comment ends at the first `-->`, so a comment opener in the fix swallows the markup behind it in the customer's page. | `src/lib/__tests__/github-pr.test.ts` — a remediation that carries a comment opener is invalid. |
+| 6-M2 | Medium | A fix may not hide the element it patches: the `hidden` attribute and `display:none` / `visibility:hidden` on the patched element are rejected in `validateRemediation` and in `checkStyleAttribute`, `ast-patch.hidesContent` judges the element's own attributes, `applyFixesToFile` skips a replacement that hides its own target, and the verification browser judges the rendered element from the computed style (`checkRenderedElement`). | `src/lib/__tests__/github-pr.test.ts` (validation and the write path), `src/lib/__tests__/ast-patch.test.ts` (`hidesOwnTarget`), `src/lib/__tests__/fix-verification.test.ts` (the rendered element in a real browser). |
+| 6-M3 | Medium | Transparent text is rejected statically (`color:transparent`, a colour with an alpha of zero — `rgba(0,0,0,0)`, `hsla(0,0%,0%,0)` — and `-webkit-text-fill-color:transparent`) and judged in the browser from the computed colour and the computed `-webkit-text-fill-color`. | `src/lib/__tests__/github-pr.test.ts` (the four spellings) and `src/lib/__tests__/fix-verification.test.ts` (the computed colour in a real browser). |
+| 6-M4 | Medium | A fix may not introduce a remote URL the original element does not have: every URI attribute (`src`, `srcset`, `href`, `poster`, `data`, …) of the remediation is compared with the original element, with the scheme read the way the browser reads it (entities decoded, control characters removed). The URL that the original element already carried is kept. | `src/lib/__tests__/github-pr.test.ts` — a new remote URL is invalid, the URL of the original element is valid. |
+| 6-M5 | Medium | The live-context scanner follows the browser: a markup declaration that is not a comment (`<!bogus …>`, a CDATA section) is a **bogus comment** that ends at the next `>`, and an end tag inside a quoted attribute value (`<template><div data-x="</template>">`) belongs to the attribute, not to the element. | `src/lib/__tests__/ast-patch.test.ts` — the bogus comment, the CDATA section and the quoted end tag each count zero occurrences. |
+| 6-M6 | Medium | The extension suffix is no longer proof that a blob cannot hold source-like text: a blob whose name does not say (`.dat`, `.bin`) is **read**, and the **content** decides — a NUL byte cannot appear in a text file, so a binary blob cannot hold the element and is left out of the scan, while a text blob holds it and makes the match ambiguous. | `src/lib/__tests__/github.test.ts` — the ambiguous blob is read in both cases; a text blob makes the match ambiguous (0 fixes), a binary blob does not. |
+
+### Sixth-review closure — verification evidence
+
+| Command / check | Result |
+|---|---|
+| Temporary reviewer-payload re-run (`src/lib/__tests__/tmp-reviewer-payload-rerun.test.ts`) | exit 0 — 1 temporary file, **36/36 assertions**: the six fifth-review payloads (9 assertions), the twelve fourth-review payloads (12 assertions), the eight sixth-review reproductions (10 assertions) are all blocked in the unsafe direction, and the eight legitimate behaviours still pass (an ordinary HTML/TSX/JS fix, `https:`/`mailto:` hrefs, three identical copies patched, two of three left alone, twelve template spellings rejected, a symlink fails closed). The file was deleted after the run — every case is covered by a permanent regression. |
+| `npx vitest run` | PASS — 53 files, 667/667 tests (was 53/634; the new regressions are permanent, no temporary file remains). |
+| `npx vitest run --coverage` | PASS — statements 64.80% (threshold 55) · branches 56.21% (50) · functions 66.80% (58) · lines 66.34% (57). |
+| `npx tsc -p tsconfig.check.json --noEmit` | exit 0. |
+| `npm run lint` | exit 0 — 0 errors. |
+| `npm run build` | exit 0 — Next standalone build. |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed. |
+| `npm audit --audit-level=high` | exit 0 — Critical 0, High 0 (15 moderate, dev toolchain). |
+| Seventh independent security review | PENDING — the release gate opens only on READY (Critical 0, High 0). |
+
+### Sixth-review closure — residual risk
+
+- A stylesheet that the analyser cannot judge (a preprocessor at-rule, an unknown
+  at-rule, a variable or an interpolation it cannot resolve) makes the whole
+  destination **unprovable**: the fix stays a review suggestion. This is the
+  fail-closed direction the review allows, but it means that a repository whose
+  stylesheets use such syntax receives fewer source patches than before.
+- A repository whose tree holds an **ambiguous blob** that the GitHub contents
+  API cannot inline (`encoding: 'none'`) makes the scan incomplete, so no file is
+  patched. The blob is read before that decision is taken, which is what the
+  finding asks for; the incompleteness is the documented fail-closed behaviour.
+- The CSS reader is a static reader: it judges the rules it can read, not the
+  rendered result. A rule that only becomes an overlay through a runtime value
+  (a custom property the analyser cannot resolve, a script that writes a style)
+  is either unprovable (custom property) or outside the reader's reach (script).
+
 ## Fifth-review closure (2026-11-22)
 
 **Status: all six fifth-review findings are fixed at their root cause, and every

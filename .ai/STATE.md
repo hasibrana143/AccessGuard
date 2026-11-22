@@ -2,15 +2,30 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 fifth-review closure shipped, sixth review pending** 🔴 |
-| Current task | Sixth independent security review of the fifth-review closure; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 sixth-review closure shipped, seventh review pending** 🔴 |
+| Current task | Seventh independent security review of the sixth-review closure; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the six fifth-review findings are fixed at their root cause and every working reproduction is blocked; the gate stays closed until the sixth independent review returns READY |
+| Status | AMBER — the eight sixth-review findings (High 2, Medium 6) are fixed at their root cause, every working reproduction is blocked and the whole gate suite is green; the gate stays closed until the seventh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Run the sixth independent security review against the pushed tree; fix every finding at the root cause with a permanent regression and repeat until READY |
-| Last verification | 2026-11-22 — fifth-review closure: tsc 0, lint 0, vitest 53 files/634 tests, coverage 63.83/55.16/66.04/65.29, build 0, Playwright 79/79, npm audit High 0; 8/8 exact payload reproductions blocked |
+| Next action | Run the seventh independent security review against the pushed tree; fix every finding at the root cause with a permanent regression and repeat until READY |
+| Last verification | 2026-11-22 — sixth-review closure: tsc 0, lint 0, vitest 53 files/667 tests, coverage 64.80/56.21/66.80/66.34, build 0, Playwright 79/79, npm audit High 0; 8/8 sixth-review reproductions blocked by permanent regressions |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-22, sixth-review closure)
+
+| Check | Result |
+|---|---|
+| Sixth-review closure | PASS — all eight findings (6-H1, 6-H2, 6-M1…6-M6) fixed at their root cause; the dispositions are in `.ai/SECURITY-STATUS.md` |
+| Permanent regressions | PASS — every reproduction of the sixth review has a shipped regression: destination CSS (a preprocessor stylesheet, a linked stylesheet, ten browser-valid rule variants), the comment opener, the self-hiding element, transparent text, the new remote URL, the three non-live contexts and the ambiguous blob |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 667/667 tests (was 53/634) |
+| Coverage | PASS — statements 64.80% (threshold 55) · branches 56.21% (50) · functions 66.80% (58) · lines 66.34% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+| Seventh independent security review | PENDING — the release gate opens only on READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-22, fifth-review closure)
 
