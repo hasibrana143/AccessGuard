@@ -316,6 +316,53 @@ describe('validateRemediation', () => {
   it('rejects oversized remediation code', () => {
     expect(validateRemediation('<div>' + 'x'.repeat(20_001) + '</div>').valid).toBe(false);
   });
+
+  it('rejects an <input> whose type is only an image after decoding', () => {
+    // The browser decodes the attribute before it reads the type, so the
+    // encoded form loads the remote resource as well.
+    const result = validateRemediation(
+      '<img src="x" alt="A"><input type="im&#97;ge" src="http://127.0.0.1:9/pixel">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('input');
+  });
+
+  it('rejects a remediation that carries server-template syntax', () => {
+    // The template engine of the customer's build evaluates `<% … %>`, so the
+    // expression would run on the customer's server.
+    const result = validateRemediation(
+      '<img src="x" alt="Photo"><span data-note="<%= globalThis.__pwned = true %>"></span>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('template');
+  });
+
+  it('rejects a remediation that adds a class the original element does not have', () => {
+    // A class is a hook into the repository's stylesheet, whose effect the
+    // isolated verification does not see.
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" class="overlay">',
+      '<img id="target" src="x">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('class');
+  });
+
+  it('keeps a remediation that keeps the class of the original element', () => {
+    const result = validateRemediation(
+      '<img src="x" class="hero" alt="Photo">',
+      '<img src="x" class="hero">'
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a remediation that hides the element with opacity: 0', () => {
+    // The priority suffix is not part of the value: `opacity:0!important`
+    // hides the element just like `opacity:0`.
+    const result = validateRemediation('<button style="opacity:0!important">Read more</button>');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('opacity');
+  });
 });
 
 describe('applyFixesToFile', () => {
@@ -352,6 +399,24 @@ describe('applyFixesToFile', () => {
 
     expect(result.fixesApplied).toBe(0);
     expect(result.content).toContain('AccessGuard Accessibility Fixes');
+  });
+
+  it('writes nothing into a server template', () => {
+    // The template engine of the customer's build evaluates the markers, so a
+    // fix written into the file becomes executable server code — and so does
+    // the review comment.
+    const original = '<% const pageTitle = "Home"; %><img src="a.jpg">';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'image-alt',
+        elementHtml: '<img src="a.jpg">',
+        remediationCode: '<img src="a.jpg" alt="A">',
+      },
+    ], 'template.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.content).toBe(original);
+    expect(result.content).not.toContain('AccessGuard Accessibility Fixes');
   });
 
   it('patches the nth occurrence of the same element', () => {

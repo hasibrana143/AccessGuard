@@ -169,6 +169,151 @@ describe('applyFixesToRepository', () => {
     expect(result.filesModified).toEqual([]);
   });
 
+  it('scans a file whose extension the writer does not know', async () => {
+    // A template holds the same element as the HTML file: the match is not
+    // unique, so nothing is patched.
+    tree(['index.html', 'page.hbs']);
+    fileContent('index.html', '<html><body><img src="a.jpg"></body></html>');
+    fileContent('page.hbs', '<img src="a.jpg">');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch anything when the tree holds a submodule', async () => {
+    // A submodule holds files the tree does not list: the scan is incomplete,
+    // so no match can be proven unique.
+    mocks.getTree.mockResolvedValue({
+      data: {
+        tree: [
+          { type: 'blob', path: 'index.html' },
+          { type: 'commit', path: 'components/ui', sha: 'abc123' },
+        ],
+      },
+    });
+    fileContent('index.html', '<html><body><img src="a.jpg"></body></html>');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not write a fix into a file whose stylesheet turns the element into an overlay', async () => {
+    // The isolated verification does not contain the repository's stylesheet:
+    // a class the repository styles as a full-viewport overlay has to be
+    // judged on the repository's CSS.
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<style>.overlay{position:fixed;inset:0;width:100%;height:100%;z-index:999999}</style><img id="target" class="overlay" src="x">'
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" class="overlay" src="x">',
+          remediationCode: '<img id="target" class="overlay" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+  });
+
+  it('does not write a fix into a file whose stylesheet hides the element', async () => {
+    tree(['index.html', 'site.css']);
+    fileContent('index.html', '<html><body><img id="target" class="hidden" src="x"></body></html>');
+    fileContent('site.css', '.hidden{display:none}');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" class="hidden" src="x">',
+          remediationCode: '<img id="target" class="hidden" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+  });
+
+  it('writes a fix into a file whose stylesheet does not touch the element', async () => {
+    tree(['index.html', 'site.css']);
+    fileContent('index.html', '<html><body><img id="target" class="hero" src="x"></body></html>');
+    fileContent('site.css', '.hero{border-radius:8px}.overlay{position:fixed;inset:0;width:100%;height:100%}');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" class="hero" src="x">',
+          remediationCode: '<img id="target" class="hero" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(result.filesModified).toEqual([{ path: 'index.html', fixesApplied: 1 }]);
+    expect(result.fixesAppliedTotal).toBe(1);
+  });
+
+  it('does not write a fix into a server template', async () => {
+    // The template engine of the customer's build evaluates the markers, so a
+    // fix written into the file becomes executable server code.
+    tree(['template.html']);
+    fileContent('template.html', '<% const pageTitle = "Home"; %><img src="x">');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="x">', remediationCode: '<img src="x" alt="Photo">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+  });
+
   it('does not write a fix into a file whose context cannot be proven', async () => {
     // A TypeScript module can hold the element inside a string: the fix would
     // become code there, so it stays a review suggestion.

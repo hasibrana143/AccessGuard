@@ -185,6 +185,18 @@ export async function getRepositoryDetails(token: string, owner: string, repo: s
  */
 const MAX_SOURCE_SCAN_BYTES = 5 * 1024 * 1024;
 
+/**
+ * Files that cannot hold markup and are not read: images, fonts, media,
+ * archives and other binaries. Every other file of the tree is read, because a
+ * file with an extension the writer does not know (a template, a partial, a
+ * content file) can hold the same element as the file that is patched.
+ */
+const BINARY_FILE_PATTERN =
+  /\.(png|jpe?g|gif|webp|bmp|ico|tiff?|avif|heic|svgz|woff2?|ttf|otf|eot|mp3|mp4|m4a|mov|avi|webm|wav|ogg|flac|aac|zip|gz|tgz|bz2|xz|7z|rar|tar|pdf|docx?|xlsx?|pptx?|exe|dll|so|dylib|class|jar|wasm|bin|dat|db|sqlite3?|iso|img|pyc)$/i;
+
+/** How many files of the tree are read at the same time. */
+const SCAN_CONCURRENCY = 8;
+
 // Apply accessibility fixes to real source files in the repository
 export async function applyFixesToRepository(
   token: string,
@@ -212,6 +224,7 @@ export async function applyFixesToRepository(
   const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate, conflictingRemediationKeys } =
     await import('@/lib/github-pr');
   const { locateElement, isPatchableFile } = await import('@/lib/ast-patch');
+  const { buildCssContext, destinationCssHarm, extractStyleBlocks } = await import('@/lib/css-context');
 
   // List source files in the default branch tree
   const { data: tree } = await octokit.git.getTree({ owner, repo, tree_sha: ref, recursive: '1' });
@@ -222,21 +235,34 @@ export async function applyFixesToRepository(
     return { filesModified, fixesAppliedTotal, appliedFixIds };
   }
 
-  // Every file that could hold the element is scanned, even the ones a fix is
-  // never written into: a duplicate in an omitted file would make the
-  // remaining match look unique.
-  const sourceFiles = (tree.tree || []).filter(
-    t => t.type === 'blob' && t.path && /\.(html|htm|tsx|jsx|ts|js|mjs|cjs|mts|cts|vue|svelte|astro)$/.test(t.path)
-  );
+  // Every text file of the tree is scanned, even the ones a fix is never
+  // written into: a duplicate in an omitted file would make the remaining
+  // match look unique. A file with an extension the writer does not know (a
+  // template, a partial) can hold the same element, and a submodule holds a
+  // tree of its own — both make the scan incomplete.
+  let scanIncomplete = false;
+  const textFiles: Array<{ path: string; size?: number }> = [];
+  for (const entry of tree.tree || []) {
+    if (!entry.path) continue;
+    if (entry.type === 'tree') continue;
+    if (entry.type !== 'blob') {
+      // A submodule (`type: "commit"`) holds files the tree does not list.
+      scanIncomplete = true;
+      continue;
+    }
+    // A binary file cannot hold markup.
+    if (BINARY_FILE_PATTERN.test(entry.path)) continue;
+    textFiles.push({ path: entry.path, size: entry.size });
+  }
 
-  // Every source file is scanned: uniqueness may only be decided on the
-  // complete tree. A truncated scan patched the wrong file before.
-  const treeBytes = sourceFiles.reduce((sum, file) => sum + (file.size ?? 0), 0);
+  // The complete tree is scanned: uniqueness may only be decided on it. A
+  // truncated scan patched the wrong file before.
+  const treeBytes = textFiles.reduce((sum, file) => sum + (file.size ?? 0), 0);
   if (treeBytes > MAX_SOURCE_SCAN_BYTES) {
     return { filesModified, fixesAppliedTotal, appliedFixIds };
   }
 
-  if (sourceFiles.length === 0) return { filesModified, fixesAppliedTotal, appliedFixIds };
+  if (textFiles.length === 0) return { filesModified, fixesAppliedTotal, appliedFixIds };
 
   // One fetch per file: the content is cached so several fixes can land in the same
   // file without the later write overwriting the earlier fix.
@@ -245,7 +271,6 @@ export async function applyFixesToRepository(
   const localOccurrence = new Map<string, number>();
   let scannedBytes = 0;
   let scanTruncated = false;
-  let scanIncomplete = false;
 
   const loadFile = async (path: string): Promise<string | undefined> => {
     const cached = contentCache.get(path);
@@ -284,6 +309,34 @@ export async function applyFixesToRepository(
     }
   };
 
+  // The whole tree is read before the first match is judged: a file that is
+  // not read may hold the element, and the repository's stylesheets have to be
+  // known before a fix can be written into the repository.
+  const queue = [...textFiles];
+  const workers = Array.from({ length: Math.min(SCAN_CONCURRENCY, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const file = queue.shift();
+      if (!file) break;
+      await loadFile(file.path);
+    }
+  });
+  await Promise.all(workers);
+  if (scannedBytes > MAX_SOURCE_SCAN_BYTES) scanTruncated = true;
+
+  // The repository's stylesheets are part of the destination: a rule the
+  // repository applies to the patched element is invisible to the isolated
+  // verification. The CSS of every stylesheet and of every `<style>` block is
+  // read, so the destination can be judged before a fix is written.
+  const cssParts: string[] = [];
+  for (const [path, content] of contentCache) {
+    if (/\.css$/i.test(path)) {
+      cssParts.push(content);
+    } else if (/\.html?$/i.test(path)) {
+      cssParts.push(...extractStyleBlocks(content));
+    }
+  }
+  const cssContext = buildCssContext(cssParts.join('\n'));
+
   // At most 10 fixes are written into source files per PR (the rest stay in the PR
   // as review files). Keeps the number of repository reads and AST parses bounded.
   const candidates = violations.filter(v => v.remediationCode && v.elementHtml).slice(0, 10);
@@ -296,14 +349,17 @@ export async function applyFixesToRepository(
     if (!validateFixCandidate(violation).valid) continue;
     if (conflictingKeys.has(fixOccurrenceKey(violation))) continue;
 
+    // The repository's own stylesheet can restyle the patched element: the
+    // isolated verification does not see it. A fix that the destination can
+    // turn into an overlay or hide it stays a review suggestion.
+    if (destinationCssHarm(cssContext, violation.elementHtml, violation.remediationCode)) continue;
+
     // Find every file that contains the element. If it exists in more than one
     // file the match is ambiguous: the fix is left as a review suggestion instead
     // of patching an arbitrary file.
     const containing: string[] = [];
 
-    for (const file of sourceFiles) {
-      if (!file.path) continue;
-
+    for (const file of textFiles) {
       const original = await loadFile(file.path);
       if (original === undefined) continue;
       if (!locateElement(original, file.path, violation.elementHtml!, 0)) continue;

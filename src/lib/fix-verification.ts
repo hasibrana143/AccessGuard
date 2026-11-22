@@ -11,6 +11,7 @@ import { chromium, type Browser, type BrowserContext } from 'playwright';
 import * as axeCore from 'axe-core';
 import { validateFixCandidate } from '@/lib/github-pr';
 import { visibleTextContent } from '@/lib/ast-patch';
+import { decodeHtmlEntities } from '@/lib/html-attributes';
 
 export const MIN_FIX_CONFIDENCE = 0.7;
 export const VERIFIED_FIX_CONFIDENCE = 1;
@@ -207,15 +208,38 @@ async function runRuleInBrowser(
     await page.addScriptTag({ content: AXE_SOURCE });
 
     // The rendered text is what the user sees. When the original element showed
-    // text, the patched element has to show text too — a fix that moves the text
-    // into a hidden element passes axe and deletes what the user reads.
+    // text, the patched element has to show the same text: a fix that moves the
+    // text into a hidden element passes axe and deletes what the user reads.
+    // The text is read from the computed style, not from `innerText`: a text
+    // that is transparent (`opacity:0`) is still in `innerText` but the user
+    // cannot see it.
     if (originalVisibleText) {
-      const renderedText = await page.evaluate(() => document.body.innerText.trim());
-      if (!renderedText) {
+      const renderedText = await page.evaluate(() => {
+        const isVisible = (element: Element | null): boolean => {
+          if (!element) return false;
+          const style = window.getComputedStyle(element);
+          if (style.display === 'none') return false;
+          if (style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+          if (Number.parseFloat(style.opacity || '1') === 0) return false;
+          return element.getClientRects().length > 0;
+        };
+
+        let text = '';
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+          if (isVisible(node.parentElement)) text += node.textContent ?? '';
+          node = walker.nextNode();
+        }
+        return text.replace(/\s+/g, ' ').trim();
+      });
+
+      const wanted = decodeHtmlEntities(originalVisibleText).replace(/\s+/g, ' ').trim().toLowerCase();
+      if (!wanted || !renderedText.toLowerCase().includes(wanted)) {
         return {
           fired: true,
           evaluated: true,
-          detail: 'the patched element no longer shows any visible text',
+          detail: 'the patched element no longer shows the original visible text',
         };
       }
     }

@@ -218,6 +218,23 @@ describe('elementTextContent / preservesVisibleContent', () => {
       )
     ).toBe(false);
   });
+
+  it('rejects a replacement that hides the text with opacity:0!important', () => {
+    // The priority suffix is not part of the value: `opacity:0!important`
+    // hides the element just like `opacity:0`.
+    expect(
+      preservesVisibleContent(
+        '<button>Read more</button>',
+        '<button style="opacity:0!important">Read more</button>'
+      )
+    ).toBe(false);
+    expect(
+      preservesVisibleContent(
+        '<button><span>Read more</span></button>',
+        '<button><span style="opacity:0 ! important">Read more</span></button>'
+      )
+    ).toBe(false);
+  });
 });
 
 describe('locateElement (HTML)', () => {
@@ -264,6 +281,42 @@ describe('locateElement (HTML)', () => {
     const starts = liveTagStarts(content);
     expect(starts.has(0)).toBe(false);
     expect(starts.has(content.indexOf('<b>x</b>'))).toBe(true);
+  });
+
+  it('does not match an element inside a template', () => {
+    // The browser creates no element for the content of a template, so a fix
+    // written there is not applied to anything the user sees.
+    const content = '<html><body><template><img src="a.jpg"></template></body></html>';
+    expect(locateElement(content, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
+    expect(countElementOccurrences(content, 'index.html', '<img src="a.jpg">')).toBe(0);
+  });
+
+  it('does not match an element inside an iframe', () => {
+    // The content of an iframe is raw text for the parser: it never becomes an
+    // element of the document.
+    const content = '<html><body><iframe><img src="a.jpg"></iframe></body></html>';
+    expect(locateElement(content, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
+    expect(countElementOccurrences(content, 'index.html', '<img src="a.jpg">')).toBe(0);
+  });
+
+  it('does not match an element behind a raw text end tag prefix', () => {
+    // `</scripture>` is not the end of a script: the script continues and the
+    // markup behind it stays raw text.
+    const content = '<html><body><script></scripture><img src="a.jpg"></script></body></html>';
+    expect(locateElement(content, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
+    expect(countElementOccurrences(content, 'index.html', '<img src="a.jpg">')).toBe(0);
+  });
+
+  it('does not match an element behind an element that is never closed', () => {
+    // An unclosed script or template keeps the rest of the document as its
+    // text: the browser creates no element for it.
+    for (const content of [
+      '<html><body><script><img src="a.jpg">',
+      '<html><body><template><img src="a.jpg">',
+      '<html><body><iframe><img src="a.jpg">',
+    ]) {
+      expect(countElementOccurrences(content, 'index.html', '<img src="a.jpg">')).toBe(0);
+    }
   });
 });
 

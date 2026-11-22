@@ -117,10 +117,17 @@ export function isPatchableFile(filePath: string): boolean {
 
 // Elements whose content the browser reads as raw text: markup inside them is
 // not live markup, and some of them (`plaintext`) swallow the rest of the
-// document.
+// document. `iframe`, `noembed` and `noframes` are raw text for the HTML
+// parser: their content never becomes an element of the document.
 const RAW_TEXT_TAGS = new Set([
   'script', 'style', 'textarea', 'title', 'xmp', 'listing', 'plaintext', 'noscript',
+  'iframe', 'noembed', 'noframes',
 ]);
+
+// Elements whose content is parsed but never rendered: the browser creates no
+// element for it, so a fix written there is not applied to anything the user
+// sees.
+const INERT_CONTENT_TAGS = new Set(['template', 'object', 'applet']);
 
 /** The offset of the `>` that closes the tag starting at `start`. */
 function findTagEnd(content: string, start: number): number {
@@ -138,6 +145,56 @@ function findTagEnd(content: string, start: number): number {
     i++;
   }
   return content.length;
+}
+
+/**
+ * The offset of the end tag that closes a raw-text element.
+ *
+ * The end tag has to be a real end tag: `</scripture>` is not the end of a
+ * script, so the script continues and the markup behind it stays raw text.
+ */
+function findRawTextEnd(content: string, tag: string, from: number): number {
+  const lower = content.toLowerCase();
+  const needle = `</${tag}`;
+  let index = lower.indexOf(needle, from);
+  while (index !== -1) {
+    const after = content[index + needle.length];
+    if (after === undefined || after === '>' || after === '/' || /\s/.test(after)) {
+      return index;
+    }
+    index = lower.indexOf(needle, index + 1);
+  }
+  return -1;
+}
+
+/** The offset of the end tag that closes an element with inert content. */
+function findInertEnd(content: string, tag: string, from: number): number {
+  const lower = content.toLowerCase();
+  const open = `<${tag}`;
+  const close = `</${tag}`;
+  let depth = 1;
+  let i = from;
+
+  while (i < lower.length) {
+    const nextOpen = lower.indexOf(open, i);
+    const nextClose = lower.indexOf(close, i);
+    if (nextClose === -1) return -1;
+
+    if (nextOpen !== -1 && nextOpen < nextClose) {
+      const after = lower[nextOpen + open.length];
+      if (after === '>' || after === '/' || (after !== undefined && /\s/.test(after))) {
+        depth++;
+      }
+      i = nextOpen + open.length;
+      continue;
+    }
+
+    depth--;
+    if (depth === 0) return nextClose;
+    i = nextClose + close.length;
+  }
+
+  return -1;
 }
 
 /**
@@ -177,8 +234,16 @@ export function liveTagStarts(content: string): Set<number> {
         i = content.length; // everything after it is raw text
         continue;
       }
-      const closeIdx = content.toLowerCase().indexOf(`</${tag}`, openEnd + 1);
-      i = closeIdx === -1 ? openEnd + 1 : closeIdx;
+      const closeIdx = findRawTextEnd(content, tag, openEnd + 1);
+      // An element that is never closed keeps the rest of the document as its
+      // text: nothing behind it is an element.
+      i = closeIdx === -1 ? content.length : closeIdx;
+      continue;
+    }
+
+    if (INERT_CONTENT_TAGS.has(tag)) {
+      const closeIdx = findInertEnd(content, tag, openEnd + 1);
+      i = closeIdx === -1 ? content.length : closeIdx;
       continue;
     }
 
@@ -494,7 +559,10 @@ function normalizeText(value: string): string {
 
 /** True when an element's attributes keep its content from being seen. */
 function hidesContent(rawSection: string): boolean {
-  const attributes = parseTagAttributes(rawSection);
+  // The priority suffix is not part of the value: `opacity:0!important` hides
+  // the element just like `opacity:0`.
+  const section = rawSection.replace(/!\s*important/gi, '');
+  const attributes = parseTagAttributes(section);
   for (const attribute of attributes) {
     // `hidden` and the two CSS properties below remove the content from the
     // rendering. `aria-hidden` does not: it only removes the content from the
@@ -511,7 +579,7 @@ function hidesContent(rawSection: string): boolean {
   // the static guard has to. The raw section is checked because the parsed
   // attribute value stops at the first space, which is where the JSX object
   // form (`style={{ opacity: '0' }}`) starts.
-  return /(?:^|[^\w-])opacity\s*[:=]\s*['"]?0(?:\.0+)?(?:['";,\s}]|$)/i.test(rawSection);
+  return /(?:^|[^\w-])opacity\s*[:=]\s*['"]?0(?:\.0+)?(?:['";,\s}]|$)/i.test(section);
 }
 
 // Opening tag, closing tag or self-closing tag.

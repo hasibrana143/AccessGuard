@@ -13,6 +13,7 @@ import {
   preservesVisibleContent,
 } from '@/lib/ast-patch';
 import {
+  decodeHtmlEntities,
   isEventHandlerAttribute,
   normalizeUriValue,
   parseHtmlAttributes,
@@ -265,7 +266,14 @@ function checkStyleAttribute(value: string): string | null {
     if (separator === -1) continue;
 
     const property = declaration.slice(0, separator).trim().toLowerCase();
-    const cssValue = declaration.slice(separator + 1).trim().toLowerCase();
+    // The priority suffix is not part of the value: `opacity:0!important`
+    // hides the element just like `opacity:0`.
+    const cssValue = declaration
+      .slice(separator + 1)
+      .trim()
+      .toLowerCase()
+      .replace(/\s*!\s*important\s*$/, '')
+      .trim();
     if (!property) continue;
 
     if (OVERLAY_STYLE_PROPERTIES.has(property)) {
@@ -277,15 +285,46 @@ function checkStyleAttribute(value: string): string | null {
     if (cssValue.includes('url(') || cssValue.includes('expression(')) {
       return 'remediation code loads or executes CSS content';
     }
+    // A transparent element is an invisible element: the text stays in the
+    // document, so the rendered-text check does not catch it.
+    if (property === 'opacity' && /^0(\.0+)?$/.test(cssValue)) {
+      return 'remediation code hides the element with opacity: 0';
+    }
   }
 
   return null;
 }
 
+/**
+ * Server-template grammar.
+ *
+ * The template engine of the customer's build evaluates these markers, so a
+ * file that carries them is a template and not HTML, and a fix that carries
+ * them becomes executable code on the customer's server.
+ */
+const TEMPLATE_MARKERS = /<%|%>|<\?|\?>|{%|%}|{{|}}|{#|#}/;
+
+/** True when the content carries server-template grammar. */
+export function containsTemplateGrammar(content: string): boolean {
+  return TEMPLATE_MARKERS.test(content);
+}
+
+/** The class tokens of every tag in a snippet. */
+function classTokensOf(html: string): string[] {
+  const tokens: string[] = [];
+  for (const attribute of parseHtmlAttributes(html)) {
+    if (attribute.name !== 'class') continue;
+    for (const token of attribute.value.split(/\s+/)) {
+      if (token) tokens.push(token.toLowerCase());
+    }
+  }
+  return tokens;
+}
+
 // Validate AI-generated remediation code before applying it to source files
 export function validateRemediation(
   remediationCode: string | null | undefined,
-  _originalElementHtml?: string | null
+  originalElementHtml?: string | null
 ): { valid: boolean; reason?: string } {  if (!remediationCode || !remediationCode.trim()) {
     return { valid: false, reason: 'empty remediation code' };
   }
@@ -322,12 +361,28 @@ export function validateRemediation(
   }
 
   // An `<input type="image">` loads a remote resource from the customer's
-  // browser, like the other resource loaders above.
+  // browser, like the other resource loaders above. The type is read the way
+  // the browser reads it: an entity is decoded first (`im&#97;ge` is `image`),
+  // and a value that carries an entity the decoder does not know is rejected
+  // instead of guessed.
   if (/<input\b/i.test(code)) {
     const typeAttr = parseHtmlAttributes(code).find(a => a.name === 'type');
-    if (typeAttr && typeAttr.value.trim().toLowerCase() === 'image') {
-      return { valid: false, reason: 'remediation code introduces an <input type="image"> element' };
+    if (typeAttr) {
+      const raw = typeAttr.value.trim();
+      if (raw.includes('&')) {
+        return { valid: false, reason: 'remediation code introduces an <input> whose type carries an entity' };
+      }
+      if (raw.toLowerCase() === 'image' || decodeHtmlEntities(raw).trim().toLowerCase() === 'image') {
+        return { valid: false, reason: 'remediation code introduces an <input type="image"> element' };
+      }
     }
+  }
+
+  // No server-template grammar: `<% … %>`, `<? … ?>` and `{{ … }}` are
+  // evaluated by the template engine of the customer's build, so a fix that
+  // carries them becomes executable code on the customer's server.
+  if (containsTemplateGrammar(code)) {
+    return { valid: false, reason: 'remediation code contains server-template syntax' };
   }
 
   // No braces: in JSX they open an expression, and in a template file they
@@ -335,6 +390,17 @@ export function validateRemediation(
   // written into the source, so a brace would become executable code there.
   if (/[{}]/.test(code)) {
     return { valid: false, reason: 'remediation code contains a brace, which becomes an expression in the target source' };
+  }
+
+  // The remediation may not add a class the original element does not have: a
+  // class is a hook into the repository's stylesheet, and the effect of that
+  // stylesheet is not part of the isolated verification.
+  if (originalElementHtml) {
+    const originalClasses = classTokensOf(originalElementHtml);
+    const added = classTokensOf(code).filter(token => !originalClasses.includes(token));
+    if (added.length > 0) {
+      return { valid: false, reason: 'remediation code adds a class the original element does not have' };
+    }
   }
 
   // No javascript:, vbscript: or data:text/html URIs — quoted or unquoted.
@@ -439,6 +505,19 @@ export function applyFixesToFile(
   const occurrenceByKey = new Map<string, number>();
   const targets: Array<{ start: number; end: number; replacement: string }> = [];
   const claimed: Array<{ start: number; end: number }> = [];
+
+  // The destination context has to be provable. An HTML file that carries
+  // server-template grammar is a template, not HTML: the template engine of the
+  // customer's build evaluates its markers, so a fix written into it becomes
+  // executable server code. Nothing is written into such a file — not even the
+  // review comment, because the engine would evaluate the comment as well.
+  if (/\.html?$/i.test(filePath) && containsTemplateGrammar(originalContent)) {
+    return {
+      content: originalContent,
+      fixesApplied: 0,
+      errors: ['the file carries server-template syntax, so no fix is written into it'],
+    };
+  }
 
   // How many fixes were selected per element. The fixes are matched to the
   // occurrences of the element in the file in order, so the mapping is only
