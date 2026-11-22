@@ -4,9 +4,14 @@ Last verification: 2026-11-22
 
 ## Fourth independent security review (2026-11-22)
 
+> **Historical — closed.** The verdict below was NOT READY (Critical 0, High 3,
+> Medium 9, Low 0) against tree `8afc55a`. **All twelve findings are fixed**
+> (see "Fourth-review closure" at the end of this section). The release gate is
+> now waiting for the fifth independent review.
+
 **Verdict: NOT READY — Critical 0, High 3, Medium 9, Low 0.** The READY gate
-requires Critical 0 and High 0. This tree is **not releasable** until the three
-High findings below are fixed and their working reproductions are blocked.
+requires Critical 0 and High 0. This tree was **not releasable** until the three
+High findings below were fixed and their working reproductions were blocked.
 
 The requested baseline was `456d375`, but a concurrent process committed the
 review fixes while this review was running. The final results below were
@@ -292,7 +297,7 @@ Critical: 0 · High: 0 · Moderate: 15 (dev-toolchain only)
 | Scanner | Where it runs | Status |
 |---|---|---|
 | `npm audit --audit-level=high` | local + CI (`.github/workflows/ci.yml`) | pass — Critical 0, High 0 |
-| Independent security-engineer review of the V23 diff | local (CTO loop) | run four times: the first pass returned NOT READY (High 3) and all findings were fixed; the **re-review of that hardening** returned NOT READY (High 2, Medium 7, Low 1) — every finding fixed and covered by regression tests; the **third review** returned NOT READY (High 2, Medium 5) — every finding fixed and the exact reproductions blocked; the **fourth review** returned **NOT READY (High 3, Medium 9)** with 32 working reproductions |
+| Independent security-engineer review of the V23 diff | local (CTO loop) | run four times: the first pass returned NOT READY (High 3) and all findings were fixed; the **re-review of that hardening** returned NOT READY (High 2, Medium 7, Low 1) — every finding fixed and covered by regression tests; the **third review** returned NOT READY (High 2, Medium 5) — every finding fixed and the exact reproductions blocked; the **fourth review** returned **NOT READY (High 3, Medium 9)** with 32 working reproductions — **all twelve findings are now fixed** with a permanent regression test each, and the fifth review is running |
 | Independent QA-engineer review of the V23 diff | local (CTO loop) | run once: 3 reproduced P0 defects, all fixed and covered by tests |
 | Strix autonomous pentest (OSS CLI 1.6.2) | local (CTO loop) | **BLOCKED — the scan did not run.** The CLI is installed and the target was a sanitized export of the commit (no `.env` in the sandbox), but every configured provider refused the run: the default Gemini free tier is quota-exhausted (429, retry in ~14 h), NVIDIA's `meta/llama-3.3-70b-instruct` returns 410 Gone (model end-of-life 2026-08-26), and the OpenAI key has no credits left. No Strix finding exists for this cycle — do not cite Strix as evidence. Re-run it when a provider has quota. CI wiring has the same gap: the step needs an LLM secret the repository does not have, so it is not added rather than added broken. |
 
@@ -339,7 +344,7 @@ Upgrades applied for the published advisories:
 - Strix pentest — the CLI is installed but every configured provider refused the run
   (quota exhausted / model end-of-life / no credits). The independent reviews above
   cover the changed code paths; no Strix finding exists for this cycle.
-- The fourth independent review returned **NOT READY (High 3, Medium 9)**. The
-  exact third-review cases remain blocked, but equivalent paths are open. The
-  fix loop and a new independent review are required before the tree can be
-  claimed READY.
+- The **fifth** independent review has not returned yet. The fourth review's
+  3 High and 9 Medium findings are fixed, gated and documented (see the
+  closure table above); the release gate stays closed until the fifth pass
+  returns READY.
