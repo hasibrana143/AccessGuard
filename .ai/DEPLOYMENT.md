@@ -90,6 +90,21 @@ SARIF mode) and uploads the SARIF report. The 8 remaining MEDIUM findings are
 uploaded as `warning` alerts; the code-scanning dashboard shows 0 High and 0
 Critical open alerts.
 
+## The sixth-review closure run (2026-11-22)
+
+All four workflows are green on `cdb246a` (the sixth-review closure cycle):
+
+| Run | Workflow | Result |
+|---|---|---|
+| 44987889201 | CI | ✅ success — lint, source-only typecheck, vitest + coverage, `next build`, `npm audit`, Playwright |
+| 44987889206 | Deploy | ✅ success |
+| 44987889266 | AccessGuard Scan | ✅ success (skips without the API key) |
+| 44987889253 | Docker | ✅ success — `Trivy image scan (fail on HIGH/CRITICAL)` ✅, `Upload Trivy SARIF` ✅, `Syft SBOM attest` ✅ |
+
+The code-scanning dashboard after this run: **0 open High, 0 open Critical**
+(9 historical High and 20 Medium alerts, all closed). The Trivy step is the gate
+and it passed.
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the
