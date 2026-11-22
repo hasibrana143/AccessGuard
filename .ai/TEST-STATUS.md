@@ -1,6 +1,49 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-22 (fourth-review closure)
+Last run: 2026-11-22 (fifth-review closure)
+
+## Fifth-review closure evidence
+
+| Check | Result |
+|---|---|
+| Temporary exact-payload reproduction suite | PASS — 1 file, 8/8 tests. The six fifth-review findings and the twelve fourth-review payloads are blocked in the unsafe direction, and the legitimate fix still lands. The file was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 634/634 tests, 0 failed |
+| Coverage | PASS — statements 63.83% (threshold 55) · branches 55.16% (50) · functions 66.04% (58) · lines 65.29% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+| Security gate | **PENDING — the sixth independent review has not run yet; the gate opens only on READY (Critical 0, High 0)** |
+
+### New coverage in this cycle
+
+| File | Covers |
+|---|---|
+| `src/lib/__tests__/css-context.test.ts` | the destination stylesheet judgement: overlay and hiding rules, a utility stylesheet read together, a rule that reaches the element through its tag, a rule that selects on an attribute the fix adds, a conditional group, a comment that hides a declaration, and the rules that do not reach the element (5-H1) |
+| `src/lib/__tests__/github-pr.test.ts` | the entity-encoded `input type=image` (5-M1), the server-template grammar in a remediation (5-H2), a remediation that adds a class the original element does not have and one that keeps it (5-H1), `opacity:0!important` (5-M2), and a template destination that is left untouched (5-H2) |
+| `src/lib/__tests__/ast-patch.test.ts` | `opacity:0!important` hides content (5-M2), the inert `template` context, the raw-text `iframe` context, the `</scripture>` end-tag prefix and an element that is never closed (5-M3) |
+| `src/lib/__tests__/github.test.ts` | a file with an extension the writer does not know is scanned, a submodule blocks every write (5-M4), the destination stylesheet guard (5-H1), and a template destination (5-H2) |
+| `src/lib/__tests__/fix-verification.test.ts` | a fix whose text the user cannot see fails the verification — the verdict is computed from the computed style, not from `innerText` (5-M2) |
+
+## Fifth independent security-review evidence
+
+| Check | Result |
+|---|---|
+| Broad temporary review suite | PASS as an evidence harness — 1 file, 36/36 assertions. It re-ran all twelve fourth-review payloads, checked equivalent variants and legitimate behavior. |
+| Focused final temporary suite | PASS — 1 file, 7/7 tests. Six findings reproduce in the unsafe direction; the `<!-->` and `java&NewLine;script:` closure variants are blocked. |
+| `npx vitest run --reporter=dot` (with the broad review file) | PASS — 53 files, 641/641 tests |
+| `npx vitest run --reporter=dot` (after temporary-file deletion) | PASS — 52 shipped files, 605/605 tests |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npm audit --audit-level=high --json` | PASS — Critical 0, High 0, Moderate 15, Low 0 |
+| Tracked-file secret scan | PASS — 771 tracked text files; no live secret. One AWS-key-shaped documentation example was classified with its value redacted. |
+| Security gate | **FAIL — Critical 0, High 2, Medium 4, Low 0**; see `.ai/SECURITY-STATUS.md` |
+
+Both temporary review files were deleted. The shipped source tree and untracked
+file list were clean immediately afterwards; no production or third-party target
+was touched.
 
 ## Fourth-review closure evidence
 

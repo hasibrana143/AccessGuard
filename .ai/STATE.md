@@ -2,15 +2,46 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 fifth-review verification** 🟡 |
-| Current task | Fifth independent review of the fourth-review closure; the 3 High and 9 Medium findings are fixed, gated and documented |
+| Current phase | **SECURITY FIX LOOP — V23 fifth-review closure shipped, sixth review pending** 🔴 |
+| Current task | Sixth independent security review of the fifth-review closure; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the fourth review's **all 12 findings are fixed** and the gate suite is green; the release gate is not yet closed because a fifth independent review has not returned READY |
+| Status | AMBER — the six fifth-review findings are fixed at their root cause and every working reproduction is blocked; the gate stays closed until the sixth independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Run the fifth independent security review against the closed tree; release only on a READY verdict |
-| Last verification | 2026-11-22 — fourth-review closure: tsc 0, lint 0, vitest 52 files/605 tests, coverage 62.88/54.46/64.91/64.26, build 0, Playwright 79/79, npm audit High 0/Critical 0, all 12 reviewer payloads blocked |
+| Next action | Run the sixth independent security review against the pushed tree; fix every finding at the root cause with a permanent regression and repeat until READY |
+| Last verification | 2026-11-22 — fifth-review closure: tsc 0, lint 0, vitest 53 files/634 tests, coverage 63.83/55.16/66.04/65.29, build 0, Playwright 79/79, npm audit High 0; 8/8 exact payload reproductions blocked |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-22, fifth-review closure)
+
+| Check | Result |
+|---|---|
+| Fifth-review closure | PASS — all six findings (5-H1, 5-H2, 5-M1, 5-M2, 5-M3, 5-M4) fixed at the root cause; the dispositions are in `.ai/SECURITY-STATUS.md` |
+| Exact-payload reproduction suite (temporary) | PASS — 1 file, 8/8 tests: the six fifth-review payloads and the twelve fourth-review payloads are blocked, and the legitimate fix still lands. The file was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 634/634 tests |
+| Coverage | PASS — statements 63.83% (threshold 55) · branches 55.16% (50) · functions 66.04% (58) · lines 65.29% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+| Sixth independent security review | PENDING — the release gate opens only on READY (Critical 0, High 0) |
+
+## Evidence (2026-11-22, fifth independent security review)
+
+| Check | Result |
+|---|---|
+| Fifth independent V23 security review | **NOT READY — Critical 0, High 2, Medium 4, Low 0**; six working reproductions are in `.ai/SECURITY-STATUS.md` |
+| Fourth-review payload re-run | PASS — 12/12 literal payloads blocked; `<!-->` and `java&NewLine;script:` variants are also blocked |
+| Fifth-review temporary suites | PASS as evidence harnesses — 36/36 broad assertions and 7/7 focused reproductions; every temporary test was deleted |
+| `npx vitest run` (with review file) | PASS — 53 files, 641/641 tests |
+| `npx vitest run` (after review-file deletion) | PASS — 52 shipped files, 605/605 tests |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0 |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npm audit --audit-level=high --json` | PASS — Critical 0, High 0, Moderate 15, Low 0 |
+| Tracked-file secret scan | PASS — 771 tracked text files; no live secret; one key-shaped documentation example was redacted during classification |
+| Shipped-source cleanup | PASS — `git diff --name-only -- src` and the untracked-file list were empty after temporary-test deletion |
 
 ## Evidence (2026-11-22, fourth-review closure)
 
