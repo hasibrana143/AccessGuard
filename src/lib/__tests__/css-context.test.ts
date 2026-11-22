@@ -435,3 +435,86 @@ describe('destination CSS: the seventh review regressions', () => {
     ).toBeNull();
   });
 });
+
+// The ninth independent review found destination-CSS paths the analyser read
+// as harmless: logical inset longhands, sizes larger than the viewport, rules
+// the fix activates on another element, repository network resources, and the
+// paint rules that make the customer content disappear.
+describe('destination CSS: the ninth review regressions', () => {
+  const ORIGINAL = '<img id="target" src="x">';
+  const PATCHED = '<img id="target" src="x" alt="Photo">';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('reads the logical inset longhands', () => {
+    const result = harm(
+      '[aria-label]{position:fixed;inset-block-start:0;inset-block-end:0;inset-inline-start:0;inset-inline-end:0;z-index:2147483647}',
+      '<button id="target">Text</button>',
+      '<button id="target" aria-label="Label">Text</button>'
+    );
+    expect(result).toContain('overlay');
+  });
+
+  it('refuses a size larger than the viewport', () => {
+    // The screen of the customer is unknown, so a size above it cannot be
+    // computed: the destination is unprovable, never harmless.
+    expect(
+      harm('[alt]{position:fixed;left:0;top:0;width:9999px;height:9999px;z-index:2147483647}')
+    ).toContain('cannot be judged');
+    expect(
+      harm('[alt]{position:fixed;left:0;top:0;width:200vw;height:200vh;z-index:2147483647}')
+    ).toContain('cannot be judged');
+    expect(
+      harm('[alt]{position:fixed;left:0;top:0;width:100em;height:100em;z-index:2147483647}')
+    ).toContain('cannot be judged');
+  });
+
+  it('refuses a rule the fix activates on another element', () => {
+    // The sibling combinator starts matching as soon as the fix adds the
+    // attribute, so the overlay the customer owns takes over the page.
+    const result = harm(
+      '[alt] ~ .overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647}'
+    );
+    expect(result).toContain('another element');
+  });
+
+  it('refuses a resource the fix activates', () => {
+    const result = harm('[alt]{background-image:url(http://127.0.0.1:9/pixel)}');
+    expect(result).toContain('customer-side request');
+  });
+
+  it('treats a transparent repository colour as hidden', () => {
+    const result = harm(
+      '[aria-label]{color:transparent}',
+      '<button id="target">Text</button>',
+      '<button id="target" aria-label="Label">Text</button>'
+    );
+    expect(result).toContain('hide');
+  });
+
+  it('treats a logical margin that moves the element off-screen as hidden', () => {
+    expect(harm('[alt]{margin-inline-start:-10000px}')).toContain('hide');
+  });
+
+  it('treats a negative positional offset as hidden', () => {
+    expect(harm('[alt]{position:absolute;left:-9999px;top:0}')).toContain('hide');
+  });
+
+  it('treats a single zero dimension as hidden', () => {
+    expect(harm('[alt]{width:0}')).toContain('hide');
+  });
+
+  it('treats display:contents as hidden', () => {
+    expect(harm('[alt]{display:contents}')).toContain('hide');
+  });
+
+  it('reads the direction of an animation when choosing the visible frame', () => {
+    // A reversed animation ends at its first frame, so the element ends
+    // invisible even though the last frame is visible.
+    expect(
+      harm('[alt]{animation:hide 100ms reverse forwards}@keyframes hide{from{opacity:0}to{opacity:1}}')
+    ).toContain('hide');
+  });
+});

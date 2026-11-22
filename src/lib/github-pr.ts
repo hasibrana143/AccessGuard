@@ -208,7 +208,7 @@ export function generatePrBody(violations: ViolationForPR[], project?: { name: s
 // Attributes whose value is a URI and can therefore carry an active scheme.
 const URI_ATTRIBUTES = new Set([
   'href', 'src', 'srcset', 'action', 'formaction', 'xlink:href', 'poster', 'data',
-  'cite', 'background', 'longdesc', 'manifest', 'ping', 'profile', 'usemap',
+  'cite', 'background', 'longdesc', 'manifest', 'ping', 'attributionsrc', 'profile', 'usemap',
   'codebase', 'archive', 'icon',
 ]);
 
@@ -230,7 +230,7 @@ function uriCandidates(name: string, value: string): string[] {
   if (name === 'srcset') {
     return value.split(',').map(part => part.trim().split(/\s+/)[0] ?? '');
   }
-  if (name === 'ping') {
+  if (name === 'ping' || name === 'attributionsrc') {
     return value.split(/\s+/).filter(Boolean);
   }
   return [value];

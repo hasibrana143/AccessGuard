@@ -368,6 +368,275 @@ describe('applyFixesToRepository', () => {
     expect(result.filesModified).toEqual([]);
   });
 
+  it('does not patch an element when a script conditionally adds a class', async () => {
+    // The script reacts to the attribute the fix adds and restyles the target.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      "const img=document.querySelector('#target');if(img&&img.hasAttribute('alt'))img.classList.add('overlay');"
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a script conditionally changes an inline style', async () => {
+    // The inline-style twin of the conditional class mutation.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      "const img=document.querySelector('#target');if(img&&img.hasAttribute('alt'))img.style.position='fixed';"
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a script registers a service worker', async () => {
+    // A service worker can deliver the stylesheet bytes the static scan cannot see.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent('app.js', "navigator.serviceWorker.register('/sw.js');");
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a script builds CSS with a CSS-in-JS library', async () => {
+    // The library builds the selector and declaration at runtime.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      "import styled from 'styled-components'; const Box=styled.div`position:fixed;`;"
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a script mutates it by id', async () => {
+    // The script owns the target directly, without a state read.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent('app.js', "document.getElementById('target').classList.add('overlay');");
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a script reads the attribute the fix adds', async () => {
+    // The script never names the target: it selects every image and reacts to
+    // the attribute the fix adds.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      "document.querySelectorAll('img').forEach(i=>{if(i.hasAttribute('alt'))i.classList.add('overlay');});"
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a script activates a sibling with the attribute the fix adds', async () => {
+    // The script touches the sibling of the target, not the target itself.
+    tree(['index.html', 'app.js']);
+    fileContent(
+      'index.html',
+      '<html><body><img id="target" src="x"><div class="overlay">owned</div></body></html>'
+    );
+    fileContent(
+      'app.js',
+      "document.querySelectorAll('.overlay').forEach(o=>{if(o.previousElementSibling.hasAttribute('alt'))o.classList.add('on');});"
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('writes a fix when an ordinary script mutates an unrelated element', async () => {
+    // The script reads and writes the state of an element the fix does not
+    // touch, so the fix does not activate it.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      "document.querySelector('.card').addEventListener('click',()=>{if(card.dataset.open)card.classList.add('active');});"
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+    expect(result.filesModified).toEqual([{ path: 'index.html', fixesApplied: 1 }]);
+    expect(result.fixesAppliedTotal).toBe(1);
+  });
+
+  it('writes a fix when an ordinary script only mutates another element', async () => {
+    // Ordinary repository JavaScript owns neither the target nor its state.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      "document.querySelector('.button').addEventListener('click',()=>console.log('clicked')); document.querySelector('.other').classList.add('active');"
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+    expect(result.filesModified).toEqual([{ path: 'index.html', fixesApplied: 1 }]);
+    expect(result.fixesAppliedTotal).toBe(1);
+  });
+
   it('writes a fix into a repository whose script creates no style', async () => {
     // An ordinary script is not a style source: the fix still lands.
     tree(['index.html', 'app.js']);

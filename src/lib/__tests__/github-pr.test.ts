@@ -539,6 +539,70 @@ describe('validateRemediation', () => {
     expect(result.reason).toContain('remote');
   });
 
+  it('rejects a remote destination hidden in an attributionsrc URL list', () => {
+    // Browsers parse attributionsrc as a space-separated URL list and request every item.
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" attributionsrc="/safe http://127.0.0.1:9/pixel">',
+      '<img id="target" src="x">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('remote');
+  });
+
+  it('rejects a remediation that adds an attributionsrc destination', () => {
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" attributionsrc="http://127.0.0.1:9/pixel">',
+      '<img id="target" src="x">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('remote');
+  });
+
+  it('rejects a remediation that changes an attributionsrc destination', () => {
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" attributionsrc="http://127.0.0.1:9/pixel">',
+      '<img id="target" src="x" attributionsrc="https://cdn.example/pixel">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('remote');
+  });
+
+  it('rejects a remediation that drops an attributionsrc destination', () => {
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo">',
+      '<img id="target" src="x" attributionsrc="/pixel">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('removes the attributionsrc destination');
+  });
+
+  it('keeps an attributionsrc destination the original element already had', () => {
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" attributionsrc="https://cdn.example/pixel">',
+      '<img id="target" src="x" attributionsrc="https://cdn.example/pixel">'
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('keeps a relative attributionsrc destination the remediation adds', () => {
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" attributionsrc="/pixel">',
+      '<img id="target" src="x">'
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a remote destination hidden behind a duplicate attributionsrc attribute', () => {
+    // The browser uses the first duplicate, so the later safe value cannot
+    // mask the remote destination.
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" attributionsrc="http://127.0.0.1:9/pixel" attributionsrc="/safe">',
+      '<img id="target" src="x">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('remote');
+  });
+
   it('rejects a navigation hidden behind a duplicate href attribute', () => {
     // The browser uses the first duplicate, so the later safe value cannot
     // mask the mailto destination.

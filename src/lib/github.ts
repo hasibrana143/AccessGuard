@@ -221,6 +221,46 @@ const SCRIPT_FILE_PATTERN = /\.(js|jsx|mjs|cjs|ts|tsx|cts|mts)$/i;
 const RUNTIME_STYLE_PATTERN =
   /createElement\s*\(\s*['"`]style['"`]|insertRule\s*\(|adoptedStyleSheets|\w*style\w*\s*\.\s*(?:textContent|innerHTML|innerText|cssText)\s*=|['"`][^'"`]*<style/i;
 
+/** Reads that can gate an element mutation at runtime. */
+const RUNTIME_STATE_READ_PATTERN =
+  /\b(?:hasAttribute|getAttribute|toggleAttribute)\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
+
+/** Class, inline-style and attribute mutations the analyser cannot follow. */
+const RUNTIME_MUTATION_PATTERN =
+  /\bclassList\s*\.\s*(?:add|remove|toggle|replace)\s*\(|\bclassName\s*=(?![=>])|\b(?:setAttribute|removeAttribute|toggleAttribute)\s*\(|\.\s*style\s*\.\s*[A-Za-z_$][\w$]*\s*=(?![=>])|\.\s*style\s*\.\s*(?:setProperty\s*\(|cssText\s*=(?![=>]))/i;
+
+/** Service workers can deliver stylesheet bytes after the static scan. */
+const SERVICE_WORKER_PATTERN =
+  /navigator\s*\.\s*serviceWorker\s*\.\s*register\s*\(|serviceWorker\s*\.\s*addEventListener\s*\(|self\s*\.\s*addEventListener\s*\(\s*['"`](?:fetch|install)\b|caches\s*\.\s*open\s*\(|self\s*\.\s*skipWaiting\b|self\s*\.\s*clients\s*\.\s*claim\b/i;
+
+/** CSS-in-JS builds selectors and declarations that no static reader can see. */
+const CSS_IN_JS_PATTERN =
+  /(?:from\s*|require\s*\(\s*|import\s*(?:\(\s*)?)['"`](?:styled-components(?:\/[^'"`]*)?|emotion(?:\/[^'"`]*)?)['"`]|['"`]@emotion\/|\bcreateGlobalStyle\b|\bmakeStyles\b|\bstyled\s*\.\s*[A-Za-z_$][\w$]*\s*(?:`|\()|\bstyled\s*\(\s*`/i;
+
+/** True when a script names an element by its static id. */
+function scriptRefersToElementId(content: string, id: string): boolean {
+  const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const quote = "['\"`]";
+  return new RegExp(
+    `#${escapedId}(?![\\w-])|\\bgetElementById\\s*\\(\\s*${quote}${escapedId}${quote}|\\bquerySelector(?:All)?\\s*\\(\\s*${quote}#${escapedId}${quote}`
+  ).test(content);
+}
+
+/**
+ * True when a script names one of the attributes the fix adds.
+ *
+ * A script that reads an attribute the fix adds and then mutates an element
+ * reacts to the fix: the mutation it performs is invisible to the isolated
+ * verification browser.
+ */
+function scriptNamesAttribute(content: string, names: Set<string>): boolean {
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(content)) return true;
+  }
+  return false;
+}
+
 /**
  * The syntax of a preprocessor that the analyser cannot resolve: an
  * interpolated selector or value (`#{$x}`, `@{x}`), a variable (`$x`, `@x`)
@@ -298,7 +338,7 @@ export async function applyFixesToRepository(
   const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate, conflictingRemediationKeys } =
     await import('@/lib/github-pr');
   const { locateElement, isPatchableFile } = await import('@/lib/ast-patch');
-  const { buildCssContext, destinationCssHarm, collectStyleSources, extractStylesheetLinks, extractCssImports, stripCssLineComments } =
+  const { buildCssContext, destinationCssHarm, collectStyleSources, extractStylesheetLinks, extractCssImports, stripCssLineComments, describeElements } =
     await import('@/lib/css-context');
 
   // List source files in the default branch tree
@@ -417,6 +457,8 @@ export async function applyFixesToRepository(
   const cssSources: Array<{ path: string; css: string }> = [];
   const cssPaths = new Set<string>();
   const styleProblems: string[] = [];
+  const runtimeMutationScripts: string[] = [];
+  const conditionalMutationScripts: string[] = [];
 
   const addCssSource = (path: string, css: string): void => {
     if (cssPaths.has(path)) return;
@@ -452,10 +494,27 @@ export async function applyFixesToRepository(
       }
       addCssSource(target, contentCache.get(target) as string);
     }
-    // A script that creates a style at runtime owns CSS the analyser cannot
-    // read: the destination is unprovable and no source patch is written.
-    if (SCRIPT_FILE_PATTERN.test(path) && RUNTIME_STYLE_PATTERN.test(content)) {
-      styleProblems.push(`the script ${path} creates a style at runtime, which the analyser cannot resolve`);
+    if (SCRIPT_FILE_PATTERN.test(path)) {
+      // A script that creates a style at runtime owns CSS the analyser cannot
+      // read: the destination is unprovable and no source patch is written.
+      if (RUNTIME_STYLE_PATTERN.test(content)) {
+        styleProblems.push(`the script ${path} creates a style at runtime, which the analyser cannot resolve`);
+      }
+      if (SERVICE_WORKER_PATTERN.test(content)) {
+        styleProblems.push(`the script ${path} can deliver styles at runtime, which the analyser cannot resolve`);
+      }
+      if (CSS_IN_JS_PATTERN.test(content)) {
+        styleProblems.push(`the script ${path} builds CSS at runtime, which the analyser cannot resolve`);
+      }
+      if (RUNTIME_MUTATION_PATTERN.test(content)) {
+        // A script that mutates an element can take the patched element over
+        // even without a state read, so the scripts are kept for the check
+        // that decides whether the fix activates them.
+        runtimeMutationScripts.push(content);
+        if (RUNTIME_STATE_READ_PATTERN.test(content)) {
+          conditionalMutationScripts.push(content);
+        }
+      }
     }
   }
 
@@ -489,6 +548,30 @@ export async function applyFixesToRepository(
   for (const violation of candidates) {
     if (!validateFixCandidate(violation).valid) continue;
     if (conflictingKeys.has(fixOccurrenceKey(violation))) continue;
+
+    // A script that names the patched element can take it over at runtime even
+    // without a state read, so this destination cannot be proved safe.
+    const originalElement = describeElements(violation.elementHtml ?? '')[0];
+    const patchedElement = describeElements(violation.remediationCode ?? '')[0];
+    if (originalElement && patchedElement) {
+      if (
+        originalElement.id &&
+        runtimeMutationScripts.some(content => scriptRefersToElementId(content, originalElement.id as string))
+      ) {
+        continue;
+      }
+
+      // A script that reads an attribute the fix adds and then mutates an
+      // element reacts to the fix: what it does to the page is invisible to
+      // the isolated verification browser.
+      const added = new Set<string>();
+      for (const [name, value] of patchedElement.attributes) {
+        if (originalElement.attributes.get(name) !== value) added.add(name);
+      }
+      if (added.size > 0 && conditionalMutationScripts.some(content => scriptNamesAttribute(content, added))) {
+        continue;
+      }
+    }
 
     // The repository's own stylesheet can restyle the patched element: the
     // isolated verification does not see it. A fix that the destination can

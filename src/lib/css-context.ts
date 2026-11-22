@@ -854,6 +854,57 @@ function matchSelector(selector: string, element: ElementDescriptor): Match {
   return maybe ? 'maybe' : 'no';
 }
 
+/** What the fix changes about the patched element. */
+interface ElementChanges {
+  attributes: Map<string, string>;
+  classes: Set<string>;
+}
+
+/**
+ * What the fix changes about the element.
+ *
+ * An attribute the fix adds and a class it adds are the hooks a repository
+ * stylesheet can use to activate a rule the customer did not have before.
+ */
+function changesBetween(
+  before: ElementDescriptor | null,
+  after: ElementDescriptor
+): ElementChanges {
+  const attributes = new Map<string, string>();
+  const classes = new Set<string>();
+
+  for (const [name, value] of after.attributes) {
+    if (before?.attributes.get(name) !== value) attributes.set(name, value);
+  }
+  for (const token of after.classes) {
+    if (!before?.classes.has(token)) classes.add(token);
+  }
+
+  return { attributes, classes };
+}
+
+/**
+ * True when a compound of a selector can only match after the fix.
+ *
+ * The compound asks for an attribute value or a class the fix adds, so the
+ * rule it belongs to starts to apply when the fix lands.
+ */
+function compoundActivatedByFix(compound: string, changes: ElementChanges): boolean {
+  const requirements = parseSubject(compound);
+
+  for (const requirement of requirements.attributes) {
+    const value = changes.attributes.get(requirement.name);
+    if (value === undefined) continue;
+    if (attributeMatches(value, requirement.operator, requirement.value) !== 'no') return true;
+  }
+
+  for (const className of requirements.classes) {
+    if (changes.classes.has(className)) return true;
+  }
+
+  return false;
+}
+
 /** A declaration of a rule. */
 interface Declaration {
   property: string;
@@ -881,6 +932,17 @@ function parseDeclarations(body: string): Declaration[] {
 /** Remove the CSS priority suffix, which is not part of the declaration value. */
 function stripCssPriority(value: string): string {
   return value.replace(/\s*!\s*important\s*$/i, '').trim();
+}
+
+/**
+ * True when a declaration value can load a resource.
+ *
+ * The verification browser blocks every network request, so a repository
+ * stylesheet that loads a resource when the fix lands is invisible to it: the
+ * customer browser issues the request instead.
+ */
+function carriesResource(value: string): boolean {
+  return /url\s*\(|\bimage-set\s*\(|\bsrc\s*\(/i.test(value);
 }
 
 /**
@@ -934,6 +996,55 @@ function insetInlineEdges(value: string): { left: boolean; right: boolean } {
   const first = parts[0] ?? '';
   const second = parts[1] ?? first;
   return { left: isZeroLength(first), right: isZeroLength(second) };
+}
+
+/** The physical edge a logical inset longhand sets in a horizontal writing mode. */
+const LOGICAL_INSET_EDGES: Record<string, 'top' | 'bottom' | 'left' | 'right'> = {
+  'inset-block-start': 'top',
+  'inset-block-end': 'bottom',
+  'inset-inline-start': 'left',
+  'inset-inline-end': 'right',
+};
+
+/** True when a CSS alpha is exactly zero, with or without a percent sign. */
+function isZeroAlpha(value: string): boolean {
+  const alpha = value.trim();
+  const number = alpha.endsWith('%') ? alpha.slice(0, -1) : alpha;
+  return /^(?:0(?:\.0+)?|\.0+)$/.test(number);
+}
+
+/**
+ * True when a colour value makes the text invisible.
+ *
+ * `transparent` and every colour with an alpha of zero are invisible: the text
+ * stays in the document, so only the colour tells the user that it is there.
+ */
+export function isTransparentColor(value: string): boolean {
+  const normalized = value.replace(/\s+/g, '').toLowerCase();
+  if (normalized === 'transparent') return true;
+
+  // A hex colour with an alpha of zero is transparent: `#0000` and `#00000000`.
+  if (/^#[0-9a-f]{4}$/.test(normalized)) return normalized[4] === '0';
+  if (/^#[0-9a-f]{8}$/.test(normalized)) return normalized.slice(7) === '00';
+
+  const functional = /^(?:rgba|hsla)\(([^)]*)\)$/.exec(normalized);
+  if (functional) {
+    const parts = (functional[1] ?? '').split(',');
+    if (parts.length < 4) return false;
+    return isZeroAlpha(parts[3] ?? '');
+  }
+
+  // The modern syntax uses a slash before the alpha: `rgb(0 0 0 / 0%)`.
+  // The function name is not fixed: oklch(), oklab(), lab(), lch() and color()
+  // use the same alpha grammar.
+  const modern = /^[a-z-]+\((.*)\)$/.exec(normalized);
+  if (modern) {
+    const body = modern[1] ?? '';
+    const slash = body.lastIndexOf('/');
+    return slash !== -1 && isZeroAlpha(body.slice(slash + 1));
+  }
+
+  return false;
 }
 
 /** The custom properties a set of declarations defines. */
@@ -998,9 +1109,11 @@ function inlineStyleOf(element: ElementDescriptor): {
  */
 const RELEVANT_PROPERTIES = new Set([
   'position', 'inset', 'inset-block', 'inset-inline', 'top', 'right', 'bottom', 'left',
+  'inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end',
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
   'inline-size', 'block-size', 'min-inline-size', 'min-block-size',
   'margin-left', 'margin-right', 'margin-top', 'margin-bottom',
+  'margin-inline-start', 'margin-inline-end', 'margin-block-start', 'margin-block-end',
   'display', 'visibility', 'opacity', 'transform', 'scale', 'rotate', 'translate',
   'zoom', 'perspective', 'margin', 'padding', 'overflow', 'clip', 'clip-path',
   'content', 'font-size', 'line-height', 'text-indent', 'letter-spacing',
@@ -1013,14 +1126,80 @@ const RELEVANT_PROPERTIES = new Set([
   'grid-template', 'grid-template-columns', 'grid-template-rows', 'columns', 'column-count',
 ]);
 
-/** The values that make an element span the viewport horizontally. */
-const COVERS_X = /^(100%|100(vw|vi|dvw|dvi|svw|svi|lvw|lvi))$/;
+/** The viewport units that size the horizontal axis. */
+const VIEWPORT_X_UNITS = new Set(['vw', 'vi', 'dvw', 'dvi', 'svw', 'svi', 'lvw', 'lvi']);
 
-/** The values that make an element span the viewport vertically. */
-const COVERS_Y = /^(100%|100(vh|vb|dvh|dvb|svh|svb|lvh|lvb))$/;
+/** The viewport units that size the vertical axis. */
+const VIEWPORT_Y_UNITS = new Set(['vh', 'vb', 'dvh', 'dvb', 'svh', 'svb', 'lvh', 'lvb']);
 
-/** The viewport units whose axis depends on the viewport shape. */
-const COVERS_EITHER_AXIS = /^(100(vmin|vmax|dvmin|dvmax|svmin|svmax|lvmin|lvmax))$/;
+/** The viewport units whose axis depends on the shape of the viewport. */
+const VIEWPORT_EITHER_UNITS = new Set([
+  'vmin', 'vmax', 'dvmin', 'dvmax', 'svmin', 'svmax', 'lvmin', 'lvmax',
+]);
+
+/** The units that are the same length everywhere. */
+const FIXED_LENGTH_UNITS = new Set(['px', 'cm', 'mm', 'q', 'in', 'pt', 'pc']);
+
+/**
+ * A fixed length that may be as large as the viewport.
+ *
+ * The analyser does not know the size of the customer's screen, so a fixed
+ * length of 1024px or more may span it: the destination is unprovable.
+ */
+const VIEWPORT_LENGTH = 1024;
+
+/** The number of `em` units that are as long as the viewport at the default font size. */
+const VIEWPORT_EM = 64;
+
+/**
+ * True when a sizing value spans an axis of the viewport.
+ *
+ * A viewport unit of exactly 100 is the size of the screen, so it spans the
+ * axis it belongs to. A larger one is not computable: `maySpanViewport` makes
+ * it unprovable instead.
+ */
+function spansAxis(value: string, axis: 'x' | 'y'): boolean {
+  if (value === '100%') return true;
+
+  const match = /^(\d+(?:\.\d+)?)([a-z]+)$/.exec(value);
+  if (!match) return false;
+
+  if (Number(match[1]) !== 100) return false;
+  const unit = match[2] ?? '';
+
+  if (VIEWPORT_EITHER_UNITS.has(unit)) return true;
+  if (axis === 'x' && VIEWPORT_X_UNITS.has(unit)) return true;
+  if (axis === 'y' && VIEWPORT_Y_UNITS.has(unit)) return true;
+
+  return false;
+}
+
+/**
+ * True when a size may be larger than the viewport.
+ *
+ * The size of the customer's screen is unknown, so a fixed length of 1024px
+ * or more may span it, and a viewport unit above 100 is larger than the
+ * screen by definition: the bounds of the element cannot be computed and the
+ * destination is unprovable.
+ */
+function maySpanViewport(value: string, property: string): boolean {
+  // A maximum does not grow the element: it caps it.
+  if (property === 'max-width' || property === 'max-height') return false;
+
+  const match = /^(\d+(?:\.\d+)?)([a-z]+)$/.exec(value);
+  if (!match) return false;
+
+  const amount = Number(match[1]);
+  const unit = match[2] ?? '';
+
+  if (VIEWPORT_UNITS.has(unit)) return amount > 100;
+
+  // The font size is unknown, so a font-relative length may be as long as
+  // the viewport: 64em is 1024px at the default font size.
+  if (unit === 'em' || unit === 'rem') return amount >= VIEWPORT_EM;
+
+  return FIXED_LENGTH_UNITS.has(unit) && amount >= VIEWPORT_LENGTH;
+}
 
 /** The values that position an element out of the normal flow. */
 const POSITIONED = /^(fixed|absolute|sticky)$/;
@@ -1032,10 +1211,12 @@ const HIDDEN_VISIBILITY = /^(hidden|collapse)$/;
 /** The properties whose values decide whether the patched element is visible. */
 const JUDGEMENT_PROPERTIES = new Set([
   'position', 'inset', 'inset-block', 'inset-inline', 'top', 'right', 'bottom', 'left',
+  'inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end',
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
   'inline-size', 'block-size', 'min-inline-size', 'min-block-size',
   'display', 'visibility', 'opacity', 'transform', 'scale', 'translate', 'filter',
   'content-visibility', 'font-size', 'line-height', 'text-indent',
+  'color', '-webkit-text-fill-color',
 ]);
 
 /** The CSS length units the analyser can recognise. */
@@ -1100,6 +1281,7 @@ const REPLACED_TAGS = new Set([
  */
 const GEOMETRY_PROPERTIES = new Set([
   'position', 'inset', 'inset-block', 'inset-inline', 'top', 'right', 'bottom', 'left',
+  'inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end',
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
   'inline-size', 'block-size', 'min-inline-size', 'min-block-size',
 ]);
@@ -1113,6 +1295,7 @@ const GEOMETRY_PROPERTIES = new Set([
 const HIDE_FRAME_PROPERTIES = new Set([
   'opacity', 'visibility', 'display', 'content-visibility', 'filter', 'scale',
   'translate', 'transform', 'font-size', 'line-height', 'text-indent',
+  'color', '-webkit-text-fill-color',
 ]);
 
 /** The keywords of the `animation` shorthand that are not the name. */
@@ -1151,6 +1334,35 @@ function animationNamesOf(state: ElementState): string[] {
   }
 
   return [...names];
+}
+
+/**
+ * The direction an animation runs in, read from the `animation` shorthand.
+ *
+ * A reversed animation ends at its first frame, so the state the user sees
+ * after it runs is the `from` frame, not the `to` frame.
+ */
+function animationDirectionOf(state: ElementState, name: string): string {
+  // The longhand decides the direction on its own.
+  for (const value of state.values.get('animation-direction') ?? []) {
+    const direction = value.trim().toLowerCase();
+    if (direction === 'reverse' || direction === 'alternate' || direction === 'alternate-reverse') {
+      return direction;
+    }
+  }
+
+  for (const value of state.values.get('animation') ?? []) {
+    for (const part of splitTopLevel(value, ',')) {
+      if (animationNameOf(part) !== name) continue;
+      for (const token of part.split(/\s+/)) {
+        if (token === 'reverse' || token === 'alternate' || token === 'alternate-reverse') {
+          return token;
+        }
+      }
+    }
+  }
+
+  return 'normal';
 }
 
 /** True when a value is a length or percentage the analyser can recognise. */
@@ -1211,11 +1423,15 @@ function isUnprovableValue(property: string, value: string): boolean {
       const parts = value.split(/\s+/).filter(Boolean);
       return parts.length > 4 || !parts.every(part => part === 'auto' || isLengthOrPercentage(part));
     }
-    if (property === 'top' || property === 'right' || property === 'bottom' || property === 'left') {
+    if (property === 'top' || property === 'right' || property === 'bottom' || property === 'left' ||
+        property === 'inset-block-start' || property === 'inset-block-end' || property === 'inset-inline-start' || property === 'inset-inline-end') {
       return value !== 'auto' && !isLengthOrPercentage(value);
     }
     if (property === 'width' || property === 'height' || property === 'min-width' || property === 'min-height' || property === 'max-width' || property === 'max-height' || property === 'inline-size' || property === 'block-size' || property === 'min-inline-size' || property === 'min-block-size') {
-      return !isSizingValue(value, property);
+      if (!isSizingValue(value, property)) return true;
+      // The size of the customer's screen is unknown, so a fixed length may be
+      // as large as the viewport: the bounds cannot be computed.
+      return maySpanViewport(value, property);
     }
     if (property === 'display') {
       const parts = value.split(/\s+/).filter(Boolean);
@@ -1237,6 +1453,9 @@ function isUnprovableValue(property: string, value: string): boolean {
       return value !== 'normal' && !isNumber(value) && !isLengthOrPercentage(value);
     }
     if (property === 'text-indent') return !isLengthOrPercentage(value);
+    // A colour is readable: only a custom property can make it unknowable,
+    // and that case is already caught above.
+    if (property === 'color' || property === '-webkit-text-fill-color') return false;
   }
 
   if (/[a-z-]+\(/i.test(value)) return true;
@@ -1368,13 +1587,25 @@ function stateOf(
       edges.right = edges.right || assigned.right;
     } else if (property === 'top' || property === 'bottom' || property === 'right' || property === 'left') {
       if (isZeroLength(value)) edges[property] = true;
+      // A large negative offset moves the element out of the view.
+      if (isLargeNegativeOffset(value)) state.hidden = true;
+    } else if (
+      property === 'inset-block-start' ||
+      property === 'inset-block-end' ||
+      property === 'inset-inline-start' ||
+      property === 'inset-inline-end'
+    ) {
+      // The logical edges are the physical edges in a horizontal writing mode.
+      const edge = LOGICAL_INSET_EDGES[property] as 'top' | 'bottom' | 'left' | 'right';
+      if (isZeroLength(value)) edges[edge] = true;
+      if (isLargeNegativeOffset(value)) state.hidden = true;
     } else if (
       property === 'width' ||
       property === 'min-width' ||
       property === 'inline-size' ||
       property === 'min-inline-size'
     ) {
-      if (COVERS_X.test(value) || COVERS_EITHER_AXIS.test(value)) state.coversX = true;
+      if (spansAxis(value, 'x')) state.coversX = true;
       if ((property === 'width' || property === 'inline-size') && isZeroLength(value)) {
         state.widthZero = true;
       }
@@ -1384,12 +1615,18 @@ function stateOf(
       property === 'block-size' ||
       property === 'min-block-size'
     ) {
-      if (COVERS_Y.test(value) || COVERS_EITHER_AXIS.test(value)) state.coversY = true;
+      if (spansAxis(value, 'y')) state.coversY = true;
       if ((property === 'height' || property === 'block-size') && isZeroLength(value)) {
         state.heightZero = true;
       }
     } else if (property === 'display') {
       if (HIDDEN_DISPLAY.test(value)) state.hidden = true;
+      // `display:contents` removes the box of the element: a replaced element
+      // has nothing left to paint.
+      if (value === 'contents' && !textRulesApply(element)) state.hidden = true;
+    } else if (property === 'color' || property === '-webkit-text-fill-color') {
+      // A transparent colour leaves the text in the document but invisible.
+      if (textRulesApply(element) && isTransparentColor(value)) state.hidden = true;
     } else if (property === 'visibility') {
       if (HIDDEN_VISIBILITY.test(value)) state.hidden = true;
     } else if (property === 'opacity') {
@@ -1443,12 +1680,22 @@ function stateOf(
     }
     // The end state of the animation is what the user sees after it runs: a
     // frame that leaves the element invisible hides it, whatever the base
-    // style says.
-    const last = frames[frames.length - 1];
-    if (!last) continue;
-    for (const declaration of parseDeclarations(last)) {
-      if (!HIDE_FRAME_PROPERTIES.has(declaration.property)) continue;
-      apply(declaration);
+    // style says. A reversed animation ends at its first frame, and an
+    // alternating one ends at either of them.
+    const direction = animationDirectionOf(state, name);
+    const endpoints =
+      direction === 'reverse'
+        ? [frames[0]]
+        : direction === 'normal'
+          ? [frames[frames.length - 1]]
+          : [frames[0], frames[frames.length - 1]];
+
+    for (const frame of endpoints) {
+      if (!frame) continue;
+      for (const declaration of parseDeclarations(frame)) {
+        if (!HIDE_FRAME_PROPERTIES.has(declaration.property)) continue;
+        apply(declaration);
+      }
     }
   }
 
@@ -1459,7 +1706,9 @@ function stateOf(
     state.coversX = true;
     state.coversY = true;
   }
-  if (state.widthZero && state.heightZero) state.hidden = true;
+  // A zero width or a zero height leaves the element without an area: it
+  // paints nothing where the user looks.
+  if (state.widthZero || state.heightZero) state.hidden = true;
 
   return state;
 }
@@ -1534,6 +1783,36 @@ export function destinationCssHarm(
 
     if (after.hidden) {
       return 'the repository stylesheet can hide the patched element';
+    }
+
+    // A rule the fix activates may reach another element or load a resource.
+    // The isolated verification does not see the repository's stylesheet, so
+    // neither the other element nor the request can be judged: the
+    // destination is unprovable.
+    const changes = changesBetween(before, element);
+
+    if (changes.attributes.size > 0 || changes.classes.size > 0) {
+      for (const rule of context.rules) {
+        for (const part of splitTopLevel(rule.selector, ',')) {
+          const trimmed = part.trim();
+          if (!trimmed) continue;
+
+          const compounds = splitCompounds(trimmed);
+          const subject = compounds[compounds.length - 1] ?? trimmed;
+          if (!compounds.some(compound => compoundActivatedByFix(compound, changes))) continue;
+
+          if (matchSubject(parseSubject(subject), element) === 'no') {
+            return 'the repository stylesheet can activate a rule on another element';
+          }
+
+          const carries = parseDeclarations(rule.declarations).some(declaration =>
+            carriesResource(declaration.value)
+          );
+          if (carries) {
+            return 'the repository stylesheet can activate a customer-side request';
+          }
+        }
+      }
     }
 
     // A value the analyser cannot compute only matters when the fix changes
