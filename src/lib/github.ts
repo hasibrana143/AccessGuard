@@ -283,7 +283,7 @@ export async function applyFixesToRepository(
   const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate, conflictingRemediationKeys } =
     await import('@/lib/github-pr');
   const { locateElement, isPatchableFile } = await import('@/lib/ast-patch');
-  const { buildCssContext, destinationCssHarm, extractStyleBlocks, extractStylesheetLinks, extractCssImports, stripCssLineComments } =
+  const { buildCssContext, destinationCssHarm, collectStyleSources, extractStylesheetLinks, extractCssImports, stripCssLineComments } =
     await import('@/lib/css-context');
 
   // List source files in the default branch tree
@@ -422,8 +422,12 @@ export async function applyFixesToRepository(
   for (const [path, content] of contentCache) {
     // Every `<style>` block is a style source of the file that holds it: its
     // imports are relative to that file.
-    for (const block of extractStyleBlocks(content)) {
-      cssSources.push({ path, css: block });
+    for (const source of collectStyleSources(content)) {
+      if (source.dynamic) {
+        styleProblems.push(`the stylesheet ${path} uses a dynamic style source the analyser cannot resolve`);
+        continue;
+      }
+      cssSources.push({ path, css: source.css });
     }
     for (const href of extractStylesheetLinks(content)) {
       const target = resolveRepositoryPath(path, href);

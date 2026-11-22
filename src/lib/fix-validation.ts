@@ -2,6 +2,9 @@
 // Verifies that a fix actually addresses the WCAG rule it claims to fix,
 // complementing the syntax/safety checks in github-pr.ts.
 
+import { liveTagStarts } from '@/lib/ast-patch';
+import { canonicalizeUri, parseHtmlTags } from '@/lib/html-attributes';
+
 export interface FixValidationResult {
   valid: boolean;
   verified: boolean;
@@ -9,6 +12,37 @@ export interface FixValidationResult {
 }
 
 type Attributes = Record<string, string>;
+
+/**
+ * The attributes of the first tag the browser really creates.
+ *
+ * A lexical match is not enough: markup inside a raw-text element (`textarea`,
+ * `title`) or inside a bogus comment is text for the browser, so a fix that
+ * only exists there fixes nothing.
+ */
+function liveTagAttributes(html: string, tagName: string): Attributes | null {
+  const live = liveTagStarts(html);
+  for (const tag of parseHtmlTags(html)) {
+    if (tag.name !== tagName) continue;
+    if (!live.has(tag.start)) continue;
+    const attrs: Attributes = {};
+    for (const attribute of tag.attributes) {
+      attrs[attribute.name] = attribute.value;
+    }
+    return attrs;
+  }
+  return null;
+}
+
+/** The canonical URLs of a `srcset` candidate list. */
+function canonicalUriList(value: string): string[] {
+  return value
+    .split(',')
+    .map(part => part.trim().split(/\s+/)[0] ?? '')
+    .filter(candidate => candidate !== '')
+    .map(candidate => canonicalizeUri(candidate))
+    .sort();
+}
 
 function extractTag(html: string, tagName: string): { tag: string; attrs: Attributes } | null {
   const re = new RegExp(`<${tagName}(\\s[^>]*?)?(\\/?)>`, 'gi');
@@ -126,15 +160,42 @@ export function validateFixForRule(
 
   switch (ruleId) {
     case 'image-alt': {
-      const img = extractTag(code, 'img');
-      if (!img) return { valid: false, verified: false, reason: 'fix does not contain an <img> element' };
-      const hasAlt = 'alt' in img.attrs;
+      const img = liveTagAttributes(code, 'img');
+      if (!img) {
+        return { valid: false, verified: false, reason: 'fix does not contain a live <img> element' };
+      }
+      // The fix has to keep the image the user sees: a fix that drops the
+      // source leaves a broken image behind.
+      if (originalElementHtml) {
+        const originalImg = liveTagAttributes(originalElementHtml, 'img');
+        if (originalImg) {
+          if (originalImg['src'] !== undefined) {
+            const kept = img['src'];
+            if (kept === undefined) {
+              return { valid: false, verified: true, reason: 'fix removes the image source' };
+            }
+            if (canonicalizeUri(kept) !== canonicalizeUri(originalImg['src'])) {
+              return { valid: false, verified: true, reason: 'fix changes the image source' };
+            }
+          }
+          if (originalImg['srcset'] !== undefined) {
+            const kept = img['srcset'];
+            if (kept === undefined) {
+              return { valid: false, verified: true, reason: 'fix removes the image source' };
+            }
+            if (canonicalUriList(kept).join('|') !== canonicalUriList(originalImg['srcset']).join('|')) {
+              return { valid: false, verified: true, reason: 'fix changes the image source' };
+            }
+          }
+        }
+      }
+      const hasAlt = 'alt' in img;
       if (!hasAlt) return { valid: false, verified: true, reason: 'image still missing alt attribute' };
-      if (img.attrs['alt'] !== '' && !img.attrs['aria-hidden']) {
+      if (img['alt'] !== '' && !img['aria-hidden']) {
         return { valid: true, verified: true };
       }
       // Empty alt is only valid for decorative images (explicitly marked)
-      if (img.attrs['alt'] === '' && img.attrs['role'] === 'presentation' || img.attrs['aria-hidden'] === 'true') {
+      if (img['alt'] === '' && img['role'] === 'presentation' || img['aria-hidden'] === 'true') {
         return { valid: true, verified: true };
       }
       return { valid: false, verified: true, reason: 'empty alt attribute requires decorative role/aria-hidden' };

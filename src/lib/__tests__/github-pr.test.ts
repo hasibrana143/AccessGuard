@@ -337,6 +337,16 @@ describe('validateRemediation', () => {
     expect(result.reason).toContain('template');
   });
 
+  it('rejects a remediation that carries a FreeMarker directive', () => {
+    // `<#if …>` is a FreeMarker directive: it is evaluated by the template
+    // engine of the customer's build.
+    const result = validateRemediation(
+      '<img src="x" alt="Photo"><span data-note="<#if x>ok</#if>"></span>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('template');
+  });
+
   it('rejects a remediation that adds a class the original element does not have', () => {
     // A class is a hook into the repository's stylesheet, whose effect the
     // isolated verification does not see.
@@ -414,6 +424,90 @@ describe('validateRemediation', () => {
     );
     expect(result.valid).toBe(true);
   });
+
+  it('rejects a remediation that changes the destination of the original element', () => {
+    // The URL is compared the way the browser resolves it: the protocol-relative,
+    // the single-slash and the backslash spelling all reach the same host.
+    for (const src of [
+      '//127.0.0.1:9/pixel?token=local',
+      'http:/127.0.0.1:9/pixel?token=local',
+      'http:\\127.0.0.1:9\\pixel',
+    ]) {
+      const result = validateRemediation(
+        `<img id="target" src="${src}" alt="Photo">`,
+        '<img id="target" src="x">'
+      );
+      expect(result.valid).toBe(false);
+    }
+  });
+
+  it('rejects a remediation that navigates to another destination', () => {
+    const result = validateRemediation(
+      '<a href="mailto:attacker@example.com" aria-label="Account">Account</a>',
+      '<a href="/account">Account</a>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('destination');
+  });
+
+  it('keeps a destination the original element already had', () => {
+    expect(
+      validateRemediation(
+        '<a href="https://example.com/x" aria-label="x">x</a>',
+        '<a href="https://example.com/x">x</a>'
+      ).valid
+    ).toBe(true);
+    expect(
+      validateRemediation(
+        '<a href="mailto:a@b.example" aria-label="x">x</a>',
+        '<a href="mailto:a@b.example">x</a>'
+      ).valid
+    ).toBe(true);
+  });
+
+  it('rejects a remediation that adds a destination the original element did not have', () => {
+    for (const href of [
+      'https://cdn.example/pixel.png',
+      '//cdn.example/pixel.png',
+      'mailto:attacker@example.com',
+      'tel:+15550100',
+    ]) {
+      const result = validateRemediation(
+        `<a href="${href}" aria-label="x">x</a>`,
+        '<a aria-label="x">x</a>'
+      );
+      expect(result.valid).toBe(false);
+    }
+  });
+
+  it('keeps a relative destination the remediation adds', () => {
+    // A relative link stays on the customer's own site: it is not a new
+    // destination that calls home.
+    const result = validateRemediation(
+      '<a href="#main" aria-label="Skip">Skip</a>',
+      '<a aria-label="Skip">Skip</a>'
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a remediation that hides the text or the element', () => {
+    // The user reads nothing although the content stays in the document.
+    for (const style of [
+      'font-size:0',
+      'font-size:0px',
+      'line-height:0',
+      'content-visibility:hidden',
+      'scale:0',
+      'translate:-9999px',
+      'filter:opacity(0)',
+      'text-indent:-9999px',
+    ]) {
+      const result = validateRemediation(
+        `<a href="/about" aria-label="About" style="${style}">Read more</a>`
+      );
+      expect(result.valid).toBe(false);
+    }
+  });
 });
 
 describe('applyFixesToFile', () => {
@@ -467,6 +561,25 @@ describe('applyFixesToFile', () => {
     expect(result.content).toContain('AccessGuard Accessibility Fixes');
   });
 
+  it('writes nothing into a frameset document', () => {
+    // In a frameset document the content of the frameset is frame content, not
+    // body content: the browser creates no image for it, so a fix written
+    // there would be reported as applied although nothing changed.
+    const original = '<html><frameset><img id="target" src="x"></frameset></html>';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    // The file itself is untouched: only the review comment is added.
+    expect(result.content.endsWith(original)).toBe(true);
+    expect(result.content).toContain('AccessGuard Accessibility Fixes');
+  });
+
   it('writes nothing into a server template', () => {
     // The template engine of the customer's build evaluates the markers, so a
     // fix written into the file becomes executable server code — and so does
@@ -483,6 +596,22 @@ describe('applyFixesToFile', () => {
     expect(result.fixesApplied).toBe(0);
     expect(result.content).toBe(original);
     expect(result.content).not.toContain('AccessGuard Accessibility Fixes');
+  });
+
+  it('writes nothing into a FreeMarker template', () => {
+    // `<#list …>` is a FreeMarker directive: the engine of the customer's
+    // build evaluates it.
+    const original = '<#list items as item><img src="a.jpg"></#list>';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'image-alt',
+        elementHtml: '<img src="a.jpg">',
+        remediationCode: '<img src="a.jpg" alt="A">',
+      },
+    ], 'template.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.content).toBe(original);
   });
 
   it('patches the nth occurrence of the same element', () => {

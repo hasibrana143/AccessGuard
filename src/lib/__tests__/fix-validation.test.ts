@@ -22,6 +22,29 @@ describe('validateFixForRule: image-alt', () => {
   it('rejects empty alt without decorative marker', () => {
     expect(validateFixForRule('image-alt', '<img src="d.jpg" alt="">').valid).toBe(false);
   });
+
+  it('rejects a fix whose image is not live markup', () => {
+    // The browser reads the markup inside these contexts as text, so no image
+    // element exists and the fix changes nothing on the page.
+    for (const code of [
+      '<textarea><img id="target" src="/photo.png" alt="Photo"></textarea>',
+      '<title><img id="target" src="/photo.png" alt="Photo"></title>',
+      '<!bogus <img id="target" src="/photo.png" alt="Photo">>',
+    ]) {
+      const r = validateFixForRule('image-alt', code);
+      expect(r.valid).toBe(false);
+    }
+  });
+
+  it('rejects a fix that drops the image source', () => {
+    const r = validateFixForRule(
+      'image-alt',
+      '<img id="target" alt="Photo">',
+      '<img id="target" src="/photo.png">'
+    );
+    expect(r.valid).toBe(false);
+    expect(r.reason).toContain('source');
+  });
 });
 
 describe('validateFixForRule: label', () => {

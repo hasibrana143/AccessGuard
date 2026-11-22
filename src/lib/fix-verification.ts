@@ -183,7 +183,9 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
  * `display:none`, `visibility:hidden`) or makes its text transparent passes the
  * rule check while the user loses what the element shows. The computed style is
  * the browser's own answer, so the check does not depend on how the hiding was
- * written.
+ * written: a zero-size text, an unpainted element (`content-visibility`,
+ * `filter: opacity(0)`, `scale: 0`) and an element moved off-screen are all
+ * invisible to the user.
  *
  * Returns the reason the element may not be written, or null.
  */
@@ -196,6 +198,63 @@ export async function checkRenderedElement(page: Page): Promise<string | null> {
       if (parts.length < 4) return 1;
       const parsed = Number.parseFloat(parts[3] ?? '1');
       return Number.isFinite(parsed) ? parsed : 1;
+    };
+
+    // A transform that scales the element to nothing, or moves it far away.
+    const transformHides = (transform: string): boolean => {
+      const match = /matrix(?:3d)?\(([^)]+)\)/.exec(transform);
+      if (match) {
+        const parts = (match[1] ?? '').split(',').map(part => Number.parseFloat(part.trim()));
+        if (parts.every(part => Number.isFinite(part))) {
+          const [a, b, c, d, e, f] = parts;
+          if (Math.abs(a) < 0.0001 && Math.abs(d) < 0.0001) return true;
+          if (Math.abs(e) >= 1000 || Math.abs(f) >= 1000) return true;
+        }
+      }
+      const offset = /(-?\d+(?:\.\d+)?)(px|em|rem|pt|%)?/g;
+      let found: RegExpExecArray | null;
+      while ((found = offset.exec(transform)) !== null) {
+        const amount = Number.parseFloat(found[1] ?? '');
+        const unit = found[2] ?? 'px';
+        if (!Number.isFinite(amount)) continue;
+        if (unit === '%' ? amount <= -100 : amount <= -1000) return true;
+      }
+      return false;
+    };
+
+    // The standalone `translate` property moves the element without touching
+    // `transform`.
+    const translateHides = (value: string): boolean => {
+      if (!value || value === 'none') return false;
+      return value.split(/\s+/).some(part => {
+        const match = /^(-?\d+(?:\.\d+)?)(px|em|rem|pt|%)?$/.exec(part);
+        if (!match) return false;
+        const amount = Number.parseFloat(match[1] ?? '');
+        if (!Number.isFinite(amount) || amount >= 0) return false;
+        const unit = match[2] ?? 'px';
+        return unit === '%' ? amount <= -100 : amount <= -1000;
+      });
+    };
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // A rect without an area is not painted, and a rect outside the viewport
+    // is not seen by the user.
+    const isPainted = (rect: DOMRect): boolean =>
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.top < viewportHeight &&
+      rect.left < viewportWidth;
+
+    const textRect = (node: Node): DOMRect | null => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const rect = range.getBoundingClientRect();
+      range.detach();
+      return rect;
     };
 
     const elements = Array.from(document.body.querySelectorAll('*')).filter(
@@ -211,30 +270,47 @@ export async function checkRenderedElement(page: Page): Promise<string | null> {
         style.display === 'none' ||
         style.visibility === 'hidden' ||
         style.visibility === 'collapse' ||
-        Number.parseFloat(style.opacity || '1') === 0;
+        Number.parseFloat(style.opacity || '1') === 0 ||
+        style.getPropertyValue('content-visibility') === 'hidden' ||
+        /opacity\(\s*0(?:\.0+)?\s*\)/.test(style.filter || '') ||
+        style.getPropertyValue('scale').trim() === '0' ||
+        transformHides(style.transform || 'none') ||
+        translateHides(style.getPropertyValue('translate'));
     }
 
     // Transparent text is invisible text: it stays in the document, so the
     // rendered-text check does not catch it.
     let transparentText = false;
+    // A text without an area, or one that sits outside the viewport, is not
+    // readable either.
+    let invisibleText = false;
     for (const element of elements) {
-      const hasText = Array.from(element.childNodes).some(
+      const textNodes = Array.from(element.childNodes).filter(
         node => node.nodeType === 3 && (node.textContent ?? '').trim().length > 0
       );
-      if (!hasText) continue;
+      if (textNodes.length === 0) continue;
       const style = window.getComputedStyle(element);
       const fill = style.getPropertyValue('-webkit-text-fill-color') || 'rgb(0, 0, 0)';
       if (alpha(style.color) === 0 || alpha(fill) === 0) {
         transparentText = true;
         break;
       }
+      const painted = textNodes.some(node => {
+        const rect = textRect(node);
+        return rect ? isPainted(rect) : false;
+      });
+      if (!painted) {
+        invisibleText = true;
+        break;
+      }
     }
 
-    return { hidden, transparentText };
+    return { hidden, transparentText, invisibleText };
   });
 
   if (rendering.hidden) return 'the patched element is hidden in the rendered page';
   if (rendering.transparentText) return 'the patched element shows transparent text';
+  if (rendering.invisibleText) return 'the patched element shows text the user cannot read';
   return null;
 }
 
@@ -277,12 +353,34 @@ async function runRuleInBrowser(
     // cannot see it.
     if (originalVisibleText) {
       const renderedText = await page.evaluate(() => {
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        // A text without an area, or one outside the viewport, is not read by
+        // the user: a zero-size text and an off-screen text are invisible.
+        const textIsPainted = (node: Node): boolean => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const rect = range.getBoundingClientRect();
+          range.detach();
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.bottom > 0 &&
+            rect.right > 0 &&
+            rect.top < viewportHeight &&
+            rect.left < viewportWidth
+          );
+        };
+
         const isVisible = (element: Element | null): boolean => {
           if (!element) return false;
           const style = window.getComputedStyle(element);
           if (style.display === 'none') return false;
           if (style.visibility === 'hidden' || style.visibility === 'collapse') return false;
           if (Number.parseFloat(style.opacity || '1') === 0) return false;
+          if (style.getPropertyValue('content-visibility') === 'hidden') return false;
+          if (/opacity\(\s*0(?:\.0+)?\s*\)/.test(style.filter || '')) return false;
           return element.getClientRects().length > 0;
         };
 
@@ -290,7 +388,7 @@ async function runRuleInBrowser(
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
         let node = walker.nextNode();
         while (node) {
-          if (isVisible(node.parentElement)) text += node.textContent ?? '';
+          if (isVisible(node.parentElement) && textIsPainted(node)) text += node.textContent ?? '';
           node = walker.nextNode();
         }
         return text.replace(/\s+/g, ' ').trim();

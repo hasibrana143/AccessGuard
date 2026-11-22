@@ -347,6 +347,19 @@ describe('live context: markup the browser does not create an element for', () =
     expect(locateElement(content, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
     expect(countElementOccurrences(content, 'index.html', '<img src="a.jpg">')).toBe(0);
   });
+
+  it('does not match an element inside a frameset', () => {
+    // In a frameset document the content of the frameset is frame content, not
+    // body content: Chromium creates no image for it.
+    const content = '<html><frameset><img id="target" src="x"></frameset></html>';
+    expect(locateElement(content, 'index.html', '<img id="target" src="x">', 0)).toBeNull();
+    expect(countElementOccurrences(content, 'index.html', '<img id="target" src="x">')).toBe(0);
+  });
+
+  it('still matches an image in an ordinary body', () => {
+    const content = '<html><body><img id="target" src="x"></body></html>';
+    expect(countElementOccurrences(content, 'index.html', '<img id="target" src="x">')).toBe(1);
+  });
 });
 
 describe('hidesOwnTarget', () => {

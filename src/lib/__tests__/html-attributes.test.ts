@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  canonicalizeUri,
   decodeHtmlEntities,
   isEventHandlerAttribute,
   normalizeUriValue,
@@ -52,6 +53,34 @@ describe('decodeHtmlEntities / normalizeUriValue', () => {
     expect(normalizeUriValue('java\tscript:alert(1)')).toBe('javascript:alert(1)');
     expect(normalizeUriValue('  JAVASCRIPT:alert(1)')).toBe('javascript:alert(1)');
     expect(normalizeUriValue('&#106;avascript:alert(1)')).toBe('javascript:alert(1)');
+  });
+});
+
+describe('canonicalizeUri', () => {
+  it('resolves a URL the way the browser resolves it', () => {
+    // The protocol-relative, the single-slash and the backslash spelling all
+    // reach the same host.
+    expect(canonicalizeUri('//127.0.0.1:9/pixel?token=local')).toBe(
+      'https://127.0.0.1:9/pixel?token=local'
+    );
+    expect(canonicalizeUri('http:/127.0.0.1:9/pixel?token=local')).toBe(
+      'http://127.0.0.1:9/pixel?token=local'
+    );
+    expect(canonicalizeUri('http:\\127.0.0.1:9\\pixel')).toBe(
+      'http://127.0.0.1:9/pixel'
+    );
+  });
+
+  it('resolves a relative URL against the fixed base', () => {
+    expect(canonicalizeUri('/photo.png')).toBe('https://accessguard.invalid/photo.png');
+    expect(canonicalizeUri('#main')).toBe('https://accessguard.invalid/#main');
+    expect(canonicalizeUri('mailto:team@example.com')).toBe('mailto:team@example.com');
+  });
+
+  it('lower-cases the scheme and the host but keeps the path', () => {
+    expect(canonicalizeUri('HTTP://Example.COM/Photo.PNG')).toBe(
+      'http://example.com/Photo.PNG'
+    );
   });
 });
 

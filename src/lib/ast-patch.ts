@@ -126,8 +126,10 @@ const RAW_TEXT_TAGS = new Set([
 
 // Elements whose content is parsed but never rendered: the browser creates no
 // element for it, so a fix written there is not applied to anything the user
-// sees.
-const INERT_CONTENT_TAGS = new Set(['template', 'object', 'applet']);
+// sees. A `frameset` is in the set for the same reason: in a frameset document
+// its content is frame content, not body content, so Chromium creates no image
+// for an `<img>` inside it.
+const INERT_CONTENT_TAGS = new Set(['template', 'object', 'applet', 'frameset']);
 
 /** The offset of the `>` that closes the tag starting at `start`. */
 function findTagEnd(content: string, start: number): number {

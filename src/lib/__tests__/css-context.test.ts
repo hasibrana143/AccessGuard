@@ -1,10 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { buildCssContext, destinationCssHarm, extractStyleBlocks } from '@/lib/css-context';
+import { buildCssContext, collectStyleSources, destinationCssHarm, extractStyleBlocks } from '@/lib/css-context';
 
 describe('destination CSS context', () => {
   it('extracts the style blocks of an HTML document', () => {
     expect(extractStyleBlocks('<style>.a{color:red}</style><p>x</p>')).toEqual(['.a{color:red}']);
     expect(extractStyleBlocks('<p>x</p>')).toEqual([]);
+  });
+
+  it('marks dynamic style sources instead of treating them as empty CSS', () => {
+    expect(
+      collectStyleSources(
+        '<style>{css}</style><style dangerouslySetInnerHTML={{ __html: css }}></style>'
+      )
+    ).toEqual([
+      { css: '{css}', dynamic: true },
+      { css: '', dynamic: true },
+    ]);
+    expect(collectStyleSources('<style>.a{color:red}</style>')).toEqual([
+      { css: '.a{color:red}', dynamic: false },
+    ]);
   });
 
   it('finds the class rule that turns the element into an overlay', () => {
@@ -223,5 +237,128 @@ describe('destination CSS: the rules the browser applies', () => {
       '<img id="target" class="hero" src="x" alt="Photo">'
     );
     expect(result).toContain('overlay');
+  });
+});
+
+describe('destination CSS: the seventh review regressions', () => {
+  const ORIGINAL = '<img id="target" src="x">';
+  const PATCHED = '<img id="target" src="x" alt="Photo">';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  function textHarm(css: string): string | null {
+    return harm(
+      css,
+      '<p id="target">Text</p>',
+      '<p id="target" aria-label="Label">Text</p>'
+    );
+  }
+
+  it('reads the CSS priority suffix as the browser does', () => {
+    const result = harm(
+      '[alt]{position:fixed!important;inset:0;width:100%;height:100%;z-index:999999}'
+    );
+    expect(result).toContain('overlay');
+    expect(
+      harm('[alt]{position:fixed ! important;inset:0;width:100%;height:100%}')
+    ).toContain('overlay');
+  });
+
+  it('recognises logical viewport units', () => {
+    const result = harm(
+      '[alt]{position:fixed;top:0;left:0;width:100vi;height:100vb;z-index:999999}'
+    );
+    expect(result).toContain('overlay');
+
+    for (const unit of ['vw', 'vi', 'svw', 'svi', 'lvw', 'lvi']) {
+      expect(harm(`[alt]{position:fixed;width:100${unit};height:100vh}`)).toContain(
+        'overlay'
+      );
+    }
+    for (const unit of ['vh', 'vb', 'svh', 'svb', 'lvh', 'lvb']) {
+      expect(harm(`[alt]{position:fixed;width:100vw;height:100${unit}}`)).toContain(
+        'overlay'
+      );
+    }
+    for (const unit of ['vmin', 'vmax', 'svmin', 'svmax', 'lvmin', 'lvmax']) {
+      expect(harm(`[alt]{position:fixed;width:100${unit};height:100${unit}}`)).toContain(
+        'overlay'
+      );
+    }
+  });
+
+  it('refuses a relational selector', () => {
+    const result = harm(
+      'body:has(#target[alt]){position:fixed;inset:0;width:100%;height:100%;z-index:999999}'
+    );
+    expect(result).toContain('cannot be judged');
+    expect(result).not.toBeNull();
+    expect(harm(':is(body:has(#target[alt])){position:fixed}')).toContain(
+      'cannot be judged'
+    );
+    expect(harm(':where(body:has(#target[alt])){position:fixed}')).toContain(
+      'cannot be judged'
+    );
+  });
+
+  it('refuses an unknown unit that the fix makes applicable', () => {
+    expect(harm('[alt]{width:100unknown}')).toContain('cannot be judged');
+  });
+
+  it('refuses an unknown keyword that the fix makes applicable', () => {
+    expect(harm('[alt]{position:banana}')).toContain('cannot be judged');
+  });
+
+  it('treats zero-size text as hidden', () => {
+    expect(
+      textHarm('[aria-label]{font-size:0;line-height:0;overflow:hidden}')
+    ).toContain('hide');
+  });
+
+  it('treats content visibility hidden as hidden', () => {
+    expect(textHarm('[aria-label]{content-visibility:hidden}')).toContain('hide');
+  });
+
+  it('treats a zero scale as hidden', () => {
+    expect(textHarm('[aria-label]{transform:scale(0)}')).toContain('hide');
+    expect(textHarm('[aria-label]{scale:0}')).toContain('hide');
+  });
+
+  it('treats a zero opacity filter as hidden', () => {
+    expect(textHarm('[aria-label]{filter:opacity(0)}')).toContain('hide');
+  });
+
+  it('treats an off-screen translation as hidden', () => {
+    expect(textHarm('[aria-label]{translate:-9999px}')).toContain('hide');
+  });
+
+  it('treats a large negative text indent as hidden', () => {
+    expect(textHarm('[aria-label]{text-indent:-9999px}')).toContain('hide');
+  });
+
+  it('treats a zero-size element as hidden', () => {
+    expect(textHarm('[aria-label]{width:0;height:0}')).toContain('hide');
+  });
+
+  it('does not apply text-only hiding rules to replaced elements', () => {
+    expect(
+      harm(
+        '[aria-label]{font-size:0;line-height:0;overflow:hidden}',
+        '<img id="target" src="x">',
+        '<img id="target" src="x" aria-label="Label">'
+      )
+    ).toBeNull();
+  });
+
+  it('does not flag a harmless stylesheet', () => {
+    expect(
+      harm(
+        '.hero{color:red}',
+        '<img id="target" class="hero" src="x">',
+        '<img id="target" class="hero" src="x" alt="Photo">'
+      )
+    ).toBeNull();
   });
 });

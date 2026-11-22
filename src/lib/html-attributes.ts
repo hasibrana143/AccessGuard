@@ -73,6 +73,8 @@ export interface HtmlTag {
   /** Lower-cased tag name. */
   name: string;
   attributes: ParsedAttribute[];
+  /** Offset of the `<` that opens the tag. */
+  start: number;
 }
 
 /** The tags of an HTML snippet, in document order. */
@@ -86,6 +88,7 @@ export function parseHtmlTags(html: string): HtmlTag[] {
     const sectionStart = tag.index + 1 + (tag[1]?.length ?? 0);
     tags.push({
       name: (tag[1] ?? '').toLowerCase(),
+      start: tag.index,
       attributes: parseTagAttributes(tag[2] ?? '').map(attribute => ({
         ...attribute,
         start: attribute.start + sectionStart,
@@ -151,6 +154,32 @@ const URL_NOISE = new RegExp(
  */
 export function normalizeUriValue(value: string): string {
   return decodeHtmlEntities(value).replace(URL_NOISE, '').toLowerCase();
+}
+
+/**
+ * The base a relative URL is resolved against.
+ *
+ * The comparison of two URLs has to be independent of the customer's site, so
+ * every relative URL is resolved against this fixed base.
+ */
+export const URI_BASE = 'https://accessguard.invalid/';
+
+/**
+ * Resolve a URI the way a browser resolves it.
+ *
+ * The URL parser of the platform is the same one the browser uses: it reads a
+ * backslash as a path separator in a special scheme, accepts a single slash
+ * after the scheme, resolves a protocol-relative URL against the scheme of the
+ * base and lower-cases the scheme and the host. `//host/x`, `http:/host/x` and
+ * `http:\\host\\x` therefore reach the same host.
+ */
+export function canonicalizeUri(value: string, base: string = URI_BASE): string {
+  const decoded = decodeHtmlEntities(value);
+  try {
+    return new URL(decoded, base).href;
+  } catch {
+    return decoded;
+  }
 }
 
 // `once` is the only standard attribute that starts with "on" and is not an

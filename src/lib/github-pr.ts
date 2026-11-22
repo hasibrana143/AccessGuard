@@ -14,11 +14,13 @@ import {
   preservesVisibleContent,
 } from '@/lib/ast-patch';
 import {
+  canonicalizeUri,
   decodeHtmlEntities,
   isEventHandlerAttribute,
   normalizeUriValue,
   parseHtmlAttributes,
   parseHtmlTags,
+  URI_BASE,
 } from '@/lib/html-attributes';
 
 // Flexible violation type that works with both strict types and Prisma results
@@ -339,6 +341,28 @@ function checkStyleAttribute(value: string, isTarget: boolean): string | null {
     ) {
       return 'remediation code makes the text transparent';
     }
+    // A text without a size or without a line box is invisible text.
+    if (property === 'font-size' && /^0(?:\.0+)?(?:px|em|rem|pt|%)?$/.test(cssValue)) {
+      return 'remediation code hides the text with font-size: 0';
+    }
+    if (property === 'line-height' && /^0(?:\.0+)?(?:px|em|rem|pt|%)?$/.test(cssValue)) {
+      return 'remediation code hides the text with line-height: 0';
+    }
+    // The element is not painted at all.
+    if (property === 'content-visibility' && cssValue === 'hidden') {
+      return 'remediation code hides the element with content-visibility: hidden';
+    }
+    if (property === 'filter' && /opacity\(\s*0(?:\.0+)?\s*\)/.test(cssValue)) {
+      return 'remediation code hides the element with filter: opacity(0)';
+    }
+    if (property === 'scale' && /^0(?:\.0+)?$/.test(cssValue)) {
+      return 'remediation code hides the element with scale: 0';
+    }
+    // The off-screen trick: the content stays in the document but the user
+    // never sees it.
+    if ((property === 'translate' || property === 'text-indent') && isOffScreenOffset(cssValue)) {
+      return `remediation code moves the element off-screen with ${property}`;
+    }
   }
 
   return null;
@@ -349,9 +373,10 @@ function checkStyleAttribute(value: string, isTarget: boolean): string | null {
  *
  * The template engine of the customer's build evaluates these markers, so a
  * file that carries them is a template and not HTML, and a fix that carries
- * them becomes executable code on the customer's server.
+ * them becomes executable code on the customer's server. `<#` is the FreeMarker
+ * directive opener.
  */
-const TEMPLATE_MARKERS = /<%|%>|<\?|\?>|{%|%}|{{|}}|{#|#}/;
+const TEMPLATE_MARKERS = /<%|%>|<\?|\?>|{%|%}|{{|}}|{#|#}|<#/;
 
 /** True when the content carries server-template grammar. */
 export function containsTemplateGrammar(content: string): boolean {
@@ -371,13 +396,14 @@ function classTokensOf(html: string): string[] {
 }
 
 /**
- * The remote URLs of a snippet.
+ * The canonical destinations of every URI attribute of a snippet.
  *
- * A URL is remote when it carries an `http` or `https` scheme. A relative URL
- * stays inside the customer's own site and cannot call home.
+ * A URL is compared the way the browser resolves it, so `//host/x`,
+ * `http:/host/x` and `http:\\host\\x` reach the same host and a relative URL
+ * resolves against the fixed base.
  */
-function remoteUrlsOf(html: string): string[] {
-  const urls: string[] = [];
+function canonicalUriMap(html: string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
 
   for (const attribute of parseHtmlAttributes(html)) {
     if (!URI_ATTRIBUTES.has(attribute.name)) continue;
@@ -388,16 +414,60 @@ function remoteUrlsOf(html: string): string[] {
         ? attribute.value.split(',').map(part => part.trim().split(/\s+/)[0] ?? '')
         : [attribute.value];
 
-    for (const candidate of candidates) {
-      // The scheme is read the way the browser reads it (entities decoded,
-      // control characters removed); the URL itself is compared as it is.
-      const normalized = normalizeUriValue(candidate);
-      if (!/^https?:\/\//.test(normalized)) continue;
-      urls.push(decodeHtmlEntities(candidate).trim());
-    }
+    const canonical = candidates
+      .filter(candidate => candidate !== '')
+      .map(candidate => canonicalizeUri(candidate, URI_BASE))
+      .sort();
+    map.set(attribute.name, canonical);
   }
 
-  return urls;
+  return map;
+}
+
+/** True when a canonical URL points at another origin than the base. */
+function isRemoteUri(canonical: string): boolean {
+  try {
+    const url = new URL(canonical);
+    if (!['http:', 'https:', 'ws:', 'wss:', 'ftp:'].includes(url.protocol)) return false;
+    return url.origin !== new URL(URI_BASE).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when a canonical URL is a destination the original element did not have.
+ *
+ * A relative URL stays on the customer's own site, and an inert data URI does
+ * not call home: both are allowed. Every other destination — another host, a
+ * mail address, a phone number — is a new navigation the fix introduces.
+ */
+function isForeignDestination(canonical: string): boolean {
+  try {
+    const url = new URL(canonical);
+    if (url.protocol === 'data:') return false;
+    return url.origin !== new URL(URI_BASE).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A length that moves an element or its text far off-screen.
+ *
+ * The classic off-screen trick hides the content without removing it, so the
+ * user reads nothing although the text is still in the document.
+ */
+function isOffScreenOffset(value: string): boolean {
+  return value.split(/\s+/).some(part => {
+    const match = /^(-?\d+(?:\.\d+)?)(px|em|rem|pt|%)?$/.exec(part);
+    if (!match) return false;
+    const amount = Number.parseFloat(match[1] ?? '');
+    if (!Number.isFinite(amount) || amount >= 0) return false;
+    const unit = match[2] ?? 'px';
+    if (unit === '%') return amount <= -100;
+    return amount <= -1000;
+  });
 }
 
 // Validate AI-generated remediation code before applying it to source files
@@ -489,17 +559,51 @@ export function validateRemediation(
     }
   }
 
-  // The remediation may not introduce a remote URL the original element does
-  // not have: the verification browser blocks every network request, so a new
-  // URL is invisible to it. Once the fix is written, that URL loads from the
+  // The remediation may not change the destination of the original element:
+  // the verification browser blocks every network request, so a new URL is
+  // invisible to it. Once the fix is written, that URL loads from the
   // customer's browser (a tracking pixel) or points the user somewhere else.
+  // The comparison is made on the resolved URL, the way a browser resolves it,
+  // so a protocol-relative, a single-slash and a backslash spelling cannot
+  // slip past it.
   if (originalElementHtml) {
-    const originalUrls = new Set(remoteUrlsOf(originalElementHtml));
-    for (const url of remoteUrlsOf(code)) {
-      if (!originalUrls.has(url)) {
+    const originalUris = canonicalUriMap(originalElementHtml);
+    const newUris = canonicalUriMap(code);
+
+    for (const [name, originalValues] of originalUris) {
+      const newValues = newUris.get(name);
+      if (!newValues) {
+        return {
+          valid: false,
+          reason: `remediation code removes the ${name} destination of the original element`,
+        };
+      }
+      if (newValues.join('|') !== originalValues.join('|')) {
+        if (newValues.some(isRemoteUri)) {
+          return {
+            valid: false,
+            reason: 'remediation code introduces a remote URL the original element does not have',
+          };
+        }
+        return {
+          valid: false,
+          reason: `remediation code changes the ${name} destination of the original element`,
+        };
+      }
+    }
+
+    for (const [name, newValues] of newUris) {
+      if (originalUris.has(name)) continue;
+      if (newValues.some(isRemoteUri)) {
         return {
           valid: false,
           reason: 'remediation code introduces a remote URL the original element does not have',
+        };
+      }
+      if (newValues.some(isForeignDestination)) {
+        return {
+          valid: false,
+          reason: `remediation code introduces a new ${name} destination the original element does not have`,
         };
       }
     }

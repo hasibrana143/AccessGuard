@@ -381,6 +381,47 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     }
   }, BROWSER_TEST_TIMEOUT);
 
+  it('catches a patched element the browser paints nowhere', async () => {
+    // The computed style is the browser's own answer: a zero-size text, an
+    // unpainted element and an element moved off-screen are all invisible.
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await createVerificationContext(browser);
+      const page = await context.newPage();
+
+      for (const style of [
+        'font-size:0;line-height:0;overflow:hidden',
+        'content-visibility:hidden',
+        'translate:-9999px',
+        'filter:opacity(0)',
+        'scale:0',
+      ]) {
+        await page.setContent(
+          buildVerificationDocument(`<a href="/about" style="${style}">Read more</a>`)
+        );
+        expect(await checkRenderedElement(page)).not.toBeNull();
+      }
+
+      await page.setContent(buildVerificationDocument('<a href="/about">Read more</a>'));
+      expect(await checkRenderedElement(page)).toBeNull();
+    } finally {
+      await browser.close();
+    }
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('never lets a fix through that hides the text of the element', async () => {
+    const results = await verifyFixes([
+      {
+        id: 'v10',
+        ruleId: 'link-name',
+        elementHtml: '<a href="/about">Read more</a>',
+        remediationCode:
+          '<a href="/about" aria-label="About us" style="font-size:0;line-height:0;overflow:hidden">Read more</a>',
+      },
+    ]);
+    expect(passesConfidenceGate(results.get('v10')?.confidence ?? null)).toBe(false);
+  }, BROWSER_TEST_TIMEOUT);
+
   it('never lets the verification document open a WebSocket', async () => {
     let upgrades = 0;
     const server = createServer();

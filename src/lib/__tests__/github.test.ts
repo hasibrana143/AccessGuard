@@ -278,6 +278,93 @@ describe('applyFixesToRepository', () => {
     expect(result.filesModified).toEqual([]);
   });
 
+  it('does not patch an element when a dynamic style source cannot be judged', async () => {
+    // React resolves the expression before Chromium sees the stylesheet.
+    tree(['App.jsx']);
+    fileContent(
+      'App.jsx',
+      'const css="[alt]{position:fixed;inset:0;width:100%;height:100%;z-index:999999}"; export const Card=()=> (<div className="parent"><style>{css}</style><img id="target" src="x" /></div>);'
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x" />',
+          remediationCode: '<img id="target" src="x" alt="Photo" />',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a repository stylesheet hides its text', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent('index.html', '<html><body><p id="target">Text</p></body></html>');
+    fileContent(
+      'styles.css',
+      '[aria-label]{font-size:0;line-height:0;overflow:hidden}'
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'link-name',
+          elementHtml: '<p id="target">Text</p>',
+          remediationCode: '<p id="target" aria-label="Label">Text</p>',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a repository stylesheet uses priority and logical viewport units', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'styles.css',
+      '[alt]{position:fixed!important;top:0;left:0;width:100vi;height:100vb;z-index:999999}'
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
   it('does not patch an element when a preprocessor stylesheet cannot be judged', async () => {
     // The preprocessor resolves the variable into a value the analyser cannot
     // see, so the destination is unprovable.

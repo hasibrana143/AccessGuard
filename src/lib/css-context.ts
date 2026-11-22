@@ -53,15 +53,31 @@ export interface ElementDescriptor {
   attributes: Map<string, string>;
 }
 
-/** The `<style>` blocks of an HTML document. */
-export function extractStyleBlocks(html: string): string[] {
-  const blocks: string[] = [];
-  const pattern = /<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi;
+/** A repository-owned style source and whether its CSS is dynamic. */
+export interface StyleSource {
+  css: string;
+  dynamic: boolean;
+}
+
+/** The `<style>` sources of an HTML document. */
+export function collectStyleSources(html: string): StyleSource[] {
+  const sources: StyleSource[] = [];
+  const pattern = /<style\b([^>]*)>([\s\S]*?)<\/style\s*>/gi;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(html)) !== null) {
-    blocks.push(match[1] ?? '');
+    const attributes = parseTagAttributes(match[1] ?? '');
+    const css = match[2] ?? '';
+    const dynamic =
+      css.trim().startsWith('{') ||
+      attributes.some(attribute => attribute.name === 'dangerouslysetinnerhtml');
+    sources.push({ css, dynamic });
   }
-  return blocks;
+  return sources;
+}
+
+/** The `<style>` blocks of an HTML document. */
+export function extractStyleBlocks(html: string): string[] {
+  return collectStyleSources(html).map(source => source.css);
 }
 
 /** The `href` of every `<link rel="stylesheet">` of a document. */
@@ -477,6 +493,9 @@ function collectBody(selector: string, body: string, context: CssContext): void 
   const { declarations, nested } = parseRuleBody(body);
 
   if (declarations.trim()) {
+    if (/:has\s*\(/i.test(decodeCssEscapes(selector))) {
+      context.unprovable.push('the stylesheet uses a relational selector the analyser cannot resolve');
+    }
     context.rules.push({ selector, declarations });
   }
 
@@ -847,12 +866,19 @@ function parseDeclarations(body: string): Declaration[] {
     const separator = part.indexOf(':');
     if (separator === -1) continue;
     const property = decodeCssEscapes(part.slice(0, separator).trim()).toLowerCase();
-    const value = decodeCssEscapes(part.slice(separator + 1).trim()).toLowerCase();
+    const value = stripCssPriority(
+      decodeCssEscapes(part.slice(separator + 1).trim()).toLowerCase()
+    );
     if (!property) continue;
     declarations.push({ property, value });
   }
 
   return declarations;
+}
+
+/** Remove the CSS priority suffix, which is not part of the declaration value. */
+function stripCssPriority(value: string): string {
+  return value.replace(/\s*!\s*important\s*$/i, '').trim();
 }
 
 /**
@@ -870,18 +896,19 @@ const RELEVANT_PROPERTIES = new Set([
   'background', 'background-color', 'background-position', 'background-size',
   'float', 'clear', 'flex', 'flex-basis', 'order', 'aspect-ratio', 'contain',
   'isolation', 'mix-blend-mode', 'filter', 'backdrop-filter', 'mask', '-webkit-mask',
+  'content-visibility',
   'z-index', 'animation', 'animation-name', 'box-sizing', 'gap', 'grid-area',
   'grid-template', 'grid-template-columns', 'grid-template-rows', 'columns', 'column-count',
 ]);
 
 /** The values that make an element span the viewport horizontally. */
-const COVERS_X = /^(100%|100(vw|dvw|svw|lvw))$/;
+const COVERS_X = /^(100%|100(vw|vi|dvw|dvi|svw|svi|lvw|lvi))$/;
 
 /** The values that make an element span the viewport vertically. */
-const COVERS_Y = /^(100%|100(vh|dvh|svh|lvh))$/;
+const COVERS_Y = /^(100%|100(vh|vb|dvh|dvb|svh|svb|lvh|lvb))$/;
 
-/** The values that place an element at an edge of its containing block. */
-const ZERO = /^(0|0px|0%|0em|0rem|0vh|0vw)$/;
+/** The viewport units whose axis depends on the viewport shape. */
+const COVERS_EITHER_AXIS = /^(100(vmin|vmax|dvmin|dvmax|svmin|svmax|lvmin|lvmax))$/;
 
 /** The values that position an element out of the normal flow. */
 const POSITIONED = /^(fixed|absolute|sticky)$/;
@@ -889,6 +916,60 @@ const POSITIONED = /^(fixed|absolute|sticky)$/;
 /** The values that remove an element from the rendering. */
 const HIDDEN_DISPLAY = /^none$/;
 const HIDDEN_VISIBILITY = /^(hidden|collapse)$/;
+
+/** The properties whose values decide whether the patched element is visible. */
+const JUDGEMENT_PROPERTIES = new Set([
+  'position', 'inset', 'inset-block', 'inset-inline', 'top', 'right', 'bottom', 'left',
+  'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+  'display', 'visibility', 'opacity', 'transform', 'scale', 'translate', 'filter',
+  'content-visibility', 'font-size', 'line-height', 'text-indent',
+]);
+
+/** The CSS length units the analyser can recognise. */
+const LENGTH_UNITS = new Set([
+  'px', 'cm', 'mm', 'q', 'in', 'pt', 'pc', 'em', 'rem', 'ex', 'rex', 'ch', 'rch',
+  'cap', 'rcap', 'ic', 'ric', 'lh', 'rlh', 'vw', 'vh', 'vmin', 'vmax', 'vi', 'vb',
+  'svw', 'svh', 'svmin', 'svmax', 'svi', 'svb', 'lvw', 'lvh', 'lvmin', 'lvmax',
+  'lvi', 'lvb', 'dvw', 'dvh', 'dvmin', 'dvmax', 'dvi', 'dvb',
+]);
+
+/** The keywords of `position`. */
+const POSITION_VALUES = new Set(['static', 'relative', 'absolute', 'fixed', 'sticky']);
+
+/** The keywords of `visibility`. */
+const VISIBILITY_VALUES = new Set(['visible', 'hidden', 'collapse']);
+
+/** The keywords of `content-visibility`. */
+const CONTENT_VISIBILITY_VALUES = new Set(['visible', 'auto', 'hidden']);
+
+/** The components of the `display` property. */
+const DISPLAY_VALUES = new Set([
+  'block', 'inline', 'inline-block', 'flex', 'inline-flex', 'grid', 'inline-grid',
+  'flow', 'inline-flow', 'flow-root', 'inline-flow-root', 'table', 'inline-table',
+  'table-row-group', 'table-header-group', 'table-footer-group', 'table-row',
+  'table-cell', 'table-column-group', 'table-column', 'table-caption', 'none',
+  'contents', 'ruby', 'ruby-base', 'ruby-text', 'ruby-base-container',
+  'ruby-text-container', 'list-item', 'inline-list-item',
+]);
+
+/** The absolute and relative keywords of `font-size`. */
+const FONT_SIZE_VALUES = new Set([
+  'xx-small', 'x-small', 'small', 'medium', 'large', 'x-large', 'xx-large',
+  'xxx-large', 'smaller', 'larger',
+]);
+
+/** The tags whose text can be hidden by text-only CSS. */
+const TEXT_BEARING_TAGS = new Set([
+  'a', 'button', 'p', 'span', 'div', 'li', 'label', 'h1', 'h2', 'h3', 'h4', 'h5',
+  'h6', 'td', 'th', 'strong', 'em', 'small', 'code', 'summary', 'legend', 'option',
+  'textarea',
+]);
+
+/** The replaced and media tags whose own content is not hidden by text CSS. */
+const REPLACED_TAGS = new Set([
+  'img', 'svg', 'video', 'audio', 'canvas', 'iframe', 'input', 'embed', 'object',
+  'track', 'source', 'picture',
+]);
 
 /**
  * The properties a keyframe may use to cover the screen.
@@ -940,18 +1021,151 @@ function animationNamesOf(state: ElementState): string[] {
   return [...names];
 }
 
+/** True when a value is a length or percentage the analyser can recognise. */
+function isLengthOrPercentage(value: string): boolean {
+  if (value === '0') return true;
+  if (/^-?(?:\d+|\d*\.\d+)%$/.test(value)) return true;
+  const match = /^(-?(?:\d+|\d*\.\d+))([a-z]+)$/.exec(value);
+  return match !== null && LENGTH_UNITS.has(match[2] ?? '');
+}
+
+/** True when a value is a number the analyser can recognise. */
+function isNumber(value: string): boolean {
+  return /^(?:\d+|\d*\.\d+)$/.test(value);
+}
+
+/** True when a value is a non-negative number or percentage. */
+function isNonNegativeNumberOrPercentage(value: string): boolean {
+  if (isNumber(value)) return Number(value) >= 0;
+  const match = /^(\d+(?:\.\d+)?|\.\d+)%$/.exec(value);
+  return match !== null && Number(match[1]) >= 0;
+}
+
+/** True when a sizing value is one the analyser can recognise. */
+function isSizingValue(value: string, property: string): boolean {
+  if (value === 'auto' && property !== 'max-width' && property !== 'max-height') return true;
+  if (value === 'none' && (property === 'max-width' || property === 'max-height')) return true;
+  if (['min-content', 'max-content', 'fit-content', 'stretch'].includes(value)) return true;
+  return isLengthOrPercentage(value);
+}
+
+/** True when a scale value is one the analyser can read. */
+function isScaleValue(value: string): boolean {
+  if (value === 'none') return true;
+  return value.split(/\s+/).filter(Boolean).length <= 2 && value.split(/\s+/).filter(Boolean).every(isNumber);
+}
+
+/** True when a translate value is one the analyser can read. */
+function isTranslateValue(value: string): boolean {
+  if (value === 'none') return true;
+  const parts = value.split(/\s+/).filter(Boolean);
+  return parts.length <= 2 && parts.every(isLengthOrPercentage);
+}
+
 /**
  * True when a value cannot be computed by the analyser.
  *
- * A custom property, a function (`calc()`, `min()`, `env()`, …) or a
- * CSS-wide keyword can compute anything, so the verdict cannot be decided.
+ * A custom property, an unknown function, an unknown unit or an unknown
+ * keyword can compute anything, so the verdict cannot be decided.
  */
-function isUnprovableValue(value: string): boolean {
+function isUnprovableValue(property: string, value: string): boolean {
   if (!value) return true;
   if (value.includes('var(')) return true;
   if (/\b(inherit|initial|unset|revert|revert-layer)\b/.test(value)) return true;
+
+  if (JUDGEMENT_PROPERTIES.has(property)) {
+    if (property === 'position') return !POSITION_VALUES.has(value);
+    if (property === 'inset' || property === 'inset-block' || property === 'inset-inline') {
+      const parts = value.split(/\s+/).filter(Boolean);
+      return parts.length > 4 || !parts.every(part => part === 'auto' || isLengthOrPercentage(part));
+    }
+    if (property === 'top' || property === 'right' || property === 'bottom' || property === 'left') {
+      return value !== 'auto' && !isLengthOrPercentage(value);
+    }
+    if (property === 'width' || property === 'height' || property === 'min-width' || property === 'min-height' || property === 'max-width' || property === 'max-height') {
+      return !isSizingValue(value, property);
+    }
+    if (property === 'display') {
+      const parts = value.split(/\s+/).filter(Boolean);
+      return parts.length === 0 || !parts.every(part => DISPLAY_VALUES.has(part));
+    }
+    if (property === 'visibility') return !VISIBILITY_VALUES.has(value);
+    if (property === 'opacity') return !isNonNegativeNumberOrPercentage(value);
+    if (property === 'transform') {
+      return value !== 'none' && !hasZeroScaleFunction(value) && !isLargeNegativeOffset(value);
+    }
+    if (property === 'scale') return !isScaleValue(value);
+    if (property === 'translate') return !isTranslateValue(value);
+    if (property === 'filter') return value !== 'none' && !hasZeroOpacity(value);
+    if (property === 'content-visibility') return !CONTENT_VISIBILITY_VALUES.has(value);
+    if (property === 'font-size') {
+      return !FONT_SIZE_VALUES.has(value) && !isLengthOrPercentage(value);
+    }
+    if (property === 'line-height') {
+      return value !== 'normal' && !isNumber(value) && !isLengthOrPercentage(value);
+    }
+    if (property === 'text-indent') return !isLengthOrPercentage(value);
+  }
+
   if (/[a-z-]+\(/i.test(value)) return true;
   return false;
+}
+
+/** True when a length or percentage is zero. */
+function isZeroLength(value: string): boolean {
+  if (value === '0') return true;
+  const match = /^(-?(?:\d+|\d*\.\d+))([a-z%]+)$/.exec(value);
+  return (
+    match !== null &&
+    Number(match[1]) === 0 &&
+    (match[2] === '%' || LENGTH_UNITS.has(match[2] ?? ''))
+  );
+}
+
+/** True when a length moves content far enough off-screen to hide it. */
+function isLargeNegativeOffset(value: string): boolean {
+  const matches = [...value.matchAll(/(-?(?:\d+|\d*\.\d+))([a-z]+)/gi)];
+  return matches.some(
+    match =>
+      match[2] !== '%' &&
+      LENGTH_UNITS.has(match[2] ?? '') &&
+      Number(match[1]) <= -999
+  );
+}
+
+/** True when text-only hiding rules apply to an element. */
+function textRulesApply(element: ElementDescriptor): boolean {
+  if (!element.tag) return true;
+  if (TEXT_BEARING_TAGS.has(element.tag)) return true;
+  return !REPLACED_TAGS.has(element.tag);
+}
+
+/** True when a transform scale function collapses the element to zero. */
+function hasZeroScaleFunction(value: string): boolean {
+  const matches = [...value.matchAll(/\bscale(?:3d|x|y)?\(([^)]*)\)/gi)];
+  return matches.some(match =>
+    match[1]
+      ?.split(/[\s,]+/)
+      .filter(Boolean)
+      .some(part => isNumber(part) && Number(part) === 0)
+  );
+}
+
+/** True when an individual scale value collapses the element to zero. */
+function hasZeroScaleValue(value: string): boolean {
+  return value
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .some(part => isNumber(part) && Number(part) === 0);
+}
+
+/** True when a filter makes the element fully transparent. */
+function hasZeroOpacity(value: string): boolean {
+  const matches = [...value.matchAll(/\bopacity\(([^)]*)\)/gi)];
+  return matches.some(match => {
+    const opacity = match[1]?.trim() ?? '';
+    return (isNumber(opacity) && Number(opacity) === 0) || opacity === '0%';
+  });
 }
 
 /** The rendering state of an element under a set of rules. */
@@ -959,6 +1173,8 @@ interface ElementState {
   positioned: boolean;
   coversX: boolean;
   coversY: boolean;
+  widthZero: boolean;
+  heightZero: boolean;
   hidden: boolean;
   unprovable: Set<string>;
   /** The values of every property, by property name. */
@@ -975,6 +1191,8 @@ function stateOf(
     positioned: false,
     coversX: false,
     coversY: false,
+    widthZero: false,
+    heightZero: false,
     hidden: false,
     unprovable: new Set(),
     values: new Map(),
@@ -989,7 +1207,7 @@ function stateOf(
 
     if (!RELEVANT_PROPERTIES.has(property)) return;
 
-    if (isUnprovableValue(value)) {
+    if (isUnprovableValue(property, value)) {
       state.unprovable.add(property);
       return;
     }
@@ -997,24 +1215,40 @@ function stateOf(
     if (property === 'position') {
       if (POSITIONED.test(value)) state.positioned = true;
     } else if (property === 'inset' || property === 'inset-block' || property === 'inset-inline') {
-      if (ZERO.test(value)) {
+      if (isZeroLength(value)) {
         edges.top = true;
         edges.right = true;
         edges.bottom = true;
         edges.left = true;
       }
     } else if (property === 'top' || property === 'bottom' || property === 'right' || property === 'left') {
-      if (ZERO.test(value)) edges[property] = true;
+      if (isZeroLength(value)) edges[property] = true;
     } else if (property === 'width' || property === 'min-width') {
-      if (COVERS_X.test(value)) state.coversX = true;
+      if (COVERS_X.test(value) || COVERS_EITHER_AXIS.test(value)) state.coversX = true;
+      if (property === 'width' && isZeroLength(value)) state.widthZero = true;
     } else if (property === 'height' || property === 'min-height') {
-      if (COVERS_Y.test(value)) state.coversY = true;
+      if (COVERS_Y.test(value) || COVERS_EITHER_AXIS.test(value)) state.coversY = true;
+      if (property === 'height' && isZeroLength(value)) state.heightZero = true;
     } else if (property === 'display') {
       if (HIDDEN_DISPLAY.test(value)) state.hidden = true;
     } else if (property === 'visibility') {
       if (HIDDEN_VISIBILITY.test(value)) state.hidden = true;
     } else if (property === 'opacity') {
-      if (/^0(\.0+)?$/.test(value)) state.hidden = true;
+      if (/^0(\.0+)?(?:%)?$/.test(value)) state.hidden = true;
+    } else if (property === 'content-visibility') {
+      if (value === 'hidden') state.hidden = true;
+    } else if (property === 'transform') {
+      if (hasZeroScaleFunction(value) || isLargeNegativeOffset(value)) state.hidden = true;
+    } else if (property === 'scale') {
+      if (hasZeroScaleValue(value)) state.hidden = true;
+    } else if (property === 'translate') {
+      if (isLargeNegativeOffset(value)) state.hidden = true;
+    } else if (property === 'filter') {
+      if (hasZeroOpacity(value)) state.hidden = true;
+    } else if (property === 'font-size' || property === 'line-height') {
+      if (textRulesApply(element) && isZeroLength(value)) state.hidden = true;
+    } else if (property === 'text-indent') {
+      if (textRulesApply(element) && isLargeNegativeOffset(value)) state.hidden = true;
     }
   };
 
@@ -1043,6 +1277,7 @@ function stateOf(
     state.coversX = true;
     state.coversY = true;
   }
+  if (state.widthZero && state.heightZero) state.hidden = true;
 
   return state;
 }
