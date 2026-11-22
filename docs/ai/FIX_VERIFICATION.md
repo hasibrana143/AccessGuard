@@ -39,7 +39,7 @@ A remediation is rejected before it can reach a browser or a repository when it:
   (`type="im&#97;ge"` is `image`) or whose type carries an entity the decoder does
   not know — the resource loader is rejected instead of guessed,
 - contains **server-template syntax** (`<% … %>`, `<? … ?>`, `{{ … }}`, `{% … %}`,
-  `{# … #}`): the template engine of the customer's build evaluates it, so the
+  `{# … #}`, `<# …`): the template engine of the customer's build evaluates it, so the
   remediation would become executable code on the customer's server,
 - adds a **class the original element does not have**: a class is a hook into the
   repository's stylesheet, and the effect of that stylesheet is not part of the
@@ -66,6 +66,10 @@ A remediation is rejected before it can reach a browser or a repository when it:
 - hides the element with `opacity: 0` — the priority suffix is not part of the
   value, so `opacity:0!important` is the same declaration. The text stays in the
   document, which is why the rendered-text check does not catch it,
+- **hides the element or its text** in any other way: `font-size:0`,
+  `line-height:0`, `content-visibility:hidden`, `scale:0`, `filter:opacity(0)`,
+  a `translate` or a `text-indent` with a large negative offset (the off-screen
+  trick). The content stays in the document while the user reads nothing,
 - **hides the element it patches**: the `hidden` attribute, `display:none` and
   `visibility:hidden` on the patched element replace a visible element with an
   invisible one while the rule check still passes,
@@ -75,11 +79,23 @@ A remediation is rejected before it can reach a browser or a repository when it:
 - carries **HTML comment syntax** (`<!--`, `-->`, `--!>`): a comment ends at the
   first `-->`, so a comment opener in the fix swallows the markup that follows it
   in the customer's page,
-- introduces a **remote URL the original element does not have** (`http://…`,
-  `https://…` in `src`, `srcset`, `href`, `poster`, `data`, …): the verification
-  browser blocks every network request, so the new URL is invisible to it — it
-  loads from the customer's browser (a tracking pixel) or points the user
-  somewhere else once the fix is written,
+- **changes or drops the destination** of a URI attribute the original element
+  had, or adds a destination it did not have. The comparison is made on the
+  **resolved** URL, the way the browser resolves it (`canonicalizeUri` in
+  `src/lib/html-attributes.ts`), so the protocol-relative (`//host/x`), the
+  single-slash (`http:/host/x`) and the backslash (`http:\\host\\x`) spelling
+  all reach the same host and cannot slip past it. A remote destination is
+  refused because the verification browser blocks every network request: it
+  would load from the customer's browser (a tracking pixel) once the fix is
+  written. A changed `href` is refused as well — the fix may not point the user
+  somewhere else (`/account` → `mailto:attacker@example.com`). A relative
+  destination the fix adds (a skip link to `#main`) stays on the customer's own
+  site and is allowed,
+- **does not create a live element** for the rule it claims to fix: the rule
+  check looks for the element the browser really creates, so an `<img>` inside a
+  raw-text element (`textarea`, `title`) or inside a bogus comment is not a fix.
+  An `image-alt` fix also has to **keep the media source** of the original
+  image — a fix that drops the `src` leaves a broken image behind,
 - still contains a placeholder (`TODO`, `FIXME`, `{{…}}`, `YOUR_ALT_TEXT`),
 - does not address the rule it claims to fix (per-rule check),
 - is empty or longer than 20k characters.
@@ -97,13 +113,13 @@ spliced at AST-derived offsets, so the rest of the file is untouched.
 | Property | Behaviour |
 | --- | --- |
 | Location | JSX/JS: AST match on the tag and **every** identity attribute the report carries (`src`, `href`, `id`, `name`, `class`, `aria-label`, `role`, `data-testid`, and softly `type`/`alt`); a candidate that lacks a supplied identity attribute does not match. The class list is compared as a set, so two copies of the same image with different classes are never confused. HTML: exact element text. |
-| Live context | In an HTML file only a **live tag** counts: markup inside a comment, inside a raw-text element (`script`, `style`, `textarea`, `title`, `xmp`, `listing`, `plaintext`, `noscript`, `iframe`, `noembed`, `noframes`) or inside another tag's attribute value is not an element the browser renders, so a fix is never written there. The content of a `template`, `object` or `applet` is parsed but never rendered, and a raw-text element that is never closed keeps the rest of the document as its text. The end tag has to be a real end tag: `</scripture>` does not close a script. A markup declaration that is not a comment (`<!bogus …>`, a CDATA section) is read as a **bogus comment** that ends at the next `>`, and an end tag inside a quoted attribute value (`<template><div data-x="</template>">`) belongs to the attribute, not to the element. A file that holds the element only in one of those places is not patched and not counted. |
+| Live context | In an HTML file only a **live tag** counts: markup inside a comment, inside a raw-text element (`script`, `style`, `textarea`, `title`, `xmp`, `listing`, `plaintext`, `noscript`, `iframe`, `noembed`, `noframes`) or inside another tag's attribute value is not an element the browser renders, so a fix is never written there. The content of a `template`, `object`, `applet` or **`frameset`** is parsed but never rendered — in a frameset document the content of the frameset is frame content, not body content, so Chromium creates no image for it. A raw-text element that is never closed keeps the rest of the document as its text. The end tag has to be a real end tag: `</scripture>` does not close a script. A markup declaration that is not a comment (`<!bogus …>`, a CDATA section) is read as a **bogus comment** that ends at the next `>`, and an end tag inside a quoted attribute value (`<template><div data-x="</template>">`) belongs to the attribute, not to the element. A file that holds the element only in one of those places is not patched and not counted. |
 | Patchable files | A fix is only written into a file whose destination context can be proven: an HTML file (`.html`, `.htm`) or a JSX file (`.tsx`, `.jsx`, `.js`). A TypeScript module or a component file that mixes markup and code (`.ts`, `.mts`, `.cts`, `.vue`, `.svelte`, `.astro`) has no proven context — the element text can sit inside a string or an expression there — so the fix ships as a review suggestion. Those files are still **scanned**, so a duplicate in one of them keeps the remaining match ambiguous. |
-| Template destination | An HTML file that carries **server-template syntax** (`<% … %>`, `<? … ?>`, `{{ … }}`, `{% … %}`, `{# … #}`) is a template, not HTML. Nothing is written into it — not the patch and not the review comment, because the template engine would evaluate the comment as well. The fix ships as a review suggestion. |
+| Template destination | An HTML file that carries **server-template syntax** (`<% … %>`, `<? … ?>`, `{{ … }}`, `{% … %}`, `{# … #}`, `<# …` — the FreeMarker directive) is a template, not HTML. Nothing is written into it — not the patch and not the review comment, because the template engine would evaluate the comment as well. The fix ships as a review suggestion. |
 | Occurrence aware | Occurrences are counted per rule **and** per element. Three copies of the same image are patched one by one; two different images are patched independently. A fix is only written when **every** occurrence of its element in the file is covered by a selected fix — the fixes are matched to the occurrences in order, so selecting one of two identical elements would otherwise patch the wrong one. Two selected copies of the same element with **different** remediations cannot be mapped at all (the request order is not the occurrence order), so they stay review suggestions too. |
 | Ambiguity | If the element exists in more than one file of the repository, the fix is **not** written to any file — it ships in the PR as a review suggestion. A wrong file is worse than no patch. |
 | Complete scan | The **whole** repository is scanned, bounded by a byte budget (5 MB) instead of a file count: every text file is read, whatever its extension, because a file the writer does not know (a template, a partial, a content file) can hold the same element. A blob whose name does not say whether it is binary (`.dat`, `.bin`) is read as well and **the content decides**: a NUL byte cannot appear in a text file, so a binary blob cannot hold the element and is left out of the scan, while a text blob holds it and makes the match ambiguous. A tree that does not fit, a tree the API reports as `truncated`, a file that could not be read and a **submodule** (a tree entry of type `commit`, which holds files the tree does not list) never patch a file: an incomplete scan cannot prove uniqueness. |
-| Destination stylesheet | The repository's own CSS is part of the destination. **Every** style source the repository owns is read and matched against the patched element: the stylesheet files (`.css`, `.scss`, `.sass`, `.less`, `.pcss`, `.styl`, …), the `<style>` block of **every** file type, the stylesheets a file links (`<link rel="stylesheet">`) and the stylesheets they import (`@import`). A rule that can turn the element into a full-viewport overlay (a positioned element that spans the viewport) or hide it (`display:none`, `visibility:hidden`, `opacity:0`) keeps the fix out of the repository. The rules of a utility stylesheet are read together, so `fixed inset-0 w-screen h-screen` is caught even when no single rule covers the viewport, and the verdict does **not** depend on the order the stylesheets were read in. The reader follows the browser: CSS escapes are decoded (`p\6fsition` is `position`, `fix\65 d` is `fixed`, `[a\6c t]` is `[alt]`), a comment opener inside a string is text and not a comment, native nesting is flattened (`&` is the parent selector), the frames of an animation are judged when the element animates with them, and a value the analyser cannot compute (`var()`, an unknown function) makes the destination **unprovable** when the fix changes that property — an unprovable destination never receives a source patch. A stylesheet the analyser cannot judge (a preprocessor at-rule, an unknown at-rule, a variable or an interpolation it cannot resolve) fails closed in the same way. |
+| Destination stylesheet | The repository's own CSS is part of the destination. **Every** style source the repository owns is read and matched against the patched element: the stylesheet files (`.css`, `.scss`, `.sass`, `.less`, `.pcss`, `.styl`, …), the `<style>` block of **every** file type, the stylesheets a file links (`<link rel="stylesheet">`) and the stylesheets they import (`@import`). A rule that can turn the element into a full-viewport overlay (a positioned element that spans the viewport) or hide it (`display:none`, `visibility:hidden`, `opacity:0`, `content-visibility:hidden`, a zero `scale`, a `filter: opacity(0)`, an off-screen `translate`, a zero `font-size`/`line-height` on a text-bearing element, a large negative `text-indent`) keeps the fix out of the repository. The rules of a utility stylesheet are read together, so `fixed inset-0 w-screen h-screen` is caught even when no single rule covers the viewport, and the verdict does **not** depend on the order the stylesheets were read in. The reader follows the browser: the CSS priority suffix is stripped (`fixed!important` is `fixed`), every logical, small and large viewport unit is known (`100vi`, `100vb`, `100svw`, `100lvh`, …), CSS escapes are decoded (`p\6fsition` is `position`, `fix\65 d` is `fixed`, `[a\6c t]` is `[alt]`), a comment opener inside a string is text and not a comment, native nesting is flattened (`&` is the parent selector), the frames of an animation are judged when the element animates with them, and a value the analyser cannot compute (`var()`, an unknown function, an unknown unit or keyword) makes the destination **unprovable** when the fix changes that property — an unprovable destination never receives a source patch. A **relational selector** (`:has(…)`) depends on DOM context the reader does not model, and the fix can change that context, so it fails closed in the same way. A **dynamic style source** — a JSX `<style>{expression}</style>` or a `dangerouslySetInnerHTML` style — is never an empty, proven stylesheet: the destination is unprovable and the repository receives no source patch. A stylesheet the analyser cannot judge (a preprocessor at-rule, an unknown at-rule, a variable or an interpolation it cannot resolve) fails closed in the same way. |
 | Conversion | HTML attributes are renamed to JSX (`class` → `className`, `for` → `htmlFor`), void elements are self-closed, `style="…"` becomes a style object. Style values are allow-listed: braces, quotes, backslashes, `url()` and `expression()` are dropped so a style attribute cannot break out of the JS expression it is written into. |
 | No-op | A patch identical to the original element is not a fix and is not counted. |
 | Content loss | A patch that empties an element that had visible text (a link or a button) is rejected — an axe-verified fix must not delete what the user reads. The new text has to **keep** the old text: a fix that reduces "Read more" to "R" passes every rule check and still deletes what the user reads. Text inside a hidden element (`hidden`, `display:none`, `visibility:hidden`, `opacity:0`) is not visible text, so moving the label into a hidden element is a content loss too. The CSS priority suffix is stripped before the check, so `opacity:0!important` is the same declaration as `opacity:0`. `aria-hidden` removes content from the accessibility tree, **not** from the screen: its text counts as visible text, so a fix may not delete it. |
@@ -151,14 +167,19 @@ The rendered text is part of the verdict: when the original element showed text,
 patched element has to show the **same** text. The text is read from the computed
 style, not from `innerText`: a text that is transparent (`opacity:0`) or not
 rendered (`display:none`) is still part of `innerText`, while the user cannot see
-it. A fix that moves the label into a hidden element passes axe and still deletes
-what the user reads, so it fails the verification.
+it. A text without an area (`font-size:0`, `line-height:0`) or one that sits
+outside the viewport (`translate:-9999px`) is not readable either, so it does not
+count as rendered text. A fix that moves the label into a hidden element passes
+axe and still deletes what the user reads, so it fails the verification.
 
 The **patched element** itself is judged from the computed style as well: it may
 not be hidden (`display:none`, `visibility:hidden`, `opacity:0` — the `hidden`
-attribute included) and its text may not be transparent (`color:transparent`, a
-colour with an alpha of zero, `-webkit-text-fill-color:transparent`). The browser
-is the reference, so the verdict does not depend on how the hiding or the
+attribute included), not painted (`content-visibility:hidden`,
+`filter:opacity(0)`, a `scale` of zero, a transform that collapses the element)
+and not moved out of the view (a `translate` with a large negative offset). Its
+text may not be transparent (`color:transparent`, a colour with an alpha of zero,
+`-webkit-text-fill-color:transparent`) and has to have a painted text range. The
+browser is the reference, so the verdict does not depend on how the hiding or the
 transparency was written.
 
 ## 5. What verification does NOT prove

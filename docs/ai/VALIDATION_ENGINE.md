@@ -18,7 +18,7 @@ A fix passes five layers before it can touch a repository. Each layer can stop i
    `opacity:0!important` is the same declaration), any
    **brace** (it becomes an expression in JSX and an interpolation in a template
    file), **server-template syntax** (`<% … %>`, `<? … ?>`, `{{ … }}`, `{% … %}`,
-   `{# … #}` — the template engine of the customer's build evaluates it), an
+   `{# … #}`, `<# …` — the template engine of the customer's build evaluates it), an
    `<input>` whose type is an image **after the browser decodes it**
    (`type="im&#97;ge"` is `image`) or whose type carries an entity the decoder
    does not know, and a remediation that **adds a class** the original element
@@ -29,13 +29,20 @@ A fix passes five layers before it can touch a repository. Each layer can stop i
    guessing what the browser resolves it to — a partial entity table cannot mirror
    the browser (`position&sol;&ast;x*&sol;:fixed` is `position: fixed`).
    A remediation is also rejected when it **hides the element it patches**
-   (`hidden`, `display:none`, `visibility:hidden`), when it makes the **text
-   transparent** (`color:transparent`, a colour with an alpha of zero,
+   (`hidden`, `display:none`, `visibility:hidden`) or hides the element or its
+   text in any other way (`font-size:0`, `line-height:0`,
+   `content-visibility:hidden`, `scale:0`, `filter:opacity(0)`, an off-screen
+   `translate` or `text-indent`), when it makes the **text transparent**
+   (`color:transparent`, a colour with an alpha of zero,
    `-webkit-text-fill-color:transparent`), when it carries **HTML comment
-   syntax** (`<!--`, `-->`, `--!>` — a comment swallows the markup behind it) and
-   when it introduces a **remote URL the original element does not have**
-   (the verification browser blocks every network request, so the new URL would
-   load from the customer's browser once the fix is written).
+   syntax** (`<!--`, `-->`, `--!>` — a comment swallows the markup behind it),
+   when it **changes, drops or adds a destination** of a URI attribute (the
+   comparison is made on the URL the way the browser resolves it, so the
+   protocol-relative, single-slash and backslash spelling of a remote URL cannot
+   slip past it, and a changed `href` may not point the user somewhere else),
+   and when it does not create a **live element** for the rule it claims to fix
+   (an `<img>` inside `textarea`, `title` or a bogus comment is not a fix, and an
+   `image-alt` fix has to keep the media source of the original image).
 2. **Rule validation** — `validateFixForRule` (`src/lib/fix-validation.ts`): the fix
    must contain what the rule needs (an `alt=`, a `<label>`, an accessible name).
 3. **Placeholder rejection** — `containsPlaceholder` (`src/lib/ast-patch.ts`): a fix
@@ -81,16 +88,22 @@ writes anything into a customer's repository:
   `.less`, …), the `<style>` block of every file, the stylesheets a file links and
   the stylesheets they import. A rule that can turn the element into a
   full-viewport overlay (a positioned element that spans the viewport) or hide it
-  (`display:none`, `visibility:hidden`, `opacity:0`) keeps the fix out of the
-  repository. The rules of a utility stylesheet are read together, so
-  `fixed inset-0 w-screen h-screen` is caught even when no single rule covers the
-  viewport, and the verdict does not depend on the order the stylesheets were read
-  in. The reader follows the browser: CSS escapes are decoded, a comment opener
-  inside a string is text, native nesting is flattened and the frames of an
-  animation are judged when the element animates with them. A stylesheet the
-  analyser cannot judge, or a value it cannot compute for a property the fix
-  changes, is **unprovable** — an unprovable destination never receives a source
-  patch.
+  (`display:none`, `visibility:hidden`, `opacity:0`, `content-visibility:hidden`,
+  a zero `scale`, a `filter: opacity(0)`, an off-screen `translate`, a zero
+  `font-size`/`line-height` on a text-bearing element, a large negative
+  `text-indent`) keeps the fix out of the repository. The rules of a utility
+  stylesheet are read together, so `fixed inset-0 w-screen h-screen` is caught
+  even when no single rule covers the viewport, and the verdict does not depend
+  on the order the stylesheets were read in. The reader follows the browser: the
+  CSS priority suffix is stripped (`fixed!important` is `fixed`), every logical,
+  small and large viewport unit is known (`100vi`, `100vb`, `100svw`, `100lvh`),
+  CSS escapes are decoded, a comment opener inside a string is text, native
+  nesting is flattened and the frames of an animation are judged when the element
+  animates with them. A stylesheet the analyser cannot judge, a value it cannot
+  compute for a property the fix changes, a **relational selector** (`:has(…)`,
+  whose DOM context the fix can change) and a **dynamic style source** (a JSX
+  `<style>{expression}</style>`) are **unprovable** — an unprovable destination
+  never receives a source patch.
 
 An incomplete scan never patches a file; the fix stays a review suggestion. The
 review comment that is written into the file instead neutralizes the comment
@@ -108,7 +121,8 @@ scanned, so a duplicate in one of them keeps the remaining match ambiguous.
 The **live context** follows the browser: markup inside a raw-text element
 (`script`, `style`, `textarea`, `title`, `xmp`, `listing`, `plaintext`, `noscript`,
 `iframe`, `noembed`, `noframes`) never becomes an element, the content of a
-`template`, `object` or `applet` is parsed but never rendered, and an element that
+`template`, `object`, `applet` or **`frameset`** is parsed but never rendered (in
+a frameset document it is frame content, not body content), and an element that
 is never closed keeps the rest of the document as its text. The end tag has to be a
 real end tag: `</scripture>` does not close a script. A markup declaration that is
 not a comment (`<!bogus …>`, a CDATA section) is a bogus comment that ends at the
@@ -116,9 +130,10 @@ next `>`, and an end tag inside a quoted attribute value belongs to the attribut
 not to the element.
 
 A **template destination** is refused as well: an HTML file that carries
-server-template syntax is a template, not HTML. Nothing is written into it — not
-the patch and not the review comment, because the template engine would evaluate
-the comment as well.
+server-template syntax (`<% … %>`, `<? … ?>`, `{{ … }}`, `{% … %}`, `{# … #}`,
+`<# …`) is a template, not HTML. Nothing is written into it — not the patch and
+not the review comment, because the template engine would evaluate the comment as
+well.
 
 Output is embedded in an `accessguard/fix-accessibility-fixes-{date}-{ts}` branch PR
 with a summary file — a human reviews before merge; nothing auto-merges. Every opened
@@ -135,28 +150,36 @@ PR writes a `github_pr_created` audit log entry; the write is retried
 
 - `src/lib/__tests__/fix-validation.test.ts` — injection and per-rule checks.
 - `src/lib/__tests__/html-attributes.test.ts` — browser-like attribute parsing, entity
-  decoding, URI normalisation, handler stripping.
+  decoding, URI normalisation, the browser-equivalent URL resolution
+  (`canonicalizeUri`), handler stripping.
 - `src/lib/__tests__/github-pr.test.ts` — occurrence-aware patching, placeholder,
   no-op, content-loss and syntax-guard rejection, validation bypasses (CSS escaped
-  overlays, `frame`/`frameset`), Markdown escaping and the inline code span.
+  overlays, `frame`/`frameset`), the destination comparison of a URI attribute
+  (protocol-relative, single-slash and backslash spelling, a changed `href`, a
+  dropped source), the hiding styles, the FreeMarker directive, Markdown escaping
+  and the inline code span.
+- `src/lib/__tests__/fix-validation.test.ts` — injection and per-rule checks, the
+  live-element and media-source requirement of the `image-alt` rule.
 - `src/lib/__tests__/ast-patch.test.ts` — AST location (every identity attribute the
   report carries), JSX conversion, parse guard, visible-text guard including hidden
   text, `aria-hidden` text and the CSS priority suffix, and the live-context guard
-  (raw-text elements, inert `template`/`object`/`applet` content, raw-text end tag
-  prefixes, elements that are never closed, bogus comments and CDATA sections, an end
-  tag inside an attribute value).
+  (raw-text elements, inert `template`/`object`/`applet`/`frameset` content,
+  raw-text end tag prefixes, elements that are never closed, bogus comments and
+  CDATA sections, an end tag inside an attribute value).
 - `src/lib/__tests__/css-context.test.ts` — the destination stylesheet judgement:
   overlay and hiding rules, utility stylesheets read together, conditional groups,
   comments, attribute selectors and the rules that do not reach the element — plus
   the rules the browser applies and the analyser used to miss (escaped selectors,
-  properties and values, negated selectors, dynamic viewport units, minimum viewport
-  sizing, custom properties, native nesting, a changed attribute value), the
-  independence of the verdict from the order of the stylesheets and the animation
-  frames.
+  properties and values, negated selectors, dynamic and logical viewport units,
+  minimum viewport sizing, custom properties, native nesting, a changed attribute
+  value, the CSS priority suffix, a relational selector, a dynamic style source),
+  the independence of the verdict from the order of the stylesheets and the
+  animation frames.
 - `src/lib/__tests__/fix-verification.test.ts` — gate semantics, the
   check-before-render order, the browser isolation (no HTTP, no WebSocket), the
   visible-text verdict, the rendered-element verdict (a hidden element, transparent
-  text) and real axe runs.
+  text, a zero-size text, an unpainted element, an element moved off-screen) and
+  real axe runs.
 - `src/lib/__tests__/github.test.ts` — the repository writer: one fetch and one write
   per file, the complete tree scan, ambiguous matches left alone, an incomplete scan
   (unreadable file, truncated tree, submodule) never patching, the destination
