@@ -1,23 +1,25 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + sixth-review closure** · Date: 2026-11-22 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + seventh-review closure** · Date: 2026-11-22 · Owner: CTO agent
 
 ## What shipped
 
 The four P0 "make the product true" gaps from `.ai/PRODUCT-CRITIQUE-DEEP.md` are closed.
-The first V23 cut was reviewed six times: the first review found seven more defects
+The first V23 cut was reviewed seven times: the first review found seven more defects
 (3 reproduced P0 defects, 3 High, 4 Medium, 1 Low), the **re-review of that hardening
 found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, the
 **fourth review found 3 High, 9 Medium**, the **fifth review of that closure found
-2 High, 4 Medium**, and the **sixth review of that closure found 2 High, 6 Medium**.
+2 High, 4 Medium**, the **sixth review of that closure found 2 High, 6 Medium**, and
+the **seventh review of that closure found 3 High, 4 Medium**.
 Every earlier round closed the literal reproductions while an equivalent path stayed
-open. The sixth review re-ran all twelve fourth-review payloads and all six
-fifth-review payloads (all still blocked) and independently reproduced eight
-equivalent paths. **All eight are now fixed at their root cause, with a permanent
-regression each** (the reviewer-payload re-run: 36/36 assertions — 26 payloads
-blocked, 8 legitimate behaviours still pass, and the legitimate fix still lands).
+open. The seventh review re-ran all twelve fourth-review, all six fifth-review and
+all eight sixth-review payloads (all still blocked) and independently reproduced seven
+equivalent paths. **All seven are now fixed at their root cause, with a permanent
+regression each** (the reviewer-payload re-run: 39/39 assertions — 26 prior payloads
+plus the 8 seventh-review reproductions blocked, 9 legitimate behaviours still pass,
+and the legitimate fix still lands).
 **The release verdict is still NOT READY** — the gate requires Critical 0 and High 0
-from an independent pass, and the **seventh review is the next check**.
+from an independent pass, and the **eighth review is the next check**.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -58,6 +60,41 @@ from an independent pass, and the **seventh review is the next check**.
 64.80 / 56.21 / 66.80 / 66.34 (thresholds 55 / 50 / 58 / 57) · build 0 ·
 Playwright 79/79 · `npm audit --audit-level=high` 0 (15 moderate) · the reviewer
 payload re-run 36/36 (26 payloads blocked, 8 legitimate behaviours pass), temporary
+file deleted.
+
+### Seventh independent security review (2026-11-22)
+
+> The verdict was NOT READY — Critical 0, High 3, Medium 4, Low 0 — against tree
+> `cdb246a` (baseline `0650188`, checkout `5a1b83e`). **All seven findings are
+> closed** (the closure table and the evidence are in `.ai/SECURITY-STATUS.md`;
+> the reviewer's own artifact is `.ai/SECURITY-REVIEW-7.md`). The release gate
+> opens only when an **eighth independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 7-H1 — the CSS reader kept the priority suffix, missed the logical viewport units and left an uncomputable value harmless | High | `position:fixed!important` and `width:100vi` verified with `harm:null`; Chromium computed a 1280×720 fixed overlay and the fix was written | **Closed** — the suffix is stripped, every logical / small / large viewport unit is known, and a value the analyser cannot compute makes the destination unprovable |
+| 7-H2 — a relational selector (`:has()`) was judged only on its subject compound | High | `body:has(#target[alt])` verified with `harm:null`; Chromium turned the ancestor into a full-viewport fixed overlay after the fix added `alt` | **Closed** — a selector that contains `:has(` makes the destination unprovable, so no write happens |
+| 7-H3 — a dynamic `<style>{css}</style>` carrier was read as an empty, proven stylesheet | High | `styleBlocks:["{css}"]`, `cssRules:0`, `harm:null`, one write; Chromium applied the customer's overlay | **Closed** — a dynamic style source (a JSX expression body or `dangerouslySetInnerHTML`) is unprovable |
+| 7-M1 — the remote-URL comparison matched raw strings, not resolved URLs | Medium | `//host/x`, `http:/host/x` and `http:\\host\\x` each validated, applied and hit the customer browser; `href="/account"` → `mailto:` was verified with confidence 1 and written | **Closed** — the destination is compared on the URL the way the browser resolves it; a changed, dropped or newly added destination is refused |
+| 7-M2 — the hiding set knew four forms, not the other five | Medium | `font-size:0`, `content-visibility:hidden`, `translate:-9999px`, `filter:opacity(0)` and `scale:0` verified with confidence 1 while the text range measured `0×0` | **Closed** — the static guard, the browser verdict and the repository CSS reader all refuse the whole hiding set |
+| 7-M3 — the `image-alt` rule check was lexical and did not require the media source | Medium | `<textarea>`, `<title>` and a bogus-comment carrier each verified with confidence 1 and were written; Chromium created `images:0`; a dropped `src` was accepted too | **Closed** — the fix needs a live `<img>` and has to keep the media source |
+| 7-M4 — the live-context scanner did not implement the frameset parsing state | Medium | The scanner counted 1 live image and wrote the fix; Chromium reported `images:0`, `framesets:1` | **Closed** — the content of a frameset is frame content, not body content |
+
+### Seventh-review closure (2026-11-22)
+
+| Fix | Root cause | Regression |
+|---|---|---|
+| Browser-equivalent URI resolution (`src/lib/html-attributes.ts`, `src/lib/github-pr.ts`) | The destination comparison compared raw strings instead of resolved URLs | `html-attributes.test.ts`, `github-pr.test.ts` (the three URL spellings, the navigation mutation, the preserved and the added relative destination) |
+| CSS declaration semantics + relational selector + dynamic carrier (`src/lib/css-context.ts`, `src/lib/github.ts`) | The reader kept the priority suffix, missed the logical viewport units, judged only the selector subject and treated a dynamic `<style>` as empty | `css-context.test.ts`, `github.test.ts` (the suffix, the units, the uncomputable value, `:has()`, the dynamic carrier, the hiding values) |
+| Visual-hiding guard (`src/lib/github-pr.ts`, `src/lib/fix-verification.ts`) | Only four hiding forms were known to the static guard and the browser verdict | `github-pr.test.ts` (eight hiding styles), `fix-verification.test.ts` (the painted-nowhere browser cases) |
+| Live element + media source (`src/lib/fix-validation.ts`) | The rule check found the `<img>` token lexically | `fix-validation.test.ts` (the raw-text / bogus-comment carriers, the dropped source) |
+| Frameset parsing state (`src/lib/ast-patch.ts`) | The inert-content list did not carry the frameset | `ast-patch.test.ts`, `github-pr.test.ts` (nothing is written into a frameset document) |
+| FreeMarker directive (`src/lib/github-pr.ts`) | The twelve template spellings covered eleven; `<#` was still accepted | `github-pr.test.ts` (the directive in a remediation and in a destination) |
+
+**Gate evidence:** tsc 0 · lint 0 · vitest 53 files / 703 tests · coverage
+64.94 / 56.85 / 66.88 / 66.50 (thresholds 55 / 50 / 58 / 57) · build 0 ·
+Playwright 79/79 · `npm audit --audit-level=high` 0 (15 moderate) · the reviewer
+payload re-run 39/39 (34 payloads blocked, 9 legitimate behaviours pass), temporary
 file deleted.
 
 ### Fourth-review closure (2026-11-22)
@@ -187,6 +224,7 @@ Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same co
 - `e2d38b0` / `1a6b9c2` / `24fdb02` / `7c49b7b` / `8afc55a` — the third-review closure (code, devops, docs, state, volume entry)
 - `db1fc6d` / `11918c1` / `3b3eb0f` / `0650188` — the fifth-review closure (code, docs, state, volume entry)
 - `4cdefea` / `15300b9` — the sixth-review closure (code, docs); the state and volume entry follow in the same cycle
+- `5fb4473` / `0b7befc` — the seventh-review closure (code, docs); the state and volume entry follow in the same cycle
 
 ## What this does NOT prove (read before making a claim)
 
@@ -209,11 +247,12 @@ Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same co
   credits exhausted). The security evidence for this cycle is the independent
   human-agent reviews (including the re-review) plus `npm audit`; Strix must be re-run
   before it can be cited.
-- **The fifth independent security review returned NOT READY (High 2, Medium 4)** and
-  **the sixth returned NOT READY (High 2, Medium 6)**. Both sets of equivalent paths
-  were reproduced in local, mocked conditions and are now fixed at their root cause,
-  but the release gate stays closed until a **seventh independent pass returns READY**;
-  see `.ai/SECURITY-STATUS.md`.
+- **The fifth independent security review returned NOT READY (High 2, Medium 4)**,
+  **the sixth returned NOT READY (High 2, Medium 6)** and **the seventh returned
+  NOT READY (High 3, Medium 4)**. Every set of equivalent paths was reproduced in
+  local, mocked conditions and is now fixed at its root cause, but the release gate
+  stays closed until an **eighth independent pass returns READY**; see
+  `.ai/SECURITY-STATUS.md`.
 - The destination CSS judgement is **static**: CSS-in-JS, CDN stylesheets, a style
   written by a script at runtime and a custom property the analyser cannot resolve
   are outside it (an unresolved custom property fails the destination closed when the

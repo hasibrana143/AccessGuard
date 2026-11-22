@@ -1,6 +1,31 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-22 (sixth-review closure)
+Last run: 2026-11-22 (seventh-review closure)
+
+## Seventh-review closure evidence
+
+| Check | Result |
+|---|---|
+| Temporary reviewer-payload re-run | PASS — 1 file, 39/39 assertions: the 12 fourth-review payloads, the 6 fifth-review payloads, the 8 sixth-review payloads and the 8 seventh-review reproductions are all blocked in the unsafe direction, and the 9 legitimate behaviours (HTML / TSX / JS fix, `https:` / `mailto:` href, 3-of-3 copies, 2-of-3 copies, the 12 template spellings, the mocked symlink) still pass. The file was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 703/703 tests, 0 failed (was 53/667) |
+| Coverage | PASS — statements 64.94% (threshold 55) · branches 56.85% (50) · functions 66.88% (58) · lines 66.50% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+
+### Permanent regressions added for the seventh review
+
+| Finding | Regression | File |
+|---|---|---|
+| 7-H1 — the CSS priority suffix, the logical viewport units and an uncomputable value | the priority suffix is read as the browser does, the logical viewport units are recognised, an unknown unit / keyword makes the destination unprovable | `css-context.test.ts`, `github.test.ts` |
+| 7-H2 — a relational selector (`:has()`) | the destination is unprovable and the writer performs no write | `css-context.test.ts` |
+| 7-H3 — a dynamic style carrier (`<style>{css}</style>`) | a dynamic source is never an empty, proven stylesheet; the writer performs no write | `css-context.test.ts`, `github.test.ts` |
+| 7-M1 — the remote-URL spellings and the navigation mutation | protocol-relative, one-slash and backslash destinations are refused, a changed `href` is refused, a preserved and an added relative destination stay allowed | `html-attributes.test.ts`, `github-pr.test.ts` |
+| 7-M2 — the visual-hiding forms | the static guard and the browser verdict refuse a zero size, a paint suppression, a zero scale, an off-screen placement and a zero-area text range | `github-pr.test.ts`, `fix-verification.test.ts`, `css-context.test.ts` |
+| 7-M3 — the live element and the media source | a raw-text / bogus-comment carrier is not a fix, and a dropped media source is refused | `fix-validation.test.ts` |
+| 7-M4 — the frameset parsing state | the occurrence count is 0 and nothing is written into a frameset document | `ast-patch.test.ts`, `github-pr.test.ts` |
 
 ## Sixth-review closure evidence
 

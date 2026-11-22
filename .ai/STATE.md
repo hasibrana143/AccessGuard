@@ -2,15 +2,31 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 sixth-review closure shipped, seventh review pending** 🔴 |
-| Current task | Seventh independent security review of the sixth-review closure; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 seventh-review closure shipped, eighth review pending** 🔴 |
+| Current task | Eighth independent security review of the seventh-review closure; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the eight sixth-review findings (High 2, Medium 6) are fixed at their root cause, every working reproduction is blocked and the whole gate suite is green; the gate stays closed until the seventh independent review returns READY |
+| Status | AMBER — the seven seventh-review findings (High 3, Medium 4) are fixed at their root cause, every working reproduction is blocked and the whole gate suite is green; the gate stays closed until the eighth independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Run the seventh independent security review against the pushed tree; fix every finding at the root cause with a permanent regression and repeat until READY |
-| Last verification | 2026-11-22 — sixth-review closure: tsc 0, lint 0, vitest 53 files/667 tests, coverage 64.80/56.21/66.80/66.34, build 0, Playwright 79/79, npm audit High 0; 8/8 sixth-review reproductions blocked by permanent regressions |
+| Next action | Run the eighth independent security review against the pushed tree; fix every finding at the root cause with a permanent regression and repeat until READY |
+| Last verification | 2026-11-22 — seventh-review closure: tsc 0, lint 0, vitest 53 files/703 tests, coverage 64.94/56.85/66.88/66.50, build 0, Playwright 79/79, npm audit High 0; 39/39 reviewer-payload re-run assertions (26 prior + 8 seventh-review payloads blocked, 9 legitimate behaviours pass) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-22, seventh-review closure)
+
+| Check | Result |
+|---|---|
+| Seventh-review closure | PASS — all seven findings (7-H1, 7-H2, 7-H3, 7-M1…7-M4) fixed at their root cause; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-7.md` |
+| Permanent regressions | PASS — every reproduction of the seventh review has a shipped regression: the CSS priority suffix, the logical viewport units, the uncomputable value, the relational selector, the dynamic style carrier, the three remote-URL spellings, the navigation mutation, the eight hiding styles, the live-element carriers, the dropped media source and the frameset |
+| Temporary reviewer-payload re-run | PASS — 1 file, 39/39 assertions: the 12 fourth-review payloads, the 6 fifth-review payloads, the 8 sixth-review payloads and the 8 seventh-review reproductions are blocked in the unsafe direction, and the 9 legitimate behaviours still pass. The file was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 703/703 tests (was 53/667) |
+| Coverage | PASS — statements 64.94% (threshold 55) · branches 56.85% (50) · functions 66.88% (58) · lines 66.50% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+| Eighth independent security review | PENDING — the release gate opens only on READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-22, sixth-review closure)
 

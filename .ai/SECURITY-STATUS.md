@@ -2,6 +2,61 @@
 
 Last verification: 2026-11-22
 
+## Seventh independent security review (2026-11-22)
+
+**Verdict: NOT READY — Critical 0, High 3, Medium 4, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree was **not releasable** until every High
+reproduction is blocked in the unsafe direction and a fresh independent review
+returns READY.
+
+The reviewed tree was `cdb246a` (`vol: releases — V23: volume log entry for the
+sixth-review closure cycle`), against the requested baseline `0650188`; the
+checkout at review time was `5a1b83e`. The reviewer's own artifact is
+`.ai/SECURITY-REVIEW-7.md` (report only — no shipped source, docs, CI, dependency
+or environment file was changed by the reviewer). Every reproduction used local
+synthetic repositories, a mocked GitHub transport, local Chromium and
+`127.0.0.1` listeners. No production, third-party or public target was scanned,
+no live repository was mutated, no external GitHub Markdown service was called,
+and **no Strix result is claimed** (every configured provider refused the run:
+quota / EOL model / no credits).
+
+### Reproduced findings and their closure
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 7-H1 | **High** | Destination CSS declaration semantics | `styles.css` = `[alt]{position:fixed!important;inset:0;width:100%;height:100%;z-index:999999}` → `harm:null`, 1 write, Chromium measured `position:fixed`, `1280×720`, `z-index:999999`; the logical-viewport twin (`100vi`/`100vb`) did the same | The CSS reader kept the priority suffix in the declaration value (`fixed!important` is not the browser value `fixed`), did not know the logical viewport units, and left an unsupported value harmless instead of unprovable | `src/lib/css-context.ts` strips the priority suffix (`!important` and `! important`), knows every logical / small / large viewport unit (`vi`, `vb`, `sv*`, `lv*`), and makes a value, unit or keyword it cannot compute **unprovable** when the fix changes that property — an unprovable destination never receives a write |
+| 7-H2 | **High** | Destination CSS relational selectors | `body:has(#target[alt]){position:fixed;inset:0;width:100%;height:100%}` → `harm:null`, 1 write, Chromium matched the ancestor (`body`) as a full-viewport fixed overlay | The analyser judged only the subject compound of a selector and ignored the ancestor relationship `:has()` creates — the accessibility attribute activates the customer-owned rule | Any selector containing `:has(` (also inside `:is(…)` / `:where(…)`) makes the destination **unprovable**, so the writer refuses the repository write |
+| 7-H3 | **High** | Dynamic repository style carrier | `App.jsx` with `<style>{css}</style>` → `styleBlocks:["{css}"]`, `cssRules:0`, `harm:null`, 1 write, Chromium applied the overlay | `extractStyleBlocks` captured the raw body of a `<style>` element; a JSX expression body produced no rule and was silently treated as an empty, proven stylesheet | `collectStyleSources` marks a JSX expression body and a `dangerouslySetInnerHTML` style as **dynamic**; `src/lib/github.ts` treats a dynamic source as an unresolvable stylesheet problem → the destination is unprovable and the repository receives no write |
+| 7-M1 | Medium | URI / navigation preservation | `//127.0.0.1:9/pixel?token=local`, `http:/127.0.0.1:9/pixel?token=local` and `http:\\127.0.0.1:9\\pixel` each validated, applied and hit the customer browser; `href="/account"` → `href="mailto:attacker@example.com"` was verified with confidence 1 and written | The remote-URL comparison matched the raw string against `^https?://` after a limited normalisation instead of resolving the URL the way a browser does, and it ignored the non-HTTP allowed schemes | `canonicalizeUri` (`src/lib/html-attributes.ts`) resolves the value with the platform `URL` parser against a fixed base (backslash separator, protocol-relative, single-slash `http:/host`); `src/lib/github-pr.ts` compares the **resolved** destination per attribute: changed, dropped or newly added destinations are refused, a changed-to-remote keeps the remote-URL wording, and a relative / `data:` destination stays allowed |
+| 7-M2 | Medium | Visible-content preservation | `style="font-size:0;line-height:0;overflow:hidden"` and the repository twin `[aria-label]{font-size:0;line-height:0;overflow:hidden}` verified with confidence 1 while the text range measured `0×0`; `content-visibility:hidden`, `translate:-9999px`, `filter:opacity(0)` and `scale:0` did the same | The static style guard and the browser verifier knew `display:none`, `visibility:hidden`, element `opacity:0` and transparent text — but not zero-size text, paint suppression, content-visibility suppression or off-screen / zero-scale rendering | The static guard (`checkStyleAttribute`) and the browser verdict (`checkRenderedElement`, plus the rendered-text helper) now refuse `font-size:0`, `line-height:0`, `content-visibility:hidden`, `filter:opacity(0)`, `scale:0`, an off-screen `translate` / `text-indent` (≤ -1000 absolute units, ≤ -100 %) and a zero-area or off-screen **text range** (`document.createRange()`); the repository CSS reader (`stateOf`) treats the same values as hidden |
+| 7-M3 | Medium | Rule-target / media preservation | `<textarea><img …></textarea>`, `<title><img …></title>` and `<!bogus <img …>>` were accepted, verified with confidence 1 and written (Chromium created `images:0`); `<img id="target" alt="Photo">` (the `src` dropped) did the same | The `image-alt` rule check found the `<img>` token lexically, so a raw-text or bogus-comment carrier passed, and it never required the original media source to remain | `validateFixForRule('image-alt')` now reads the **live** tag attributes (`liveTagAttributes()` — `parseHtmlTags` + `liveTagStarts`) and refuses a fix that does not contain a live `<img>`; it also refuses a fix that removes or changes the original `src` / `srcset` (compared canonically) |
+| 7-M4 | Medium | Live HTML source mapping | `<html><frameset><img id="target" src="x"></frameset></html>` → scanner count 1, 1 write, Chromium reported `images:0`, `framesets:1` | The live-context scanner did not implement the frameset parsing state — the content of a frameset is frame content, not body content, so the browser creates no element for it | `frameset` is in `INERT_CONTENT_TAGS` (`src/lib/ast-patch.ts`): the occurrence count is 0, no patch is written, and the fix is not reported as applied |
+
+### Closure evidence
+
+| Fix | Root cause | Permanent regression |
+|---|---|---|
+| Browser-equivalent URI resolution (`src/lib/html-attributes.ts`, `src/lib/github-pr.ts`) | The destination comparison compared raw strings instead of resolved URLs | `html-attributes.test.ts` (`canonicalizeUri`), `github-pr.test.ts` (protocol-relative, one-slash, backslash, mailto mutation, destination preserved, destination added, relative added) |
+| Hiding-value guard (`src/lib/github-pr.ts`, `src/lib/fix-verification.ts`) | Only four hiding forms were known | `github-pr.test.ts` (eight hiding styles), `fix-verification.test.ts` (painted-nowhere browser cases, the confidence gate) |
+| Live element + media source (`src/lib/fix-validation.ts`) | The rule check was lexical and did not require the media source | `fix-validation.test.ts` (raw-text / bogus-comment carriers, a dropped source) |
+| Frameset parsing state (`src/lib/ast-patch.ts`) | The inert-content list did not carry the frameset | `ast-patch.test.ts` (frameset counts 0, an ordinary body still counts 1), `github-pr.test.ts` (nothing is written into a frameset document) |
+| CSS declaration semantics + relational selector + dynamic carrier (`src/lib/css-context.ts`, `src/lib/github.ts`) | The reader kept the priority suffix, missed the logical viewport units, judged only the selector subject and treated a dynamic `<style>` as empty | `css-context.test.ts` (priority suffix, logical viewport units, relational selector, unknown unit / keyword, dynamic style source, the hiding values), `github.test.ts` (no write for a dynamic style source, a hiding stylesheet, a priority / logical-unit stylesheet) |
+
+**Reviewer-payload re-run:** 1 temporary file, **39/39 assertions** — the 12
+fourth-review payloads, the 6 fifth-review payloads, the 8 sixth-review payloads
+and the 8 seventh-review reproductions are all blocked in the unsafe direction,
+and the 9 legitimate behaviours still pass. The file was deleted after the run;
+every case it covered is now a permanent regression.
+
+**Gate evidence (seventh-review closure):** `npx tsc -p tsconfig.check.json --noEmit`
+exit 0 · `npm run lint` exit 0 · `npx vitest run --coverage` 53 files / 703 tests,
+0 failed · coverage 64.94 / 56.85 / 66.88 / 66.50 (thresholds 55 / 50 / 58 / 57) ·
+`npm run build` exit 0 · `npx playwright test --project=chromium` 79/79 ·
+`npm audit --audit-level=high` Critical 0, High 0 (15 moderate).
+
+**Release verdict: still NOT READY.** The gate opens only when an **eighth
+independent review** returns READY (Critical 0, High 0).
+
 ## Sixth independent security review (2026-11-22)
 
 **Verdict: NOT READY — Critical 0, High 2, Medium 6, Low 0.** The READY gate
