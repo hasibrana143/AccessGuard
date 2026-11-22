@@ -154,6 +154,26 @@ writes anything into a customer's repository:
   **CSS-in-JS** library builds the selector and the declaration at runtime. All of
   them are unprovable, and an unprovable destination never receives a source patch.
 
+  The runtime is read in **both carriers**: an **inline `<script>`** in the repository
+  HTML is runtime code like a linked script — an unclosed block cannot be followed, so
+  it fails closed — and a **DOM property getter** (`img.alt`, `el.className`,
+  `el.dataset.x`) is a state read like `hasAttribute(…)`, because the property
+  reflects the attribute the fix adds.
+
+  Four more gaps of the same judgement are closed. **Selector identifiers** are
+  decoded the way the browser decodes them — the attribute *name* included, so
+  `[a\6ct]` reaches the added `alt` instead of looking like no rule at all. The
+  **painted box** is judged, not the content box: padding, border, `box-sizing`,
+  `scale` and `transform: scale(…)` are composed into the box the customer sees, so
+  a `50vw × 50vh` box scaled by `3` covers the viewport and a `10000px` border or
+  padding grows the box far past it; a box that *may* cover the viewport is
+  unprovable, and a declared size the analyser cannot compute stays unprovable. A
+  fix that adds **`autofocus`** gives the element the focus, so every focus rule whose
+  compound can match it is judged too — `input:focus ~ .overlay` takes the page over,
+  and `input:focus{background-image:url(…)}` makes the customer browser request a
+  resource. The **play state** of an animation decides the frame the customer sees: a
+  **paused** animation stays on its first frame.
+
 An incomplete scan never patches a file; the fix stays a review suggestion. The
 review comment that is written into the file instead neutralizes the comment
 terminator (`*/`, `-->`, `--!>`), so untrusted text cannot close the comment and
@@ -188,6 +208,19 @@ Output is embedded in an `accessguard/fix-accessibility-fixes-{date}-{ts}` branc
 with a summary file — a human reviews before merge; nothing auto-merges. Every opened
 PR writes a `github_pr_created` audit log entry; the write is retried
 (`createAuditLogWithRetry`) before the route reports a missing trail.
+
+The route **proves before it mutates**. The writer has a plan phase
+(`planRepositoryFixes`, no writes) and an apply phase (`applyRepositoryFixPlan`), and
+the route plans first. A candidate the destination CSS, the repository runtime or the
+static safety checks refused gets **no artifact at all** — no patch, no review
+document, no summary entry, no link — and a run in which every candidate is refused
+creates no branch and no pull request.
+
+The **audit intent** (`github_pr_intent`) is written **before** the branch is created,
+so a repository mutation can never exist without a trail: if the intent cannot be
+written, nothing is created at all. The closing `github_pr_created` record follows the
+pull request; if that write fails, the intent record remains the recoverable trail and
+the response says so (`auditRecorded: false`, `auditNotice`).
 
 ## 2. Purpose
 

@@ -133,6 +133,11 @@ spliced at AST-derived offsets, so the rest of the file is untouched.
 | Ambiguity | If the element exists in more than one file of the repository, the fix is **not** written to any file — it ships in the PR as a review suggestion. A wrong file is worse than no patch. |
 | Complete scan | The **whole** repository is scanned, bounded by a byte budget (5 MB) instead of a file count: every text file is read, whatever its extension, because a file the writer does not know (a template, a partial, a content file) can hold the same element. A blob whose name does not say whether it is binary (`.dat`, `.bin`) is read as well and **the content decides**: a NUL byte cannot appear in a text file, so a binary blob cannot hold the element and is left out of the scan, while a text blob holds it and makes the match ambiguous. A tree that does not fit, a tree the API reports as `truncated`, a file that could not be read and a **submodule** (a tree entry of type `commit`, which holds files the tree does not list) never patch a file: an incomplete scan cannot prove uniqueness. |
 | Destination stylesheet | The repository's own CSS is part of the destination. **Every** style source the repository owns is read and matched against the patched element: the stylesheet files (`.css`, `.scss`, `.sass`, `.less`, `.pcss`, `.styl`, …), the `<style>` block of **every** file type, the stylesheets a file links (`<link rel="stylesheet">`) and the stylesheets they import (`@import`). A rule that can turn the element into a full-viewport overlay (a positioned element that spans the viewport) or hide it (`display:none`, `visibility:hidden`, `opacity:0`, `content-visibility:hidden`, a zero `scale`, a `filter: opacity(0)`, an off-screen `translate`, a zero `font-size`/`line-height` on a text-bearing element, a large negative `text-indent`) keeps the fix out of the repository. The rules of a utility stylesheet are read together, so `fixed inset-0 w-screen h-screen` is caught even when no single rule covers the viewport, and the verdict does **not** depend on the order the stylesheets were read in. The reader follows the browser: the CSS priority suffix is stripped (`fixed!important` is `fixed`), every logical, small and large viewport unit is known (`100vi`, `100vb`, `100svw`, `100lvh`, …), CSS escapes are decoded (`p\6fsition` is `position`, `fix\65 d` is `fixed`, `[a\6c t]` is `[alt]`), a comment opener inside a string is text and not a comment, native nesting is flattened (`&` is the parent selector), the frames of an animation are judged when the element animates with them, and a value the analyser cannot compute (`var()`, an unknown function, an unknown unit or keyword) makes the destination **unprovable** when the fix changes that property — an unprovable destination never receives a source patch. A **relational selector** (`:has(…)`) depends on DOM context the reader does not model, and the fix can change that context, so it fails closed in the same way. A **dynamic style source** — a JSX `<style>{expression}</style>` or a `dangerouslySetInnerHTML` style — is never an empty, proven stylesheet: the destination is unprovable and the repository receives no source patch. A **runtime-created** style is the same case: a repository script that creates a style element (`createElement('style')`, `insertRule(…)`, `adoptedStyleSheets`, a `style.textContent`/`innerHTML`/`cssText` assignment, a `<style` string) owns CSS the analyser cannot read, because the rule is built at runtime — so the destination is unprovable and no repository write happens. A stylesheet the analyser cannot judge (a preprocessor at-rule, an unknown at-rule, a variable or an interpolation it cannot resolve) fails closed in the same way. The geometry is read the way the browser assigns it: the `inset` shorthand sets its edges the way `margin` does (`inset:0 0` sets the block edges and the inline edges), the logical shorthands (`inset-block`, `inset-inline`) and the logical sizing properties (`inline-size`, `block-size`) are known, and a viewport-unit translation (`translate:-100vw`) or a large negative margin (`margin-left:-10000px`) puts the element off-screen, which hides it. The **effective style** of the patched element is the repository's rules **plus the remediation's own inline declarations** — the inline style is the last word — and the custom properties the fix defines resolve the `var()` references of the repository's rules (`style="--pos:fixed"` activates `position:var(--pos)`). A style attribute that is not a plain CSS declaration list (the JSX object form) cannot be read, so the destination is unprovable. The end state of an animation is what the user sees after it runs: a frame that leaves the element invisible (`opacity:0`, `visibility:hidden`) hides it, whatever the base style says — a **reversed** animation ends at its *first* frame, so the visible frame follows the animation's direction. The paint and the geometry of the repository's own rules are judged the same way: a transparent repository colour (`color:transparent`), a logical margin that moves the element off-screen (`margin-inline-start:-10000px`), a negative positional offset (`left:-9999px`), a single zero dimension (`width:0`), `display:contents` and a size the analyser cannot compute (`9999px`, `200vw`) hide the element or make the destination unprovable — never harmless. A rule the fix **activates** is judged too: a sibling or descendant selector that asks for the attribute the fix adds (`[alt] ~ .overlay`) can take over another element of the customer page, and a network-bearing declaration of such a rule (`background-image:url(…)`) loads a resource in the customer browser, which the verification browser blocks and therefore never sees. The repository's **runtime** is judged as well, because the verification browser does not run the customer's JavaScript: a script that reads an attribute the fix adds and then mutates an element, a script that names the patched element by its id, a **service worker** that delivers stylesheet bytes and a **CSS-in-JS** library all make the destination unprovable, and an unprovable destination never receives a source patch. |
+| Destination selectors | A selector identifier is decoded the way the browser decodes it — the attribute **name** included, not only the attribute value. `[a\6ct]` is `[alt]`, so the rule starts matching the moment the fix adds the attribute. A selector that looks absent after a partial decode would hide the takeover from the analyser. |
+| Painted box | The **painted** box is judged, not the content box: padding, border, `box-sizing`, `scale` and `transform: scale(…)` are composed into the box the customer sees. A `50vw × 50vh` box with `scale:3` paints `150vw × 150vh`, a `10000px` border paints a box that grows far past the viewport, and a `10000px` padding does the same. A box that **may** cover the viewport is unprovable, never harmless — and a declared size the analyser cannot compute (`200vw`, `9999px`, `100em`) stays unprovable, so it is never reported as a proven overlay. |
+| Focus activation | A fix that adds `autofocus` **gives the element the focus**, so every focus rule whose compound can match the patched element is judged too — in any compound of the selector, not only in the subject. `input:focus ~ .overlay` takes the page over as soon as the input is focused, and `input:focus{background-image:url(…)}` makes the **customer browser** request a resource the verification browser blocks. Both make the destination unprovable. |
+| Animation play state | The play state decides the frame the customer sees: a **paused** animation stays on its **first** frame (`opacity:0`), so the element is invisible even though the last frame is visible. A running animation is judged on the frame its direction and fill mode end at. |
+| Repository runtime | The runtime is read in both carriers. An **inline `<script>`** in the repository HTML is runtime code like a linked script — an unclosed block cannot be followed, so it fails closed. A **DOM property getter** (`img.alt`, `el.className`, `el.dataset.x`) is a state read like `hasAttribute(…)`, because the property reflects the attribute the fix adds. |
 | Conversion | HTML attributes are renamed to JSX (`class` → `className`, `for` → `htmlFor`), void elements are self-closed, `style="…"` becomes a style object. Style values are allow-listed: braces, quotes, backslashes, `url()` and `expression()` are dropped so a style attribute cannot break out of the JS expression it is written into. |
 | No-op | A patch identical to the original element is not a fix and is not counted. |
 | Content loss | A patch that empties an element that had visible text (a link or a button) is rejected — an axe-verified fix must not delete what the user reads. The new text has to **keep** the old text: a fix that reduces "Read more" to "R" passes every rule check and still deletes what the user reads. Text inside a hidden element (`hidden`, `display:none`, `visibility:hidden`, `opacity:0`) is not visible text, so moving the label into a hidden element is a content loss too. The CSS priority suffix is stripped before the check, so `opacity:0!important` is the same declaration as `opacity:0`. `aria-hidden` removes content from the accessibility tree, **not** from the screen: its text counts as visible text, so a fix may not delete it. |
@@ -141,6 +146,39 @@ spliced at AST-derived offsets, so the rest of the file is untouched.
 
 File types without a parser (`.vue`, `.svelte`, `.astro`) keep the conservative exact
 text match. They can miss; they never guess.
+
+### 3.1 The route proves before it mutates
+
+The writer has two phases. `planRepositoryFixes` (`src/lib/github.ts`) reads the
+repository, judges every candidate and computes the patched file content
+**without writing anything**; `applyRepositoryFixPlan` writes exactly the planned
+files. `applyFixesToRepository` keeps its old contract as the two phases in sequence.
+
+The create-PR route runs the plan **before** the first GitHub mutation:
+
+| Candidate | Outcome |
+|---|---|
+| applied | a provable source file was patched — the file is written and the fix is linked |
+| review | the candidate is sound but no source file can be proven (ambiguous match, template file, incomplete scan) — it ships as a review document |
+| refused | the destination CSS, the repository runtime or the static safety checks refused it — it gets **no** artifact at all |
+
+A run in which every candidate is refused creates **no branch, no document, no summary
+and no pull request**; the route answers `400`. A refused candidate never appears in
+the PR body, in the summary or in the linked violations — a pull request that exists
+contains no refused candidate.
+
+### 3.2 The audit trail exists before the mutation
+
+The route writes a `github_pr_intent` audit record **before** the branch is created.
+The record carries the repository, the branch name, the planned rule ids, the planned
+artifacts and the refused ids, so a later pull request can be reconstructed from it.
+
+- If the intent cannot be written, nothing is created at all: no branch, no document,
+  no pull request. The route answers `500`.
+- The closing `github_pr_created` record is written after the pull request. If that
+  write fails, the pull request still exists and the **intent record is its
+  recoverable trail**: the response reports `auditRecorded: false` and says so in
+  `auditNotice`.
 
 ## 4. Verification (`src/lib/fix-verification.ts`)
 
@@ -229,10 +267,12 @@ API response reports what happened to every selected fix:
 | `skippedOverLimit` | fixes beyond the per-request limit (`MAX_FIXES_PER_PR = 25`) |
 | `skippedLowConfidence` | verification failed — axe still reports the rule, or the patch hid the visible text |
 | `skippedUnverified` | verification could not run (rejected earlier, no browser, rule not evaluable, batch out of budget) |
+| `skippedRefused` | candidates the destination CSS, the repository runtime or the static safety checks refused — they carry no artifact at all |
 | `filesCreated` | files GitHub actually accepted (fix documents + summary) |
 | `violationsUpdated` | violations whose artifact was accepted **and** linked to the PR |
 | `fixesWithoutArtifact` | verified fixes that no accepted artifact represents (GitHub refused the write) |
-| `auditRecorded` | `false` when the audit entry could not be written — the PR exists, the trail does not |
+| `auditRecorded` | `false` when the closing audit entry could not be written — the PR exists and the `github_pr_intent` record holds the trail |
+| `auditNotice` | states which record holds the trail: the closing entry, or the pre-mutation intent |
 
 At most 10 fixes are written into source files per PR; the remaining verified fixes
 still ship in the PR as review files. A violation is linked to the PR only when an
@@ -242,7 +282,9 @@ verified and skipped counts; the entry is written **before** the violations are 
 so a later database failure cannot leave an opened PR without a trail. The write is
 retried (`createAuditLogWithRetry`, 3 attempts with a growing delay) before the route
 reports `auditRecorded: false`, so a transient database error does not leave a
-repository mutation without a trail.
+repository mutation without a trail. The **intent** record (`github_pr_intent`) is
+written before the branch, so even a persistent database failure cannot leave a
+mutation without a trail — it stops the mutation instead (§3.2).
 
 ## 7. Limits and operations
 
