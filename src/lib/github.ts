@@ -207,6 +207,21 @@ const CSS_FILE_PATTERN = /\.(css|scss|sass|less|pcss|styl|stylus|sss|postcss)$/i
 const PREPROCESSOR_FILE_PATTERN = /\.(scss|sass|less|styl|stylus)$/i;
 
 /**
+ * The script files of the repository: they can create a style at runtime.
+ */
+const SCRIPT_FILE_PATTERN = /\.(js|jsx|mjs|cjs|ts|tsx|cts|mts)$/i;
+
+/**
+ * The paths that create a style element at runtime.
+ *
+ * The CSS of such a style is built at runtime, so the analyser cannot read it
+ * and the destination is unprovable. A style that the repository creates this
+ * way can activate a rule as soon as the fix changes the selector match.
+ */
+const RUNTIME_STYLE_PATTERN =
+  /createElement\s*\(\s*['"`]style['"`]|insertRule\s*\(|adoptedStyleSheets|\w*style\w*\s*\.\s*(?:textContent|innerHTML|innerText|cssText)\s*=|['"`][^'"`]*<style/i;
+
+/**
  * The syntax of a preprocessor that the analyser cannot resolve: an
  * interpolated selector or value (`#{$x}`, `@{x}`), a variable (`$x`, `@x`)
  * and an escaped import (`~"x"`). A stylesheet that uses it is not judged.
@@ -436,6 +451,11 @@ export async function applyFixesToRepository(
         continue;
       }
       addCssSource(target, contentCache.get(target) as string);
+    }
+    // A script that creates a style at runtime owns CSS the analyser cannot
+    // read: the destination is unprovable and no source patch is written.
+    if (SCRIPT_FILE_PATTERN.test(path) && RUNTIME_STYLE_PATTERN.test(content)) {
+      styleProblems.push(`the script ${path} creates a style at runtime, which the analyser cannot resolve`);
     }
   }
 

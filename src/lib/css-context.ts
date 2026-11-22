@@ -545,7 +545,9 @@ export function describeElements(html: string): ElementDescriptor[] {
       if (!attributes.has(attribute.name)) {
         attributes.set(attribute.name, decodeHtmlEntities(attribute.value));
       }
-      if (attribute.name === 'class') {
+      // React maps `className` to the browser's `class` attribute, so a JSX
+      // element carries its class tokens under the other name.
+      if (attribute.name === 'class' || attribute.name === 'classname') {
         for (const token of decodeHtmlEntities(attribute.value).split(/\s+/)) {
           if (token) classes.add(token.toLowerCase());
         }
@@ -882,6 +884,114 @@ function stripCssPriority(value: string): string {
 }
 
 /**
+ * The edges an `inset` shorthand sets.
+ *
+ * The browser assigns the values of the shorthand the way it assigns the
+ * values of `margin`: one value sets every edge, two values set the block
+ * edges and the inline edges, three values set the top, the inline edges and
+ * the bottom, four values set every edge on its own.
+ */
+function insetEdges(value: string): {
+  top: boolean;
+  right: boolean;
+  bottom: boolean;
+  left: boolean;
+} {
+  const parts = value.split(/\s+/).filter(Boolean);
+  const zero = (part: string | undefined): boolean => part !== undefined && isZeroLength(part);
+  const edges = { top: false, right: false, bottom: false, left: false };
+
+  if (parts.length === 1) {
+    edges.top = edges.right = edges.bottom = edges.left = zero(parts[0]);
+  } else if (parts.length === 2) {
+    edges.top = edges.bottom = zero(parts[0]);
+    edges.left = edges.right = zero(parts[1]);
+  } else if (parts.length === 3) {
+    edges.top = zero(parts[0]);
+    edges.left = edges.right = zero(parts[1]);
+    edges.bottom = zero(parts[2]);
+  } else if (parts.length === 4) {
+    edges.top = zero(parts[0]);
+    edges.right = zero(parts[1]);
+    edges.bottom = zero(parts[2]);
+    edges.left = zero(parts[3]);
+  }
+
+  return edges;
+}
+
+/** The block edges an `inset-block` shorthand sets. */
+function insetBlockEdges(value: string): { top: boolean; bottom: boolean } {
+  const parts = value.split(/\s+/).filter(Boolean);
+  const first = parts[0] ?? '';
+  const second = parts[1] ?? first;
+  return { top: isZeroLength(first), bottom: isZeroLength(second) };
+}
+
+/** The inline edges an `inset-inline` shorthand sets. */
+function insetInlineEdges(value: string): { left: boolean; right: boolean } {
+  const parts = value.split(/\s+/).filter(Boolean);
+  const first = parts[0] ?? '';
+  const second = parts[1] ?? first;
+  return { left: isZeroLength(first), right: isZeroLength(second) };
+}
+
+/** The custom properties a set of declarations defines. */
+function customPropertyDefinitions(declarations: Declaration[]): Map<string, string> {
+  const definitions = new Map<string, string>();
+  for (const declaration of declarations) {
+    if (!declaration.property.startsWith('--')) continue;
+    definitions.set(declaration.property, declaration.value);
+  }
+  return definitions;
+}
+
+/**
+ * Resolve the `var()` references of a value with the custom properties.
+ *
+ * A reference that cannot be resolved stays in the value, so the value is
+ * still unprovable — the analyser never guesses what a custom property holds.
+ */
+function resolveCustomProperties(value: string, definitions: Map<string, string>): string {
+  let resolved = value;
+  for (let depth = 0; depth < 5 && resolved.includes('var('); depth++) {
+    let replaced = false;
+    resolved = resolved.replace(
+      /var\(\s*(--[\w-]+)\s*(?:,([^()]*))?\)/g,
+      (match, name: string, fallback: string | undefined) => {
+        const definition = definitions.get(name);
+        if (definition === undefined) return fallback !== undefined ? fallback : match;
+        replaced = true;
+        return definition;
+      }
+    );
+    if (!replaced) break;
+  }
+  return resolved;
+}
+
+/**
+ * The inline style declarations of an element.
+ *
+ * The inline style is part of the effective style: the repository's CSS and
+ * the inline declarations are composed, and a declaration of the inline style
+ * wins. A style that is not a plain CSS declaration list (the JSX object form
+ * `style={{ width: '100%' }}`) cannot be read, so the destination is
+ * unprovable.
+ */
+function inlineStyleOf(element: ElementDescriptor): {
+  declarations: Declaration[];
+  unprovable: boolean;
+} {
+  const style = element.attributes.get('style');
+  if (style === undefined) return { declarations: [], unprovable: false };
+  const value = style.trim();
+  if (!value) return { declarations: [], unprovable: false };
+  if (/[{}]/.test(value)) return { declarations: [], unprovable: true };
+  return { declarations: parseDeclarations(value), unprovable: false };
+}
+
+/**
  * The properties that decide whether an element covers the viewport or is not
  * rendered. A value of one of them that the analyser cannot compute makes the
  * destination unprovable when the fix changes it.
@@ -889,6 +999,8 @@ function stripCssPriority(value: string): string {
 const RELEVANT_PROPERTIES = new Set([
   'position', 'inset', 'inset-block', 'inset-inline', 'top', 'right', 'bottom', 'left',
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+  'inline-size', 'block-size', 'min-inline-size', 'min-block-size',
+  'margin-left', 'margin-right', 'margin-top', 'margin-bottom',
   'display', 'visibility', 'opacity', 'transform', 'scale', 'rotate', 'translate',
   'zoom', 'perspective', 'margin', 'padding', 'overflow', 'clip', 'clip-path',
   'content', 'font-size', 'line-height', 'text-indent', 'letter-spacing',
@@ -921,6 +1033,7 @@ const HIDDEN_VISIBILITY = /^(hidden|collapse)$/;
 const JUDGEMENT_PROPERTIES = new Set([
   'position', 'inset', 'inset-block', 'inset-inline', 'top', 'right', 'bottom', 'left',
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+  'inline-size', 'block-size', 'min-inline-size', 'min-block-size',
   'display', 'visibility', 'opacity', 'transform', 'scale', 'translate', 'filter',
   'content-visibility', 'font-size', 'line-height', 'text-indent',
 ]);
@@ -931,6 +1044,13 @@ const LENGTH_UNITS = new Set([
   'cap', 'rcap', 'ic', 'ric', 'lh', 'rlh', 'vw', 'vh', 'vmin', 'vmax', 'vi', 'vb',
   'svw', 'svh', 'svmin', 'svmax', 'svi', 'svb', 'lvw', 'lvh', 'lvmin', 'lvmax',
   'lvi', 'lvb', 'dvw', 'dvh', 'dvmin', 'dvmax', 'dvi', 'dvb',
+]);
+
+/** The units that are the size of the screen. */
+const VIEWPORT_UNITS = new Set([
+  'vw', 'vh', 'vmin', 'vmax', 'vi', 'vb', 'svw', 'svh', 'svmin', 'svmax', 'svi',
+  'svb', 'lvw', 'lvh', 'lvmin', 'lvmax', 'lvi', 'lvb', 'dvw', 'dvh', 'dvmin',
+  'dvmax', 'dvi', 'dvb',
 ]);
 
 /** The keywords of `position`. */
@@ -981,6 +1101,18 @@ const REPLACED_TAGS = new Set([
 const GEOMETRY_PROPERTIES = new Set([
   'position', 'inset', 'inset-block', 'inset-inline', 'top', 'right', 'bottom', 'left',
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+  'inline-size', 'block-size', 'min-inline-size', 'min-block-size',
+]);
+
+/**
+ * The properties a keyframe may use to hide the element.
+ *
+ * The end state of an animation is what the user sees after it runs: a frame
+ * that leaves the element invisible hides it, whatever the base style says.
+ */
+const HIDE_FRAME_PROPERTIES = new Set([
+  'opacity', 'visibility', 'display', 'content-visibility', 'filter', 'scale',
+  'translate', 'transform', 'font-size', 'line-height', 'text-indent',
 ]);
 
 /** The keywords of the `animation` shorthand that are not the name. */
@@ -1082,7 +1214,7 @@ function isUnprovableValue(property: string, value: string): boolean {
     if (property === 'top' || property === 'right' || property === 'bottom' || property === 'left') {
       return value !== 'auto' && !isLengthOrPercentage(value);
     }
-    if (property === 'width' || property === 'height' || property === 'min-width' || property === 'min-height' || property === 'max-width' || property === 'max-height') {
+    if (property === 'width' || property === 'height' || property === 'min-width' || property === 'min-height' || property === 'max-width' || property === 'max-height' || property === 'inline-size' || property === 'block-size' || property === 'min-inline-size' || property === 'min-block-size') {
       return !isSizingValue(value, property);
     }
     if (property === 'display') {
@@ -1125,12 +1257,16 @@ function isZeroLength(value: string): boolean {
 /** True when a length moves content far enough off-screen to hide it. */
 function isLargeNegativeOffset(value: string): boolean {
   const matches = [...value.matchAll(/(-?(?:\d+|\d*\.\d+))([a-z]+)/gi)];
-  return matches.some(
-    match =>
-      match[2] !== '%' &&
-      LENGTH_UNITS.has(match[2] ?? '') &&
-      Number(match[1]) <= -999
-  );
+  return matches.some(match => {
+    const amount = Number(match[1]);
+    const unit = match[2] ?? '';
+    // A viewport unit is the size of the screen: moving an element by a whole
+    // viewport puts it off-screen even though the number is small.
+    if (VIEWPORT_UNITS.has(unit)) return amount <= -100;
+    // A percentage of the element itself: -100% moves it out of the view.
+    if (unit === '%') return amount <= -100;
+    return LENGTH_UNITS.has(unit) && amount <= -999;
+  });
 }
 
 /** True when text-only hiding rules apply to an element. */
@@ -1185,7 +1321,9 @@ interface ElementState {
 function stateOf(
   rules: CssRule[],
   element: ElementDescriptor,
-  keyframes: Map<string, string[]>
+  keyframes: Map<string, string[]>,
+  inline: Declaration[] = [],
+  definitions: Map<string, string> = new Map()
 ): ElementState {
   const state: ElementState = {
     positioned: false,
@@ -1214,21 +1352,42 @@ function stateOf(
 
     if (property === 'position') {
       if (POSITIONED.test(value)) state.positioned = true;
-    } else if (property === 'inset' || property === 'inset-block' || property === 'inset-inline') {
-      if (isZeroLength(value)) {
-        edges.top = true;
-        edges.right = true;
-        edges.bottom = true;
-        edges.left = true;
-      }
+    } else if (property === 'inset') {
+      const assigned = insetEdges(value);
+      edges.top = edges.top || assigned.top;
+      edges.right = edges.right || assigned.right;
+      edges.bottom = edges.bottom || assigned.bottom;
+      edges.left = edges.left || assigned.left;
+    } else if (property === 'inset-block') {
+      const assigned = insetBlockEdges(value);
+      edges.top = edges.top || assigned.top;
+      edges.bottom = edges.bottom || assigned.bottom;
+    } else if (property === 'inset-inline') {
+      const assigned = insetInlineEdges(value);
+      edges.left = edges.left || assigned.left;
+      edges.right = edges.right || assigned.right;
     } else if (property === 'top' || property === 'bottom' || property === 'right' || property === 'left') {
       if (isZeroLength(value)) edges[property] = true;
-    } else if (property === 'width' || property === 'min-width') {
+    } else if (
+      property === 'width' ||
+      property === 'min-width' ||
+      property === 'inline-size' ||
+      property === 'min-inline-size'
+    ) {
       if (COVERS_X.test(value) || COVERS_EITHER_AXIS.test(value)) state.coversX = true;
-      if (property === 'width' && isZeroLength(value)) state.widthZero = true;
-    } else if (property === 'height' || property === 'min-height') {
+      if ((property === 'width' || property === 'inline-size') && isZeroLength(value)) {
+        state.widthZero = true;
+      }
+    } else if (
+      property === 'height' ||
+      property === 'min-height' ||
+      property === 'block-size' ||
+      property === 'min-block-size'
+    ) {
       if (COVERS_Y.test(value) || COVERS_EITHER_AXIS.test(value)) state.coversY = true;
-      if (property === 'height' && isZeroLength(value)) state.heightZero = true;
+      if ((property === 'height' || property === 'block-size') && isZeroLength(value)) {
+        state.heightZero = true;
+      }
     } else if (property === 'display') {
       if (HIDDEN_DISPLAY.test(value)) state.hidden = true;
     } else if (property === 'visibility') {
@@ -1249,23 +1408,46 @@ function stateOf(
       if (textRulesApply(element) && isZeroLength(value)) state.hidden = true;
     } else if (property === 'text-indent') {
       if (textRulesApply(element) && isLargeNegativeOffset(value)) state.hidden = true;
+    } else if (property === 'margin' || property.startsWith('margin-')) {
+      // A large negative margin moves the element out of the view.
+      if (isLargeNegativeOffset(value)) state.hidden = true;
     }
   };
 
+  // The effective style is the repository's rules plus the inline style of the
+  // element: the inline declarations are the last word. The custom properties
+  // they define resolve the `var()` references of the repository's rules, so a
+  // fix that supplies a custom property cannot hide behind one.
+  const declarations: Declaration[] = [];
   for (const rule of rules) {
-    for (const declaration of parseDeclarations(rule.declarations)) {
-      apply(declaration);
-    }
+    declarations.push(...parseDeclarations(rule.declarations));
+  }
+  declarations.push(...inline);
+
+  for (const declaration of declarations) {
+    apply({
+      property: declaration.property,
+      value: resolveCustomProperties(declaration.value, definitions),
+    });
   }
 
   // The frames of an animation that runs on the element may move it over the
   // page. Only the geometry of a frame can cover the screen, so a frame that
-  // fades the element does not hide it.
+  // fades the element does not cover it.
   for (const name of animationNamesOf(state)) {
     const frames = keyframes.get(name);
     if (!frames) continue;
     for (const declaration of parseDeclarations(frames.join(';'))) {
       if (!GEOMETRY_PROPERTIES.has(declaration.property)) continue;
+      apply(declaration);
+    }
+    // The end state of the animation is what the user sees after it runs: a
+    // frame that leaves the element invisible hides it, whatever the base
+    // style says.
+    const last = frames[frames.length - 1];
+    if (!last) continue;
+    for (const declaration of parseDeclarations(last)) {
+      if (!HIDE_FRAME_PROPERTIES.has(declaration.property)) continue;
       apply(declaration);
     }
   }
@@ -1317,18 +1499,33 @@ export function destinationCssHarm(
     // apply before as well, so it is judged as well.
     const afterRules: CssRule[] = [];
     const beforeRules: CssRule[] = [];
+    const matchedRules: CssRule[] = [];
 
     for (const rule of context.rules) {
       const after = matchSelector(rule.selector, element);
       if (after === 'no') continue;
       afterRules.push(rule);
+      if (after === 'yes') matchedRules.push(rule);
 
       if (!before) continue;
       const earlier = matchSelector(rule.selector, before);
       if (earlier === 'yes') beforeRules.push(rule);
     }
 
-    const after = stateOf(afterRules, element, context.keyframes);
+    const inline = inlineStyleOf(element);
+    if (inline.unprovable) {
+      return 'the patched element carries a style the analyser cannot read';
+    }
+
+    // A custom property is resolved when the fix defines it or when a rule that
+    // provably matches the element defines it. A property that only an
+    // ancestor may define stays unprovable.
+    const definitions = customPropertyDefinitions([
+      ...matchedRules.flatMap(rule => parseDeclarations(rule.declarations)),
+      ...inline.declarations,
+    ]);
+
+    const after = stateOf(afterRules, element, context.keyframes, inline.declarations, definitions);
     const earlier = before ? stateOf(beforeRules, before, context.keyframes) : null;
 
     if (coversViewport(after)) {

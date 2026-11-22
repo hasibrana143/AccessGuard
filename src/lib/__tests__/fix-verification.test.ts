@@ -409,6 +409,34 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     }
   }, BROWSER_TEST_TIMEOUT);
 
+  it('catches the paint tricks the browser resolves', async () => {
+    // The browser is the reference: a transparent colour in the modern syntax,
+    // a zero-area element, a clipped text, an element moved off-screen and an
+    // animation that ends invisible are all invisible to the user.
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await createVerificationContext(browser);
+      const page = await context.newPage();
+
+      for (const markup of [
+        '<a href="/about" style="color:oklch(0 0 0 / 0%)">Read more</a>',
+        '<img src="a.jpg" alt="" style="width:0;height:0">',
+        '<a href="/about" style="display:block;height:20px"><span style="display:block;height:0;overflow:hidden">Read more</span></a>',
+        '<a href="/about" style="margin-left:-10000px">Read more</a>',
+        '<a href="/about" style="translate:-100vw">Read more</a>',
+        '<style>@keyframes hide{from{opacity:1}to{opacity:0}}</style><a href="/about" style="animation:hide 100ms forwards">Read more</a>',
+      ]) {
+        await page.setContent(buildVerificationDocument(markup));
+        expect(await checkRenderedElement(page)).not.toBeNull();
+      }
+
+      await page.setContent(buildVerificationDocument('<a href="/about">Read more</a>'));
+      expect(await checkRenderedElement(page)).toBeNull();
+    } finally {
+      await browser.close();
+    }
+  }, BROWSER_TEST_TIMEOUT);
+
   it('never lets a fix through that hides the text of the element', async () => {
     const results = await verifyFixes([
       {

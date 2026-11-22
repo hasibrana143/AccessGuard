@@ -307,6 +307,93 @@ describe('applyFixesToRepository', () => {
     expect(result.filesModified).toEqual([]);
   });
 
+  it('does not patch an element when a script creates a style at runtime', async () => {
+    // The script builds the stylesheet at runtime, so the analyser cannot read
+    // the rule that the fix activates.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      "const css='[alt]{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647}'; const s=document.createElement('style'); s.textContent=css; document.head.appendChild(s);"
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a script injects a rule at runtime', async () => {
+    // The second spelling of the same path: a rule inserted into a sheet.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      "document.styleSheets[0].insertRule('[alt]{position:fixed;inset:0;width:100%;height:100%}', 0);"
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.fixesAppliedTotal).toBe(0);
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('writes a fix into a repository whose script creates no style', async () => {
+    // An ordinary script is not a style source: the fix still lands.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent('app.js', "console.log('hello');");
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(result.filesModified).toEqual([{ path: 'index.html', fixesApplied: 1 }]);
+    expect(result.fixesAppliedTotal).toBe(1);
+  });
+
   it('does not patch an element when a repository stylesheet hides its text', async () => {
     tree(['index.html', 'styles.css']);
     fileContent('index.html', '<html><body><p id="target">Text</p></body></html>');

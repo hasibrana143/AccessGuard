@@ -366,6 +366,17 @@ describe('validateRemediation', () => {
     expect(result.valid).toBe(true);
   });
 
+  it('rejects a remediation that adds a JSX className the original element does not have', () => {
+    // React maps className to the browser's class attribute, so a JSX class is
+    // the same repository-CSS hook as an HTML class.
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" className="overlay">',
+      '<img id="target" src="x">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('class');
+  });
+
   it('rejects a remediation that hides the element with opacity: 0', () => {
     // The priority suffix is not part of the value: `opacity:0!important`
     // hides the element just like `opacity:0`.
@@ -406,6 +417,48 @@ describe('validateRemediation', () => {
     }
   });
 
+  it('rejects a transparent modern colour with a zero alpha', () => {
+    for (const style of [
+      'color:rgb(0 0 0 / 0%)',
+      'color:oklch(0 0 0 / 0%)',
+      'color:oklab(0 0 0 / 0)',
+      'color:lab(0% 0 0 / 0%)',
+      'color:lch(0% 0 0 / 0)',
+      'color:color(srgb 0 0 0 / 0%)',
+    ]) {
+      const result = validateRemediation(`<a href="/about" style="${style}">Read more</a>`);
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('transparent');
+    }
+  });
+
+  it('rejects a remediation that gives the patched element a zero size', () => {
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" style="width:0;height:0">',
+      '<img id="target" src="x">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('zero');
+  });
+
+  it('rejects a remediation that clips the patched element to a zero size', () => {
+    const result = validateRemediation(
+      '<div id="target" style="height:0;overflow:hidden">Read more</div>',
+      '<div id="target">Read more</div>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('zero');
+  });
+
+  it('rejects a remediation that moves the patched element off-screen with a negative margin', () => {
+    const result = validateRemediation(
+      '<img id="target" src="x" alt="Photo" style="margin-left:-10000px">',
+      '<img id="target" src="x">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('off-screen');
+  });
+
   it('rejects a remediation that introduces a remote URL', () => {
     // The verification browser blocks every network request, so the new URL is
     // invisible to it and loads from the customer's browser once it is written.
@@ -423,6 +476,17 @@ describe('validateRemediation', () => {
       '<img id="target" src="https://cdn.example/photo.png">'
     );
     expect(result.valid).toBe(true);
+  });
+
+  it('rejects a remote destination hidden behind a duplicate src attribute', () => {
+    // The browser uses the first duplicate, so the later safe value cannot
+    // mask the remote destination.
+    const result = validateRemediation(
+      '<img id="target" src="http://127.0.0.1:9/pixel" src="/safe.png" alt="Photo">',
+      '<img id="target" src="/safe.png">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('remote');
   });
 
   it('rejects a remediation that changes the destination of the original element', () => {
@@ -463,6 +527,27 @@ describe('validateRemediation', () => {
         '<a href="mailto:a@b.example">x</a>'
       ).valid
     ).toBe(true);
+  });
+
+  it('rejects a remote destination hidden in a ping URL list', () => {
+    // Browsers parse ping as a space-separated URL list and request every item.
+    const result = validateRemediation(
+      '<a id="target" href="/account" ping="/safe http://127.0.0.1:9/pixel" aria-label="Account">Account</a>',
+      '<a id="target" href="/account">Account</a>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('remote');
+  });
+
+  it('rejects a navigation hidden behind a duplicate href attribute', () => {
+    // The browser uses the first duplicate, so the later safe value cannot
+    // mask the mailto destination.
+    const result = validateRemediation(
+      '<a id="target" href="mailto:attacker@example.com" href="/account" aria-label="Account">Account</a>',
+      '<a id="target" href="/account">Account</a>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('destination');
   });
 
   it('rejects a remediation that adds a destination the original element did not have', () => {

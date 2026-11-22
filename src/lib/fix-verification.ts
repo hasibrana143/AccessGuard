@@ -190,14 +190,46 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
  * Returns the reason the element may not be written, or null.
  */
 export async function checkRenderedElement(page: Page): Promise<string | null> {
-  const rendering = await page.evaluate(() => {
+  const rendering = await page.evaluate(async () => {
+    // The end state of an animation is what the user sees after it runs, so the
+    // animations of the snippet reach their end before the page is judged.
+    const animations = document.getAnimations();
+    await Promise.all(
+      animations.map(animation =>
+        Promise.race([
+          animation.finished.catch(() => undefined),
+          new Promise(resolve => setTimeout(resolve, 1000)),
+        ])
+      )
+    );
+
+    const alphaCache = new Map<string, number>();
     const alpha = (value: string): number => {
-      const match = /rgba?\(([^)]*)\)/.exec(value);
-      if (!match) return 1;
-      const parts = (match[1] ?? '').split(/[,\s/]+/).filter(Boolean);
-      if (parts.length < 4) return 1;
-      const parsed = Number.parseFloat(parts[3] ?? '1');
-      return Number.isFinite(parsed) ? parsed : 1;
+      const cached = alphaCache.get(value);
+      if (cached !== undefined) return cached;
+      let resolved = 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const context = canvas.getContext('2d');
+      if (context) {
+        // The canvas parses every colour syntax the browser knows, so the
+        // alpha is the browser's own answer — not a guess about the syntax.
+        context.fillStyle = 'rgba(1, 2, 3, 0.5)';
+        const sentinel = context.fillStyle;
+        context.fillStyle = value;
+        if (context.fillStyle === sentinel) {
+          // The browser did not understand the colour: the alpha is unknown, so
+          // the paint is not proven.
+          resolved = 0;
+        } else {
+          context.clearRect(0, 0, 1, 1);
+          context.fillRect(0, 0, 1, 1);
+          resolved = (context.getImageData(0, 0, 1, 1).data[3] ?? 255) / 255;
+        }
+      }
+      alphaCache.set(value, resolved);
+      return resolved;
     };
 
     // A transform that scales the element to nothing, or moves it far away.
@@ -257,6 +289,33 @@ export async function checkRenderedElement(page: Page): Promise<string | null> {
       return rect;
     };
 
+    // The client box of an element: the padding box, after the border. It is
+    // the area the element paints its own content into.
+    const clientBoxOf = (element: Element): { top: number; left: number; right: number; bottom: number } | null => {
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      const borderLeft = Number.parseFloat(style.borderLeftWidth || '0') || 0;
+      const borderTop = Number.parseFloat(style.borderTopWidth || '0') || 0;
+      const width = element.clientWidth;
+      const height = element.clientHeight;
+      if (width <= 0 || height <= 0) return null;
+      return {
+        top: rect.top + borderTop,
+        left: rect.left + borderLeft,
+        right: rect.left + borderLeft + width,
+        bottom: rect.top + borderTop + height,
+      };
+    };
+
+    // An element that clips its content paints only what fits into its client
+    // box. An inline box has no client box and clips nothing.
+    const clipsItsContent = (element: Element): boolean => {
+      const style = window.getComputedStyle(element);
+      const display = style.display;
+      if (display === 'inline' || display === 'inline flow' || display.startsWith('ruby')) return false;
+      return style.overflowX !== 'visible' || style.overflowY !== 'visible';
+    };
+
     const elements = Array.from(document.body.querySelectorAll('*')).filter(
       element => !['META', 'LINK', 'STYLE', 'SCRIPT', 'TITLE'].includes(element.tagName)
     );
@@ -266,6 +325,7 @@ export async function checkRenderedElement(page: Page): Promise<string | null> {
     let hidden = false;
     if (target) {
       const style = window.getComputedStyle(target);
+      const rect = target.getBoundingClientRect();
       hidden =
         style.display === 'none' ||
         style.visibility === 'hidden' ||
@@ -275,7 +335,10 @@ export async function checkRenderedElement(page: Page): Promise<string | null> {
         /opacity\(\s*0(?:\.0+)?\s*\)/.test(style.filter || '') ||
         style.getPropertyValue('scale').trim() === '0' ||
         transformHides(style.transform || 'none') ||
-        translateHides(style.getPropertyValue('translate'));
+        translateHides(style.getPropertyValue('translate')) ||
+        // The element itself has no area, or sits outside the viewport: the
+        // user cannot see it.
+        !isPainted(rect);
     }
 
     // Transparent text is invisible text: it stays in the document, so the
@@ -297,7 +360,18 @@ export async function checkRenderedElement(page: Page): Promise<string | null> {
       }
       const painted = textNodes.some(node => {
         const rect = textRect(node);
-        return rect ? isPainted(rect) : false;
+        if (!rect || !isPainted(rect)) return false;
+        if (!clipsItsContent(element)) return true;
+        // The element clips its content away: a range that reports an area
+        // outside the client box is not painted.
+        const box = clientBoxOf(element);
+        if (!box) return false;
+        return (
+          rect.bottom > box.top &&
+          rect.top < box.bottom &&
+          rect.right > box.left &&
+          rect.left < box.right
+        );
       });
       if (!painted) {
         invisibleText = true;
@@ -352,7 +426,18 @@ async function runRuleInBrowser(
     // that is transparent (`opacity:0`) is still in `innerText` but the user
     // cannot see it.
     if (originalVisibleText) {
-      const renderedText = await page.evaluate(() => {
+      const renderedText = await page.evaluate(async () => {
+        // The end state of an animation is what the user sees after it runs.
+        const animations = document.getAnimations();
+        await Promise.all(
+          animations.map(animation =>
+            Promise.race([
+              animation.finished.catch(() => undefined),
+              new Promise(resolve => setTimeout(resolve, 1000)),
+            ])
+          )
+        );
+
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
 
@@ -384,11 +469,41 @@ async function runRuleInBrowser(
           return element.getClientRects().length > 0;
         };
 
+        // An element that clips its content paints only what fits into its
+        // client box: a range that reports an area outside the box is not
+        // painted.
+        const isClippedAway = (node: Node): boolean => {
+          const element = node.parentElement;
+          if (!element) return false;
+          const style = window.getComputedStyle(element);
+          const display = style.display;
+          if (display === 'inline' || display === 'inline flow' || display.startsWith('ruby')) return false;
+          if (style.overflowX === 'visible' && style.overflowY === 'visible') return false;
+          if (element.clientWidth <= 0 || element.clientHeight <= 0) return true;
+          const rect = element.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          const textRect = range.getBoundingClientRect();
+          range.detach();
+          const borderLeft = Number.parseFloat(style.borderLeftWidth || '0') || 0;
+          const borderTop = Number.parseFloat(style.borderTopWidth || '0') || 0;
+          const left = rect.left + borderLeft;
+          const top = rect.top + borderTop;
+          return !(
+            textRect.bottom > top &&
+            textRect.top < top + element.clientHeight &&
+            textRect.right > left &&
+            textRect.left < left + element.clientWidth
+          );
+        };
+
         let text = '';
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
         let node = walker.nextNode();
         while (node) {
-          if (isVisible(node.parentElement) && textIsPainted(node)) text += node.textContent ?? '';
+          if (isVisible(node.parentElement) && textIsPainted(node) && !isClippedAway(node)) {
+            text += node.textContent ?? '';
+          }
           node = walker.nextNode();
         }
         return text.replace(/\s+/g, ' ').trim();

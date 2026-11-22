@@ -166,6 +166,79 @@ describe('destination CSS: the rules the browser applies', () => {
     expect(harm('[alt]{position:fixed;min-width:100vw;min-height:100vh}')).toContain('overlay');
   });
 
+  it('reads the two-value inset shorthand', () => {
+    // `inset:0 0` sets the block edges and the inline edges, so the element
+    // covers the viewport on every side.
+    expect(harm('[alt]{position:fixed;inset:0 0;z-index:2147483647}')).toContain('overlay');
+    expect(harm('[alt]{position:fixed;inset:0 0 0 0;z-index:2147483647}')).toContain('overlay');
+    expect(harm('[alt]{position:fixed;inset:0 0 0}')).toContain('overlay');
+  });
+
+  it('reads the logical sizing properties', () => {
+    // `inline-size` is the width and `block-size` is the height in a
+    // horizontal writing mode.
+    expect(
+      harm('[alt]{position:fixed;top:0;left:0;inline-size:100vw;block-size:100vh;z-index:2147483647}')
+    ).toContain('overlay');
+  });
+
+  it('composes the inline style of the patched element with the repository CSS', () => {
+    // The repository positions the element; the fix sizes it. The effective
+    // style is the composition of the two.
+    const result = harm(
+      '#target{position:fixed;z-index:2147483647}',
+      '<img id="target" src="x">',
+      '<img id="target" src="x" alt="Photo" style="width:100%;height:100%">'
+    );
+    expect(result).toContain('overlay');
+  });
+
+  it('composes the custom properties the fix defines', () => {
+    // The repository reads the custom properties; the fix supplies them.
+    const result = harm(
+      '#target{position:var(--pos);width:var(--w);height:var(--h);z-index:var(--z)}',
+      '<img id="target" src="x">',
+      '<img id="target" src="x" alt="Photo" style="--pos:fixed;--w:100%;--h:100%;--z:2147483647">'
+    );
+    expect(result).toContain('overlay');
+  });
+
+  it('refuses a style it cannot read as CSS', () => {
+    // The JSX object form is not a CSS declaration list.
+    const result = harm(
+      '#target{position:fixed;width:100%;height:100%}',
+      '<img id="target" src="x">',
+      '<img id="target" src="x" alt="Photo" style={{ width: "100%" }}>'
+    );
+    expect(result).toContain('cannot');
+  });
+
+  it('matches a class rule through the JSX class carrier', () => {
+    // React maps `className` to the browser's `class` attribute.
+    const result = harm(
+      '.overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647}',
+      '<img id="target" src="x" />',
+      '<img id="target" src="x" alt="Photo" className="overlay" />'
+    );
+    expect(result).toContain('overlay');
+  });
+
+  it('treats the end state of an animation as the state of the element', () => {
+    // The animation ends with `opacity:0`, so the element ends invisible.
+    const result = harm(
+      '[alt]{animation:hide 100ms forwards}@keyframes hide{from{opacity:1}to{opacity:0}}'
+    );
+    expect(result).toContain('hide');
+  });
+
+  it('treats a large negative margin as off-screen', () => {
+    expect(harm('[alt]{margin-left:-10000px}')).toContain('hide');
+  });
+
+  it('treats a viewport-unit translation as off-screen', () => {
+    expect(harm('[alt]{translate:-100vw}')).toContain('hide');
+  });
+
   it('refuses a custom property it cannot compute', () => {
     // The analyser cannot resolve `var()`, so the destination is unprovable and
     // no source patch may be written into it.

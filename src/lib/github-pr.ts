@@ -225,17 +225,22 @@ const OVERLAY_STYLE_PROPERTIES = new Set([
   'clip-path', 'mask',
 ]);
 
+/** The URL items carried by a URI attribute, in source order. */
+function uriCandidates(name: string, value: string): string[] {
+  if (name === 'srcset') {
+    return value.split(',').map(part => part.trim().split(/\s+/)[0] ?? '');
+  }
+  if (name === 'ping') {
+    return value.split(/\s+/).filter(Boolean);
+  }
+  return [value];
+}
+
 /** Check a URI attribute against the scheme allowlist. Returns a reason or null. */
 function checkUriAttribute(name: string, value: string): string | null {
   if (!URI_ATTRIBUTES.has(name)) return null;
 
-  // srcset holds a comma separated list of candidate URLs.
-  const candidates =
-    name === 'srcset'
-      ? value.split(',').map(part => part.trim().split(/\s+/)[0] ?? '')
-      : [value];
-
-  for (const candidate of candidates) {
+  for (const candidate of uriCandidates(name, value)) {
     const normalized = normalizeUriValue(candidate);
     if (!normalized) continue;
 
@@ -252,6 +257,13 @@ function checkUriAttribute(name: string, value: string): string | null {
   return null;
 }
 
+/** True when a CSS alpha is exactly zero, with or without a percent sign. */
+function isZeroAlpha(value: string): boolean {
+  const alpha = value.trim();
+  const number = alpha.endsWith('%') ? alpha.slice(0, -1) : alpha;
+  return /^(?:0(?:\.0+)?|\.0+)$/.test(number);
+}
+
 /**
  * True when a colour value makes the text invisible.
  *
@@ -266,15 +278,26 @@ function isTransparentColor(value: string): boolean {
   if (functional) {
     const parts = (functional[1] ?? '').split(',');
     if (parts.length < 4) return false;
-    const alpha = parts[3] ?? '';
-    return /^0(?:\.0+)?$/.test(alpha);
+    return isZeroAlpha(parts[3] ?? '');
   }
 
-  // The modern syntax: `rgb(0 0 0 / 0)`.
-  const slash = /\/\s*([\d.]+)\s*\)$/.exec(normalized);
-  if (slash) return Number.parseFloat(slash[1] ?? '') === 0;
+  // The modern syntax uses a slash before the alpha: `rgb(0 0 0 / 0%)`.
+  // The function name is not fixed: oklch(), oklab(), lab(), lch() and color()
+  // use the same alpha grammar.
+  const modern = /^[a-z-]+\((.*)\)$/.exec(normalized);
+  if (modern) {
+    const body = modern[1] ?? '';
+    const slash = body.lastIndexOf('/');
+    return slash !== -1 && isZeroAlpha(body.slice(slash + 1));
+  }
 
   return false;
+}
+
+/** True when a CSS length is exactly zero. */
+function isZeroLength(value: string): boolean {
+  const match = /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)(?:[a-z]+|%)?$/.exec(value);
+  return match !== null && Number(match[1]) === 0;
 }
 
 /**
@@ -333,6 +356,13 @@ function checkStyleAttribute(value: string, isTarget: boolean): string | null {
     if (isTarget && property === 'visibility' && /^(hidden|collapse)$/.test(cssValue)) {
       return 'remediation code hides the element with visibility: hidden';
     }
+    if (
+      isTarget &&
+      (property === 'width' || property === 'height') &&
+      isZeroLength(cssValue)
+    ) {
+      return `remediation code gives the patched element a zero ${property}`;
+    }
     // Transparent text is invisible text: the user reads nothing although the
     // text is still in the document.
     if (
@@ -363,6 +393,13 @@ function checkStyleAttribute(value: string, isTarget: boolean): string | null {
     if ((property === 'translate' || property === 'text-indent') && isOffScreenOffset(cssValue)) {
       return `remediation code moves the element off-screen with ${property}`;
     }
+    if (
+      isTarget &&
+      (property === 'margin' || property.startsWith('margin-')) &&
+      isOffScreenOffset(cssValue)
+    ) {
+      return `remediation code moves the patched element off-screen with ${property}`;
+    }
   }
 
   return null;
@@ -387,7 +424,8 @@ export function containsTemplateGrammar(content: string): boolean {
 function classTokensOf(html: string): string[] {
   const tokens: string[] = [];
   for (const attribute of parseHtmlAttributes(html)) {
-    if (attribute.name !== 'class') continue;
+    // React maps the JSX className attribute to the browser's class attribute.
+    if (attribute.name !== 'class' && attribute.name !== 'classname') continue;
     for (const token of attribute.value.split(/\s+/)) {
       if (token) tokens.push(token.toLowerCase());
     }
@@ -408,17 +446,10 @@ function canonicalUriMap(html: string): Map<string, string[]> {
   for (const attribute of parseHtmlAttributes(html)) {
     if (!URI_ATTRIBUTES.has(attribute.name)) continue;
 
-    // `srcset` holds a comma separated list of candidate URLs.
-    const candidates =
-      attribute.name === 'srcset'
-        ? attribute.value.split(',').map(part => part.trim().split(/\s+/)[0] ?? '')
-        : [attribute.value];
-
-    const canonical = candidates
+    const canonical = uriCandidates(attribute.name, attribute.value)
       .filter(candidate => candidate !== '')
-      .map(candidate => canonicalizeUri(candidate, URI_BASE))
-      .sort();
-    map.set(attribute.name, canonical);
+      .map(candidate => canonicalizeUri(candidate, URI_BASE));
+    map.set(attribute.name, [...(map.get(attribute.name) ?? []), ...canonical]);
   }
 
   return map;
