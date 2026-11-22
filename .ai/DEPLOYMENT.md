@@ -132,6 +132,29 @@ only — `git diff --quiet 08ab9ef..8516dc8 -- src` is clean) was re-verified:
 
 Code-scanning after that run: **0 open alerts**.
 
+## The eighth-review closure run (2026-11-22)
+
+All four workflows are green on `2a652bf` (the eighth-review closure cycle):
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45048469014 | CI | ✅ success — lint, source-only typecheck, vitest + coverage, `next build`, `npm audit`, Playwright |
+| 45048469040 | Deploy | ✅ success |
+| 45048469096 | AccessGuard Scan | ✅ success (skips without the API key) |
+| 45048468997 | Docker | ✅ success — `Trivy image scan (fail on HIGH/CRITICAL)` ✅, `Upload Trivy SARIF` ✅, `Syft SBOM attest` ✅ |
+
+The Docker job is the proof for the image gate: every step of `build-and-push` is
+green, including the Trivy step that fails on HIGH/CRITICAL — **no new HIGH
+finding**. The code-scanning dashboard after this run: **0 open alerts** (the
+alerts API returns an empty list for the open alerts).
+
+Two deprecation annotations rode along with the green runs: the pinned actions
+target Node.js 20 and are forced to Node.js 24, and CodeQL Action v3 is
+deprecated in December 2026. Both are recorded as risk #35 with the exact
+upgrade targets. The upgrade was deliberately kept out of this cycle, so the
+pipeline record stays bound to the reviewed tree (`git diff --quiet
+08ab9ef..2a652bf -- src` is the only source change set of the cycle).
+
 ### How this cycle was shipped
 
 The `/ship` skill was invoked for this cycle, but its helper binaries
@@ -141,8 +164,26 @@ workflow stops at pre-flight — it also refuses to work on the base branch by
 design. The repository's volume definition of done mandates a **direct push to
 `origin/main`** with `vol: <area> — V<n>: <summary>` commits, so the DoD steps were
 executed manually and each one is evidenced above: the gate suite (tsc, lint, vitest
-+ coverage, build, Playwright, `npm audit`), the four DoD-ordered commits and the
-four green workflow runs.
++ coverage, build, Playwright, `npm audit`), the DoD-ordered commits and the four
+green workflow runs.
+
+### How the eighth-review cycle was shipped
+
+The commits, in the order the volume definition of done asks for:
+
+| Commit | Layer | Content |
+|---|---|---|
+| `dd81c7f` | security | the six eighth-review findings closed at their root cause, with 21 permanent regressions |
+| `ef384a6` | docs | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
+| `3992baf` | state | the closure evidence in `.ai/` and the reviewer's own artifact `.ai/SECURITY-REVIEW-8.md` |
+| `2a652bf` | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
+
+The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
+0, `npm run lint` 0, `npx vitest run --coverage` 53 files / 724 tests, coverage
+64.83 / 56.97 / 66.58 / 66.32 (thresholds 55 / 50 / 58 / 57), `npm run build` 0,
+`npx playwright test --project=chromium` 79/79, `npm audit --audit-level=high`
+Critical 0 / High 0, plus the temporary reviewer-payload re-run at 78/78 (deleted
+after the run).
 
 ## Local environment
 
