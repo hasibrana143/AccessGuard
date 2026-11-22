@@ -46,8 +46,8 @@ A fix passes five layers before it can touch a repository. Each layer can stop i
    protocol-relative, single-slash and backslash spelling of a remote URL cannot
    slip past it, and a changed `href` may not point the user somewhere else;
    **every** duplicate of the attribute is compared in source order, because the
-   browser uses the first one, and `ping` is parsed as the space-separated URL
-   list the browser parses),
+   browser uses the first one, and `ping` and `attributionsrc` are parsed as the
+   space-separated URL list the browser parses),
    and when it does not create a **live element** for the rule it claims to fix
    (an `<img>` inside `textarea`, `title` or a bogus comment is not a fix, and an
    `image-alt` fix has to keep the media source of the original image).
@@ -106,11 +106,15 @@ writes anything into a customer's repository:
   browser: the CSS priority suffix is stripped (`fixed!important` is `fixed`), every
   logical, small and large viewport unit is known (`100vi`, `100vb`, `100svw`,
   `100lvh`), the `inset` shorthand sets its edges the way the browser assigns them
-  (`inset:0 0` sets the block edges and the inline edges), the logical sizing
+  (`inset:0 0` sets the block edges and the inline edges), the logical inset
+  longhands (`inset-block-start`, `inset-block-end`, `inset-inline-start`,
+  `inset-inline-end`) set the same edges, the logical sizing
   properties (`inline-size`, `block-size`) are known, CSS escapes are decoded, a
   comment opener inside a string is text, native nesting is flattened and the frames
   of an animation are judged when the element animates with them — including the
-  **end state**, which is what the user sees after the animation runs. The effective
+  **end state**, which is what the user sees after the animation runs (a **reversed**
+  animation ends at its *first* frame, so the visible frame is chosen from the
+  animation's direction). The effective
   style of the patched element is the repository's rules **plus the remediation's
   own inline declarations**, and the custom properties the fix defines resolve the
   `var()` references of the repository's rules. A stylesheet the analyser cannot
@@ -120,6 +124,35 @@ writes anything into a customer's repository:
   (a repository script that calls `createElement('style')`, `insertRule(…)` or
   assigns `style.textContent`) are **unprovable** — an unprovable destination
   never receives a source patch.
+
+  The same judgement follows the paint and the geometry the customer sees. A
+  repository rule that makes the text **transparent** (`color:transparent`, a
+  colour with an alpha of zero), moves the element off-screen with a **logical
+  margin** (`margin-inline-start:-10000px`) or a **negative positional offset**
+  (`left:-9999px`), gives it a **zero dimension** (`width:0`), removes its box with
+  `display:contents`, or ends an animation invisible hides the patched element, so
+  the fix stays out of the repository. A size the analyser cannot compute — a fixed
+  length that may be as long as the customer's screen (`9999px`), a viewport unit
+  above 100% (`200vw`), a font-relative length of 64 units or more — is
+  **unprovable**, never harmless.
+
+  A rule the fix **activates** is judged as well, not only a rule that matches the
+  patched element. A **sibling or descendant selector** whose compound asks for an
+  attribute the fix adds (`[alt] ~ .overlay`) starts matching when the fix lands:
+  the rule can take over another element of the customer page, so the destination is
+  unprovable. A **network-bearing declaration** of such a rule (`background-image:
+  url(…)`) loads a resource in the customer browser, which the verification browser
+  blocks and therefore never sees: the destination is unprovable.
+
+  The repository's **runtime** is judged as well, because the verification browser
+  does not run the customer's JavaScript. A script that **conditionally mutates** an
+  element — it reads the element's state (`hasAttribute(…)`, `matches(…)`) and then
+  changes its class, its inline style or its attributes — can take the patched
+  element over as soon as the fix adds the attribute the script reads; a script that
+  names the patched element by its id can take it over unconditionally. A **service
+  worker** can deliver the stylesheet bytes the static scan cannot see, and a
+  **CSS-in-JS** library builds the selector and the declaration at runtime. All of
+  them are unprovable, and an unprovable destination never receives a source patch.
 
 An incomplete scan never patches a file; the fix stays a review suggestion. The
 review comment that is written into the file instead neutralizes the comment
@@ -196,6 +229,11 @@ PR writes a `github_pr_created` audit log entry; the write is retried
   **composition with the remediation's own inline style**, the **custom properties
   the fix defines**, the **JSX class carrier**, an **animation end state**, a large
   negative margin and a viewport-unit translation),
+  and the rules the ninth review found and the analyser used to miss (the **logical
+  inset longhands**, a size **larger than the viewport**, a **sibling combinator** the
+  fix activates, a **repository resource** the fix activates, a **transparent
+  repository colour**, a **logical margin**, a **negative positional offset**, a
+  **single zero dimension**, `display:contents` and a **reversed animation**),
   the independence of the verdict from the order of the stylesheets and the
   animation frames.
 - `src/lib/__tests__/fix-verification.test.ts` — gate semantics, the
@@ -208,7 +246,10 @@ PR writes a `github_pr_created` audit log entry; the write is retried
   per file, the complete tree scan, ambiguous matches left alone, an incomplete scan
   (unreadable file, truncated tree, submodule) never patching, the destination
   stylesheet guard (a preprocessor stylesheet, a linked stylesheet, a **style the
-  repository script creates at runtime**), the blob whose extension does not say
+  repository script creates at runtime**), the **runtime behaviour of the repository
+  script** (a conditional class or inline-style mutation, a mutation that names the
+  patched element, a service worker, a CSS-in-JS library), the blob whose extension
+  does not say
   whether it is binary, the template destination, failed writes not reported as
   applied.
 - `src/lib/__tests__/audit-retry.test.ts` — the audit write is retried before a
