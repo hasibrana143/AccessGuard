@@ -2,6 +2,54 @@
 
 Last verification: 2026-11-23
 
+## Tenth independent security review (2026-11-23) — closure in progress
+
+**Verdict: NOT READY — Critical 0, High 4, Medium 4, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree is **not releasable** until every High
+reproduction is blocked in the unsafe direction, permanent regressions cover the
+root causes, and a fresh independent review returns READY.
+
+The reviewed closure tree was `d1cabd6` (`vol: security — V23: close the ninth
+review's geometry, activated-rule, runtime, URI and paint findings`), against the
+requested baseline `08ab9ef`; the checkout at review time was `78ec751`. The
+reviewer's own artifact is `.ai/SECURITY-REVIEW-10.md` (report only — no shipped
+source, docs, CI, dependency or environment file was changed by the reviewer).
+Every reproduction used local synthetic repositories, a mocked GitHub transport,
+local Chromium and `127.0.0.1` listeners. No production, third-party or public
+target was scanned, no live repository was mutated, no external GitHub Markdown
+service was called, and **no Strix result is claimed**.
+
+### Reproduced findings
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 10-H1 | **High** | Repository runtime carriers and state reads | An inline `<script>` in the repository HTML (`if(img.hasAttribute("alt"))img.classList.add("overlay")`) and the linked-file twin `if(img.alt)` each returned valid / harm-null / verified confidence `1` / 1 fix / 1 write while Chromium turned the target from a static `16×16` image into a fixed `1280×720` takeover | `SCRIPT_FILE_PATTERN` covers script **files** only, so an inline `<script>` never entered the runtime analysis; `RUNTIME_STATE_READ_PATTERN` recognises **method** reads only, so a DOM **property** getter that reflects the attribute (`img.alt`) never entered the conditional-mutation gate | **In progress** — inline `<script>` blocks are analysed like linked scripts, and a property getter counts as a state read |
+| 10-H2 | **High** | CSS identifier escape semantics | `[a\6ct]{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647}` with the ordinary `alt` fix returned valid / harm-null / verified / 1 fix / 1 write; Chromium decoded the identifier as `alt` and took the page over | `parseSubject()` decodes CSS escapes in an attribute **value** but keeps the attribute **name** raw, so the browser-matching rule looked like no rule at all | **In progress** — selector identifiers are decoded the way the browser decodes them |
+| 10-H3 | **High** | Destination painted-box geometry | `[alt]{position:fixed;width:50vw;height:50vh;scale:3}` (painted `1920×1080`), `[alt]{position:fixed;width:50vw;height:50vh;border:10000px solid}` (painted `20640×20360`) and `[alt]{position:fixed;padding:10000px}` (painted `20037×20034`) each returned valid / harm-null / verified / 1 fix / 1 write while Chromium measured a viewport takeover | The model judges the **content** box only: a scale above `1` is unbounded, `padding` is listed but never composed into the painted box, and `border` is ignored | **In progress** — the painted box composes padding, border, `box-sizing`, `scale` and `transform: scale(…)`; a box that may cover the viewport is unprovable, never harmless |
+| 10-H4 | **High** | Focus-state activation of sibling rules | `input:focus ~ .overlay{position:fixed;inset:0;…}` with the `autofocus` remediation returned valid / harm-null / verified / 1 fix / 1 write; after the fix the input was `document.activeElement` and the sibling was a fixed `1280×720` takeover | The activation signal covers added attributes and classes only; no rule connected the newly added `autofocus` to `:focus`, and the rule's subject is another element, so it was invisible to the subject-only decision | **In progress** — a fix that adds `autofocus` activates every focus rule whose compound can match the patched element, in any compound of the selector |
+| 10-M1 | Medium | Repository animation play state | `[alt]{animation:hide 1s paused}` with `@keyframes hide{from{opacity:0}to{opacity:1}}` returned valid / harm-null / verified / 1 fix / 1 write; Chromium measured the computed opacity drop from `1` to `0` while the animation stayed paused | The model picks the visible frame from the animation **direction** but ignores `animation-play-state:paused` — a paused animation stays on its **first** frame | **In progress** — the play state decides which frame the customer sees |
+| 10-M2 | Medium | Customer-side CSS resource activation through focus | `input:focus{background-image:url(http://127.0.0.1:<port>/focus-pixel)}` with the same `autofocus` remediation returned valid / harm-null / verified / 1 fix / 1 write; the local listener received `GET /focus-pixel` after the merge and nothing before it | The activated-rule check only recognises an added attribute or class as the activation hook, so the focus transition was invisible to it | **In progress** — the focus activation reaches the same resource check as every other activated rule |
+| 10-M3 | Medium | Create-PR route writes after a destination refusal | The real route with the real verifier and the real writer and a mocked transport: the writer returned a non-null destination harm, applied **0 fixes** and wrote **0 source files**, but the route still created the branch, `accessguard-fixes/button-name-v1.md`, `accessguard-fixes/summary.md` and the pull request, and answered `200 success:true` | The route creates the branch **before** it calls the writer, then writes a fix document and a summary for every isolated-verified violation without distinguishing a destination refusal from a successful source patch | **Planned** — the destination and runtime decision happens before the first repository mutation; a refused candidate gets no artifact, and a run in which every candidate is refused creates no branch and no pull request |
+| 10-M4 | Medium | Audit-trail failure after an irreversible mutation | The same route reproduction with a persistent `createAuditLogWithRetry` failure: branch, two documents and pull request created, response `200 success:true auditRecorded:false` | The audit write happens **after** the pull request and is best effort, so a persistent database failure leaves an externally visible repository mutation with no trail and a success response | **Planned** — a durable audit intent is written before the first GitHub mutation; a persistent failure stops the mutation, and a failure of the closing record leaves the intent as the recoverable trail and is reported as degraded |
+
+### Re-run evidence of the tenth review
+
+| Harness | Result |
+|---|---|
+| Ninth-review closure matrix | 42/42 — 26 writer-level unsafe payloads, 4 validator-level groups, 12 legitimate groups |
+| Prior / legitimate assertion matrix | 118/118 — 94 unsafe assertions across 40 payload groups and 24 legitimate assertions across 13 behaviour groups (one harness-only confidence expectation corrected, not a product change) |
+| Ninth-review closure candidate probe | 15/15 expected outcomes (the dismissed `contain:size` candidate still allowed) |
+| New equivalent-path probe | 9/9 unsafe results reproduced |
+| Build, source-only typecheck, lint, vitest 750/750, Playwright 79/79, `npm audit` Critical 0 / High 0 | PASS |
+
+### Gate status
+
+The sixth, seventh, eighth and ninth review closures are shipped; the tenth
+review returned **NOT READY** (High 4, Medium 4) and its closure is in progress.
+The **release gate is still closed**: it opens only when a **tenth-closure
+independent review** returns READY (Critical 0, High 0) against the closure
+tree.
+
 ## Ninth independent security review (2026-11-22) — closed 2026-11-23
 
 **Verdict: NOT READY — Critical 0, High 3, Medium 3, Low 0.** The READY gate

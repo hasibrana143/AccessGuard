@@ -2,15 +2,25 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 ninth-review closure ready to ship, tenth review pending** 🔴 |
-| Current task | Tenth independent security review of the ninth-review closure; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 tenth-review closure in progress** 🔴 |
+| Current task | Close the eight tenth-review findings (High 4, Medium 4) at their root cause, with a permanent regression each |
 | Owner | CTO agent |
-| Status | AMBER — the six ninth-review findings (High 3, Medium 3) are fixed at their root cause, every working reproduction is blocked and the whole gate suite is green; the gate stays closed until the tenth independent review returns READY |
+| Status | AMBER — the tenth independent review returned NOT READY (High 4, Medium 4); every reproduction is confirmed, the fixes are being implemented in three disjoint scopes, and the gate stays closed until a fresh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Push the ninth-review closure to `origin/main`, verify the four workflows and run the tenth independent security review against the pushed tree; fix every finding at the root cause with a permanent regression and repeat until READY |
-| Last verification | 2026-11-23 — ninth-review closure: tsc 0, lint 0, vitest 53 files/750 tests, coverage 65.22/57.50/67.04/66.70, build 0, Playwright 79/79, npm audit High 0; 42/42 reviewer-payload re-run assertions (26 writer-level unsafe payloads blocked, the validator-level payloads blocked, 12 legitimate behaviours pass) |
+| Next action | Merge the three closure scopes (destination CSS, repository runtime, route + audit), re-run the reviewer's payload matrix, run the full gate suite, commit in DoD order and push; then run the eleventh independent security review |
+| Last verification | 2026-11-23 — ninth-review closure: tsc 0, lint 0, vitest 53 files/750 tests, coverage 65.22/57.50/67.04/66.70, build 0, Playwright 79/79, npm audit High 0, 42/42 reviewer-payload re-run, four green workflows on `78ec751`; tenth review: NOT READY (High 4, Medium 4), its own gate suite green (750/750, Playwright 79/79) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-23, tenth review)
+
+| Check | Result |
+|---|---|
+| Tenth independent security review | **NOT READY — Critical 0, High 4, Medium 4, Low 0** against the closure tree `d1cabd6` (checkout `78ec751`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-10.md` and the findings are in `.ai/SECURITY-STATUS.md` |
+| Reviewer's own re-runs | PASS — the ninth-review closure matrix 42/42, the prior / legitimate matrix 118/118, the ninth-review candidate probe 15/15, the new equivalent-path probe 9/9 unsafe results reproduced |
+| Reviewer's gate suite | PASS — build 0, source-only typecheck 0, lint 0, vitest 750/750, Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
+| Closure scopes | IN PROGRESS — (1) destination CSS: the selector escape, the painted-box geometry, the focus activation and the animation play state; (2) repository runtime: the inline `<script>` carrier and the DOM property getter; (3) route + audit: the decision before the first repository mutation and the durable audit intent |
+| Release gate | CLOSED — opens only when a fresh independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, ninth-review closure)
 
