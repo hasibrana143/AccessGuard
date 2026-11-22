@@ -1,6 +1,30 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-22 (seventh-review closure)
+Last run: 2026-11-22 (eighth-review closure)
+
+## Eighth-review closure evidence
+
+| Check | Result |
+|---|---|
+| Temporary reviewer-payload re-run | PASS — 1 file, 78/78 assertions: the 12 fourth-review payloads, the 6 fifth-review payloads, the 8 sixth-review payloads, the 8 seventh-review reproductions and the eighth-review reproductions are all blocked in the unsafe direction (validation false, 0 fixes, 0 writes), and the 9 legitimate behaviours (HTML / TSX / JS fix, `https:` / `mailto:` href, 3-of-3 copies, 2-of-3 copies, the 12 template spellings, the mocked symlink) still pass. The file `src/lib/__tests__/tmp-reviewer-payload-rerun.test.ts` was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 724/724 tests, 0 failed (was 53/703) |
+| Coverage | PASS — statements 64.83% (threshold 55) · branches 56.97% (50) · functions 66.58% (58) · lines 66.32% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+
+### Permanent regressions added for the eighth review
+
+| Finding | Regression | File |
+|---|---|---|
+| 8-H1 — the destination CSS geometry | the two-value, three-value and four-value `inset` shorthand set the edges the browser assigns, and `inline-size` / `block-size` cover the viewport | `css-context.test.ts` |
+| 8-H2 — the remediation / destination composition | the inline style of the patched element is composed with the repository's rules, the custom properties the fix defines resolve the `var()` references, and a style that is not a CSS declaration list is unprovable | `css-context.test.ts` |
+| 8-H3 — the JSX `className` hook | a class rule reaches the element through `className` in the CSS descriptor, and a new JSX class token is refused by the validation guard | `css-context.test.ts`, `github-pr.test.ts` |
+| 8-H4 — the runtime-created repository style | `createElement('style')` and `insertRule(…)` keep the fix out of the repository, while a repository with an ordinary script is still patched | `github.test.ts` |
+| 8-M1 — the URI attribute and list semantics | a remote destination behind a duplicate `src`, a remote URL inside a `ping` list and a navigation behind a duplicate `href` are refused | `github-pr.test.ts` |
+| 8-M2 — the paint preservation | the modern zero-alpha colour, the zero-size target, the zero size with clipping and the negative margin are refused statically; the browser verdict refuses the transparent colour, the zero-area target, the clipped text, the negative margin, the viewport translation and the opacity animation endpoint | `github-pr.test.ts`, `fix-verification.test.ts`, `css-context.test.ts` |
 
 ## Seventh-review closure evidence
 

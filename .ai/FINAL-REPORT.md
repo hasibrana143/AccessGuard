@@ -1,25 +1,27 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + seventh-review closure** · Date: 2026-11-22 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + eighth-review closure** · Date: 2026-11-22 · Owner: CTO agent
 
 ## What shipped
 
 The four P0 "make the product true" gaps from `.ai/PRODUCT-CRITIQUE-DEEP.md` are closed.
-The first V23 cut was reviewed seven times: the first review found seven more defects
+The first V23 cut was reviewed eight times: the first review found seven more defects
 (3 reproduced P0 defects, 3 High, 4 Medium, 1 Low), the **re-review of that hardening
 found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, the
 **fourth review found 3 High, 9 Medium**, the **fifth review of that closure found
-2 High, 4 Medium**, the **sixth review of that closure found 2 High, 6 Medium**, and
-the **seventh review of that closure found 3 High, 4 Medium**.
+2 High, 4 Medium**, the **sixth review of that closure found 2 High, 6 Medium**, the
+**seventh review of that closure found 3 High, 4 Medium**, and the **eighth review of
+that closure found 4 High, 2 Medium**.
 Every earlier round closed the literal reproductions while an equivalent path stayed
-open. The seventh review re-ran all twelve fourth-review, all six fifth-review and
-all eight sixth-review payloads (all still blocked) and independently reproduced seven
-equivalent paths. **All seven are now fixed at their root cause, with a permanent
-regression each** (the reviewer-payload re-run: 39/39 assertions — 26 prior payloads
-plus the 8 seventh-review reproductions blocked, 9 legitimate behaviours still pass,
-and the legitimate fix still lands).
+open. The eighth review re-ran all twelve fourth-review, all six fifth-review, all
+eight sixth-review and all eight seventh-review payloads (all still blocked) and
+independently reproduced six equivalent paths. **All six are now fixed at their root
+cause, with a permanent regression each** (the reviewer-payload re-run: 78/78
+assertions — 26 prior payloads plus the 8 seventh-review and the 8 eighth-review
+reproductions blocked, 9 legitimate behaviours still pass, and the legitimate fix still
+lands).
 **The release verdict is still NOT READY** — the gate requires Critical 0 and High 0
-from an independent pass, and the **eighth review is the next check**.
+from an independent pass, and the **ninth review is the next check**.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -27,6 +29,22 @@ from an independent pass, and the **eighth review is the next check**.
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Eighth independent security review (2026-11-22)
+
+> The verdict was NOT READY — Critical 0, High 4, Medium 2, Low 0 — against tree
+> `08ab9ef`. **All six findings are closed** (the closure table and the evidence are
+> in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact is `.ai/SECURITY-REVIEW-8.md`).
+> The release gate opens only when a **ninth independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 8-H1 — the destination CSS reader knew neither the `inset` shorthand edge assignment nor the logical sizing properties | High | `inset:0 0` and the `inline-size`/`block-size` twin each verified with `harm:null` while Chromium measured a fixed `1280×720` overlay | **Closed** — the shorthand assigns its edges the way the browser assigns them, the logical sizing properties are geometry, and an uncomputable geometry value is unprovable |
+| 8-H2 — the destination analyser evaluated the repository's CSS without the remediation's own inline style | High | A fix that sizes the element against a repository rule that positions it verified and was written; the same with custom properties | **Closed** — the effective style is the repository's rules plus the remediation's inline declarations, the custom properties the fix defines resolve the `var()` references, and an unreadable style is unprovable |
+| 8-H3 — the JSX `className` hook was invisible to validation and to destination matching | High | `className="overlay"` verified with confidence 1 and was written; Chromium measured a fixed `1280×720` overlay | **Closed** — `className` is a class-token carrier in the added-class guard and in the CSS element descriptor |
+| 8-H4 — a repository script that creates a style at runtime was never inspected | High | The `alt` fix activated the runtime rule and was written; Chromium measured a fixed `1280×720` overlay | **Closed** — a runtime-created style is a dynamic style source: the destination is unprovable and no repository write happens |
+| 8-M1 — one value per URI attribute name, and `ping` read as a single URI | Medium | A remote destination behind a duplicate `src`, a remote URL inside a `ping` list and a `mailto:` navigation behind a duplicate `href` each verified and were written | **Closed** — every duplicate is compared in source order and each attribute is parsed with the list grammar the browser uses |
+| 8-M2 — a target or text that produces no visible paint passed as visible | Medium | Six browser-confirmed variants (modern transparent colour, zero size, clipped text, negative margin, viewport translation, opacity animation) each verified with confidence 1 and were written | **Closed** — the static guard reads the modern colour alpha, a zero size and a negative margin; the browser verdict resolves the alpha with a canvas and rejects a zero-area target, an off-screen target, a clipped text and an animation that ends invisible |
 
 ### Sixth independent security review (2026-11-22)
 

@@ -2,6 +2,56 @@
 
 Last verification: 2026-11-22
 
+## Eighth independent security review (2026-11-22)
+
+**Verdict: NOT READY — Critical 0, High 4, Medium 2, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree was **not releasable** until every High
+reproduction is blocked in the unsafe direction and a fresh independent review
+returns READY.
+
+The reviewed tree was `08ab9ef` (`vol: releases — V23: volume log entry for the
+seventh-review closure cycle`), against the requested baseline `cdb246a`; the
+checkout at review time was `46bd701`. The reviewer's own artifact is
+`.ai/SECURITY-REVIEW-8.md` (report only — no shipped source, docs, CI, dependency
+or environment file was changed by the reviewer). Every reproduction used local
+synthetic repositories, a mocked GitHub transport, local Chromium and
+`127.0.0.1` listeners. No production, third-party or public target was scanned,
+no live repository was mutated, no external GitHub Markdown service was called,
+and **no Strix result is claimed** (every configured provider refused the run:
+quota / EOL model / no credits).
+
+### Reproduced findings and their closure
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 8-H1 | **High** | Destination CSS geometry semantics | `styles.css` = `[role="button"]{position:fixed;inset:0 0;z-index:2147483647}` with the `role="button"` remediation → `validation:true`, `harm:null`, verified with confidence 1, 1 fix, 1 write, Chromium measured a fixed `1280×720` overlay; the logical-sizing twin `[alt]{position:fixed;top:0;left:0;inline-size:100vw;block-size:100vh;z-index:2147483647}` did the same | `stateOf` recognised only the exact value `0` as zero for `inset`, so the browser-valid **two-value** shorthand `0 0` did not establish all four edges; `inline-size` and `block-size` were absent from the relevant-property and viewport-coverage semantics | `insetEdges` / `insetBlockEdges` / `insetInlineEdges` assign the shorthand edges the way the browser assigns them (one value sets every edge, two the block and the inline edges, three and four the browser's own assignment); `inline-size`, `block-size`, `min-inline-size` and `min-block-size` joined `RELEVANT_PROPERTIES`, `JUDGEMENT_PROPERTIES` and `GEOMETRY_PROPERTIES` — `inline-size` covers the X axis and `block-size` the Y axis in a horizontal writing mode. A geometry value the analyser cannot compute makes the changed destination **unprovable**, never harmless |
+| 8-H2 | **High** | Remediation / destination style composition | Remediation `<img id="target" src="x" alt="Photo" style="width:100%;height:100%">` with `#target{position:fixed;z-index:2147483647}` → the same valid / harm-null / verified / write result and a `1280×720` fixed overlay; the custom-property twin `style="--pos:fixed;--w:100%;--h:100%;--z:2147483647"` with `#target{position:var(--pos);width:var(--w);height:var(--h);z-index:var(--z)}` did the same | `destinationCssHarm` evaluated **only** the repository's rules — the remediation's inline declarations were never applied, so the effective style of the patched element was never computed; `var()` was only unprovable when the fix changed that CSS property, and here the fix supplies the custom-property value | The effective style of the patched element is the repository's rules **plus the remediation's inline declarations** (`inlineStyleOf` → `parseDeclarations`); the custom properties the fix defines — and those a rule that provably matches defines — resolve the `var()` references of the repository's rules (`resolveCustomProperties`); an inline style that is not a plain CSS declaration list (the JSX object form `style={{ … }}`) cannot be read, so the destination is **unprovable** |
+| 8-H3 | **High** | JSX class-token handling | `Card.tsx` = `<img id="target" src="x" />`, remediation `<img id="target" src="x" alt="Photo" className="overlay" />`, repository CSS `.overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647}` → valid / harm-null / verified with confidence 1 / 1 write, Chromium measured a fixed `1280×720` overlay | The added-class guard in `github-pr.ts` **and** the CSS element descriptor in `css-context.ts` read only the HTML `class` attribute; React maps `className` to the browser's `class` attribute, so the new class hook was invisible to validation and to destination matching but active in the customer browser | `classTokensOf` (`src/lib/github-pr.ts`) and `describeElements` (`src/lib/css-context.ts`) read **`className` as a class-token carrier** in both the HTML and the JSX dialect; a new class token no longer bypasses either gate |
+| 8-H4 | **High** | Runtime-created repository style | Repository `app.js` = `const css='[alt]{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647}';const s=document.createElement('style');s.textContent=css;document.head.appendChild(s);` → the `alt` fix validated, verified with confidence 1, applied 1 fix and performed 1 write; Chromium applied the overlay | The destination style collector read CSS files, literal `<style>` blocks, linked stylesheets and `@import` chains — it never inspected the repository's **scripts** for a style element the script creates at runtime. The style activates only after the accessibility fix changes the selector match | `src/lib/github.ts` classifies a repository script that creates a style at runtime (`createElement('style')`, `insertRule(…)`, `adoptedStyleSheets`, a `style.textContent` / `innerHTML` / `cssText` assignment, a `<style` string) as a **dynamic style source** — the CSS is built at runtime, so the analyser cannot read it. The destination becomes unprovable and the repository receives **no** write |
+| 8-M1 | Medium | URI attribute and list semantics | A duplicate `src` changed the browser-effective first value from `/safe.png` to `http://127.0.0.1:9/pixel` while a later `src="/other.png"` remained (the customer browser hit `/pixel`); a `ping="/safe http://127.0.0.1:9/pixel"` remediation requested the remote URL; a duplicate `href` put `mailto:attacker@example.com` first and Chromium followed it — each validated, verified with confidence 1 and written | `canonicalUriMap` stored **one** value per attribute name, so a later duplicate overwrote the browser-effective first duplicate; and it treated `ping` as a single URI although browsers parse it as a **space-separated** URL list. The scheme check had the same single-value assumption | `uriCandidates` parses each URI attribute with the list grammar the browser uses (`srcset` comma separated, `ping` space separated, everything else one URL); `canonicalUriMap` keeps **every** occurrence in **source order** and the scheme check uses the same grammar. A changed, masked, dropped, duplicated or newly introduced remote destination is refused; a preserved destination, a relative destination and an inert image `data:` URI stay allowed |
+| 8-M2 | Medium | Rendered visibility and paint preservation | Six browser-confirmed hiding variants each validated, verified with confidence 1, applied one fix and performed one write: `color:oklch(0 0 0 / 0%)` (computed `oklch(0 0 0 / 0)`, 0 dark pixels), `width:0;height:0` (image rect `0×0`), `height:0;overflow:hidden` (target height 0 while the unpainted text range kept `69.75×17`), `margin-left:-10000px` (left `-9992`), repository `[alt]{translate:-100vw}` (left `-1272`), and repository `[alt]{animation:hide 100ms forwards}` with `@keyframes hide{from{opacity:1}to{opacity:0}}` (computed opacity 0) | The static colour parser did not understand the modern `oklch()` alpha syntax; the browser check did not reject a **zero-area** target, did not account for **clipping** when it tested a text range, and did not treat a large negative margin or a viewport-unit translation as off-screen; the destination CSS only treated an animation frame as harmful when it changed **geometry**, so an opacity-only fade was judged harmless | The static guard (`checkStyleAttribute`) reads the alpha of the modern colour syntaxes (the slash form of any functional syntax, with or without a percent sign), refuses a zero width or height on the **patched** element and a large negative margin (the existing off-screen threshold). The browser verdict (`checkRenderedElement` and the rendered-text helper) resolves the colour alpha with a **1×1 canvas** (the browser's own answer), rejects a target whose border box has no area or does not intersect the viewport, requires the painted text range to intersect the **client box** of an element that clips its content, and lets the animations of the snippet reach their **end state** before the page is judged. The destination CSS reader treats a large negative margin and a viewport-unit translation as hidden and reads the hiding properties of the animation's end frame |
+
+### Closure evidence
+
+| Fix | Root cause | Permanent regression |
+|---|---|---|
+| Destination geometry (`src/lib/css-context.ts`) | The `inset` shorthand and the logical sizing properties were unknown | `css-context.test.ts` — the two-value, three-value and four-value `inset` shorthand, the logical sizing properties |
+| Style composition (`src/lib/css-context.ts`) | The remediation's inline declarations were never composed with the repository's rules | `css-context.test.ts` — the inline style composed with the repository CSS, the custom properties the fix defines, a style that is not a CSS declaration list |
+| JSX class carrier (`src/lib/css-context.ts`, `src/lib/github-pr.ts`) | Only the HTML `class` attribute was read | `css-context.test.ts` — a class rule reached through `className`; `github-pr.test.ts` — a new JSX class token is refused |
+| Runtime styles (`src/lib/github.ts`) | The repository's scripts were never inspected for a style they create | `github.test.ts` — `createElement('style')` and `insertRule(…)` keep the fix out of the repository; a repository with an ordinary script is still patched |
+| URI semantics (`src/lib/github-pr.ts`) | One value per attribute name; `ping` read as a single URI | `github-pr.test.ts` — the duplicate `src`, the `ping` list, the duplicate `href` |
+| Paint preservation (`src/lib/github-pr.ts`, `src/lib/fix-verification.ts`) | Modern colour alpha, zero-area targets, clipping, negative margins and animation end states were unknown | `github-pr.test.ts` — the modern zero-alpha colour, the zero-size target, the zero size with clipping, the negative margin; `fix-verification.test.ts` — the browser verdict for the transparent colour, the zero-area target, the clipped text, the negative margin, the viewport translation and the opacity animation endpoint |
+
+### Gate status
+
+The sixth, seventh and eighth review closures are shipped. The **release gate is
+still closed**: it opens only when a **ninth** independent review returns READY
+(Critical 0, High 0) against the closure tree. Every eighth-review reproduction
+is blocked in the unsafe direction by the shipped regressions, and the temporary
+payload re-run (the 12 fourth-review, 6 fifth-review, 8 sixth-review and 8
+seventh-review reproductions, the eighth-review reproductions and the 9
+legitimate behaviours) passed 78/78 and was deleted after the run.
+
 ## Seventh independent security review (2026-11-22)
 
 **Verdict: NOT READY — Critical 0, High 3, Medium 4, Low 0.** The READY gate
