@@ -2,15 +2,31 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 tenth-review closure in progress** 🔴 |
-| Current task | Close the eight tenth-review findings (High 4, Medium 4) at their root cause, with a permanent regression each |
+| Current phase | **SECURITY FIX LOOP — V23 tenth-review closure shipped, eleventh review pending** 🟡 |
+| Current task | Run the eleventh independent security review against the tenth-review closure tree; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the tenth independent review returned NOT READY (High 4, Medium 4); every reproduction is confirmed, the fixes are being implemented in three disjoint scopes, and the gate stays closed until a fresh independent review returns READY |
+| Status | AMBER — all eight tenth-review findings (High 4, Medium 4) are closed at their root cause with a permanent regression each, the gate suite is green and the closure is pushed; the gate stays closed until a fresh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Merge the three closure scopes (destination CSS, repository runtime, route + audit), re-run the reviewer's payload matrix, run the full gate suite, commit in DoD order and push; then run the eleventh independent security review |
-| Last verification | 2026-11-23 — ninth-review closure: tsc 0, lint 0, vitest 53 files/750 tests, coverage 65.22/57.50/67.04/66.70, build 0, Playwright 79/79, npm audit High 0, 42/42 reviewer-payload re-run, four green workflows on `78ec751`; tenth review: NOT READY (High 4, Medium 4), its own gate suite green (750/750, Playwright 79/79) |
+| Next action | Verify the four workflows on the pushed closure head, record the runs in `.ai/DEPLOYMENT.md`, then run the eleventh independent security review (baseline `08ab9ef`, reviewed tree = the closure commit) |
+| Last verification | 2026-11-23 — tenth-review closure: tsc 0, lint 0, vitest 53 files/770 tests, coverage 65.35/57.52/67.96/67.05, build 0, Playwright 79/79, npm audit High 0, reviewer-payload matrix 19/19; the tenth review's own gate suite was green (750/750, Playwright 79/79) and its verdict was NOT READY (High 4, Medium 4) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-23, tenth-review closure)
+
+| Check | Result |
+|---|---|
+| Tenth-review closure | PASS — all eight findings (10-H1, 10-H2, 10-H3, 10-H4, 10-M1, 10-M2, 10-M3, 10-M4) fixed at their root cause; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-10.md` |
+| Permanent regressions | PASS — every reproduction of the tenth review has a shipped regression: the inline `<script>` carrier, the DOM property getter, the escaped attribute name, the painted box (scale, border, padding), the focus activation of a sibling rule, the focus-activated customer-side request, the paused animation, the plan/apply split (refused / review / applied), the intent record before the branch, the no-branch-no-PR refusal and the degraded closing record |
+| Temporary reviewer-payload matrix | PASS — 1 file, 19/19 assertions: the nine unsafe reproductions are blocked in the unsafe direction (0 fixes, 0 writes), and the ten legitimate behaviour groups still pass. The file was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 770/770 tests (was 53/750) |
+| Coverage | PASS — statements 65.35% (threshold 55) · branches 57.52% (50) · functions 67.96% (58) · lines 67.05% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+| Eleventh independent security review | PENDING — the release gate opens only on READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, tenth review)
 
@@ -19,7 +35,7 @@
 | Tenth independent security review | **NOT READY — Critical 0, High 4, Medium 4, Low 0** against the closure tree `d1cabd6` (checkout `78ec751`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-10.md` and the findings are in `.ai/SECURITY-STATUS.md` |
 | Reviewer's own re-runs | PASS — the ninth-review closure matrix 42/42, the prior / legitimate matrix 118/118, the ninth-review candidate probe 15/15, the new equivalent-path probe 9/9 unsafe results reproduced |
 | Reviewer's gate suite | PASS — build 0, source-only typecheck 0, lint 0, vitest 750/750, Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
-| Closure scopes | IN PROGRESS — (1) destination CSS: the selector escape, the painted-box geometry, the focus activation and the animation play state; (2) repository runtime: the inline `<script>` carrier and the DOM property getter; (3) route + audit: the decision before the first repository mutation and the durable audit intent |
+| Closure scopes | CLOSED — (1) destination CSS: the selector escape, the painted-box geometry, the focus activation and the animation play state; (2) repository runtime: the inline `<script>` carrier and the DOM property getter; (3) route + audit: the decision before the first repository mutation and the durable audit intent |
 | Release gate | CLOSED — opens only when a fresh independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, ninth-review closure)

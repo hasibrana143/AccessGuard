@@ -1,28 +1,29 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + ninth-review closure** · Date: 2026-11-23 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + tenth-review closure** · Date: 2026-11-23 · Owner: CTO agent
 
 ## What shipped
 
 The four P0 "make the product true" gaps from `.ai/PRODUCT-CRITIQUE-DEEP.md` are closed.
-The first V23 cut was reviewed nine times: the first review found seven more defects
+The first V23 cut was reviewed ten times: the first review found seven more defects
 (3 reproduced P0 defects, 3 High, 4 Medium, 1 Low), the **re-review of that hardening
 found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, the
 **fourth review found 3 High, 9 Medium**, the **fifth review of that closure found
 2 High, 4 Medium**, the **sixth review of that closure found 2 High, 6 Medium**, the
 **seventh review of that closure found 3 High, 4 Medium**, the **eighth review of
-that closure found 4 High, 2 Medium**, and the **ninth review of that closure found
-3 High, 3 Medium**.
+that closure found 4 High, 2 Medium**, the **ninth review of that closure found
+3 High, 3 Medium**, and the **tenth review of that closure found 4 High, 4 Medium**.
 Every earlier round closed the literal reproductions while an equivalent path stayed
-open. The ninth review re-ran all twelve fourth-review, all six fifth-review, all
-eight sixth-review, all eight seventh-review and all six eighth-review payloads (all
-still blocked) and independently reproduced six equivalent paths. **All six are now
-fixed at their root cause, with a permanent regression each** (the reviewer-payload
-re-run: 42/42 assertions — 26 writer-level unsafe payloads plus the validator-level
-payloads blocked, 12 legitimate behaviour groups still pass, and the legitimate fix
-still lands).
+open. The tenth review independently reproduced eight equivalent paths — an inline
+`<script>` carrier, a DOM property getter, an escaped attribute **name**, the painted
+box, the focus activation a fix causes, a paused animation, a customer-side request
+through the focus, a repository mutation after a refusal and a missing audit trail.
+**All eight are now fixed at their root cause, with a permanent regression each**
+(the reviewer-payload re-run: 19/19 assertions — the nine unsafe reproductions
+blocked in the unsafe direction, the ten legitimate behaviour groups still pass, and
+the legitimate fix still lands).
 **The release verdict is still NOT READY** — the gate requires Critical 0 and High 0
-from an independent pass, and the **tenth review is the next check**.
+from an independent pass, and the **eleventh review is the next check**.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -30,6 +31,24 @@ from an independent pass, and the **tenth review is the next check**.
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Tenth independent security review (2026-11-23)
+
+> The verdict was NOT READY — Critical 0, High 4, Medium 4, Low 0 — against tree
+> `d1cabd6`. **All eight findings are closed** (the closure table and the evidence are
+> in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact is `.ai/SECURITY-REVIEW-10.md`).
+> The release gate opens only when an **eleventh independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 10-H1 — the runtime analysis read script **files** only and recognised **method** reads only | High | An inline `<script>` in the repository HTML and `if(img.alt)` in a linked script each turned the target into a fixed `1280×720` takeover | **Closed** — inline `<script>` blocks are analysed like linked scripts (an unclosed block fails closed), and a DOM property getter is a state read |
+| 10-H2 — the selector reader decoded the attribute **value** but not the **name** | High | `[a\6ct]` (which the browser resolves to `alt`) took the page over the moment the fix added the attribute | **Closed** — every selector identifier is decoded the way the browser decodes it |
+| 10-H3 — the geometry model judged the **content** box only | High | `scale:3`, `border:10000px` and `padding:10000px` each painted a viewport takeover | **Closed** — the painted box composes padding, border, `box-sizing`, `scale` and `transform: scale(…)`; a box that may cover the viewport is unprovable |
+| 10-H4 — the activation signal knew added attributes and classes only | High | `input:focus ~ .overlay` took the page over as soon as the fix focused the input | **Closed** — a fix that adds `autofocus` activates every focus rule whose compound can match the patched element, in any compound |
+| 10-M1 — the animation model chose the visible frame from the direction only | Medium | A paused animation held the element on its invisible first frame | **Closed** — the play state decides the frame the customer sees |
+| 10-M2 — the activated-rule check did not see the focus transition | Medium | `input:focus{background-image:url(…)}` made the customer browser request a resource | **Closed** — the focus activation reaches the same resource check as every other activated rule |
+| 10-M3 — the route created the branch, the documents and the pull request **after** the destination refused the fix | Medium | A refused fix still produced a branch, two documents and a pull request, and the route answered `200 success:true` | **Closed** — the writer is split into a plan phase and an apply phase; the route plans before it mutates, a refused candidate gets no artifact, and a run in which every candidate is refused creates no branch and no pull request |
+| 10-M4 — the audit write happened **after** the pull request and was best effort | Medium | A persistent audit failure left a created pull request with no record and the route still answered success | **Closed** — a `github_pr_intent` record is written before the branch; a failure of the intent stops the mutation, a failure of the closing record leaves the intent as the recoverable trail and is reported as degraded |
 
 ### Ninth independent security review (2026-11-22)
 

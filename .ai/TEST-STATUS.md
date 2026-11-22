@@ -1,6 +1,31 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-23 (ninth-review closure)
+Last run: 2026-11-23 (tenth-review closure)
+
+## Tenth-review closure evidence
+
+| Check | Result |
+|---|---|
+| Temporary reviewer-payload matrix | PASS — 1 file, 19/19 assertions: the nine unsafe reproductions of the tenth review (the inline `<script>` carrier, the DOM property getter, the escaped attribute name `[a\6ct]`, `scale:3`, `border:10000px`, `padding:10000px`, the focus sibling `input:focus ~ .overlay`, the paused animation and the focus-activated customer-side request) are all blocked in the unsafe direction (0 fixes, 0 writes), and the ten legitimate behaviour groups (the ordinary image-alt fix, the TSX fix, the preserved class, the benign inline style, 3-of-3 copies, 2-of-3 copies, an unrelated runtime mutation, a small box growth, a harmless focus rule and an unreadable file) still pass. The file `src/lib/__tests__/tmp-review10-matrix.test.ts` was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 770/770 tests, 0 failed (was 53/750) |
+| Coverage | PASS — statements 65.35% (threshold 55) · branches 57.52% (50) · functions 67.96% (58) · lines 67.05% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+
+### Permanent regressions added for the tenth review
+
+| Finding | Regression | File |
+|---|---|---|
+| 10-H1 — the repository runtime carriers and state reads | an inline `<script>` that reacts to the added attribute and a linked script that reads the attribute as a DOM property keep the fix out of the repository | `github.test.ts` |
+| 10-H2 — the CSS identifier escape | an escaped attribute **name** (`[a\6ct]`) is decoded the way the browser decodes it | `css-context.test.ts` |
+| 10-H3 — the painted-box geometry | a scale above one, a `10000px` border and a `10000px` padding are composed into the painted box; a box that grows a little stays harmless | `css-context.test.ts` |
+| 10-H4 / 10-M2 — the focus activation a fix causes | `input:focus ~ .overlay` is judged as a takeover of another element, `input:focus{background-image:url(…)}` as a customer-side request, and a focus rule that only draws an outline stays harmless | `css-context.test.ts` |
+| 10-M1 — the animation play state | a paused animation is judged on the first frame the customer sees, a running one on the frame it ends at | `css-context.test.ts` |
+| 10-M3 — the decision before the first repository mutation | a refused candidate is reported as refused and writes nothing, a candidate with no provable source file is reported for review, and the plan writes only the planned files | `github.test.ts` |
+| 10-M3 / 10-M4 — the route | no branch, no document and no pull request when every candidate is refused; no pull request when the plan fails; the audit intent is written before the branch; no pull request when the intent cannot be written; no fix document for a refused candidate; the degraded closing record is reported with the intent as the trail | `route.test.ts` |
 
 ## Ninth-review closure evidence
 
