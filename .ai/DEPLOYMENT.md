@@ -148,6 +148,19 @@ green, including the Trivy step that fails on HIGH/CRITICAL — **no new HIGH
 finding**. The code-scanning dashboard after this run: **0 open alerts** (the
 alerts API returns an empty list for the open alerts).
 
+The push that carries the pipeline record itself (`b476bb2`, `.ai/DEPLOYMENT.md`,
+`.ai/RISKS.md` and `.ai/STATE.md` only — `git diff --quiet 2a652bf..b476bb2 -- src`
+is clean) was re-verified:
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45050605925 | CI | ✅ success |
+| 45050605955 | Deploy | ✅ success |
+| 45050605956 | AccessGuard Scan | ✅ success |
+| 45050606224 | Docker | ✅ success — `Trivy image scan (fail on HIGH/CRITICAL)` ✅, `Upload Trivy SARIF` ✅, `Syft SBOM attest` ✅ |
+
+Code-scanning after that run: **0 open alerts**.
+
 Two deprecation annotations rode along with the green runs: the pinned actions
 target Node.js 20 and are forced to Node.js 24, and CodeQL Action v3 is
 deprecated in December 2026. Both are recorded as risk #35 with the exact
