@@ -1,6 +1,30 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-22 (eighth-review closure)
+Last run: 2026-11-23 (ninth-review closure)
+
+## Ninth-review closure evidence
+
+| Check | Result |
+|---|---|
+| Temporary reviewer-payload re-run | PASS — 1 file, 42/42 assertions: 26 writer-level unsafe payloads of the fourth to the ninth reviews (the ninth-review geometry, sibling combinator, repository runtime, repository resource and paint reproductions plus the fifth, seventh and eighth review payloads that touch the changed paths) and the validator-level payloads (`attributionsrc`, the duplicate URI attributes, the `ping` list, the 12 template spellings) are all blocked in the unsafe direction (validation false, 0 fixes, 0 writes), and the 12 legitimate behaviour groups (HTML / TSX / JS fix, `https:` / `mailto:` href, the preserved relative destination, the preserved class, the benign inline style, 3-of-3 copies, 2-of-3 copies, the ordinary repository script, the mocked symlink) still pass. The file `src/lib/__tests__/tmp-review9-matrix.test.ts` was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 750/750 tests, 0 failed (was 53/724) |
+| Coverage | PASS — statements 65.22% (threshold 55) · branches 57.50% (50) · functions 67.04% (58) · lines 66.70% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.6 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+
+### Permanent regressions added for the ninth review
+
+| Finding | Regression | File |
+|---|---|---|
+| 9-H1 — the destination CSS geometry | the four logical inset longhands set the edges the browser assigns, and a fixed-pixel, viewport or font-relative size above the viewport is unprovable | `css-context.test.ts` |
+| 9-H2 — the sibling combinator | a rule the fix activates whose subject is another element makes the destination unprovable | `css-context.test.ts` |
+| 9-H3 — the repository runtime | the conditional class mutation, the conditional inline-style mutation, the mutation through a tag selector, the sibling activated by the added attribute, the service worker, the CSS-in-JS library and the mutation by id keep the fix out of the repository, while an ordinary script that mutates an unrelated element still gets the fix | `github.test.ts` |
+| 9-M1 — the `attributionsrc` attribute | the remote `attributionsrc`, the list with a remote destination, the changed, dropped, preserved, relative and duplicate `attributionsrc` are judged | `github-pr.test.ts` |
+| 9-M2 — the customer-side CSS resource | a network-bearing declaration of a rule the fix activates makes the destination unprovable | `css-context.test.ts` |
+| 9-M3 — the repository paint and geometry | the transparent repository colour, the logical margin, the negative positional offset, the single zero dimension, `display:contents` and the reversed animation hide the patched element | `css-context.test.ts` |
 
 ## Eighth-review closure evidence
 

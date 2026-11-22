@@ -2,15 +2,31 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 eighth-review closure shipped, ninth review pending** 🔴 |
-| Current task | Ninth independent security review of the eighth-review closure; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 ninth-review closure ready to ship, tenth review pending** 🔴 |
+| Current task | Tenth independent security review of the ninth-review closure; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the six eighth-review findings (High 4, Medium 2) are fixed at their root cause, every working reproduction is blocked and the whole gate suite is green; the gate stays closed until the ninth independent review returns READY |
+| Status | AMBER — the six ninth-review findings (High 3, Medium 3) are fixed at their root cause, every working reproduction is blocked and the whole gate suite is green; the gate stays closed until the tenth independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Run the ninth independent security review against the pushed tree; fix every finding at the root cause with a permanent regression and repeat until READY |
-| Last verification | 2026-11-22 — eighth-review closure: tsc 0, lint 0, vitest 53 files/724 tests, coverage 64.83/56.97/66.58/66.32, build 0, Playwright 79/79, npm audit High 0; 78/78 reviewer-payload re-run assertions (26 prior + 8 seventh-review + 8 eighth-review payloads blocked, 9 legitimate behaviours pass) |
+| Next action | Push the ninth-review closure to `origin/main`, verify the four workflows and run the tenth independent security review against the pushed tree; fix every finding at the root cause with a permanent regression and repeat until READY |
+| Last verification | 2026-11-23 — ninth-review closure: tsc 0, lint 0, vitest 53 files/750 tests, coverage 65.22/57.50/67.04/66.70, build 0, Playwright 79/79, npm audit High 0; 42/42 reviewer-payload re-run assertions (26 writer-level unsafe payloads blocked, the validator-level payloads blocked, 12 legitimate behaviours pass) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-23, ninth-review closure)
+
+| Check | Result |
+|---|---|
+| Ninth-review closure | PASS — all six findings (9-H1, 9-H2, 9-H3, 9-M1, 9-M2, 9-M3) fixed at their root cause; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-9.md` |
+| Permanent regressions | PASS — every reproduction of the ninth review has a shipped regression: the logical inset longhands, the fixed-pixel / viewport / font-relative size above the viewport, the sibling combinator the fix activates, the repository resource the fix activates, the transparent repository colour, the logical margin, the negative positional offset, the single zero dimension, `display:contents`, the reversed animation, the conditional class and inline-style mutation, the mutation through a tag selector, the sibling activated by the added attribute, the service worker, the CSS-in-JS library, the mutation by id, and the remote / list / changed / dropped / duplicate `attributionsrc` |
+| Temporary reviewer-payload re-run | PASS — 1 file, 42/42 assertions: 26 writer-level unsafe payloads of the fourth to the ninth reviews and the validator-level payloads are blocked in the unsafe direction (0 fixes, 0 writes), and the 12 legitimate behaviour groups still pass. The file was deleted after the run |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 750/750 tests (was 53/724) |
+| Coverage | PASS — statements 65.22% (threshold 55) · branches 57.50% (50) · functions 67.04% (58) · lines 66.70% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.6 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+| Tenth independent security review | PENDING — the release gate opens only on READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-22, eighth-review closure)
 

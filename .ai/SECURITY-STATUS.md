@@ -1,6 +1,55 @@
 # AccessGuard — Security Status
 
-Last verification: 2026-11-22
+Last verification: 2026-11-23
+
+## Ninth independent security review (2026-11-22) — closed 2026-11-23
+
+**Verdict: NOT READY — Critical 0, High 3, Medium 3, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree was **not releasable** until every High
+reproduction is blocked in the unsafe direction and a fresh independent review
+returns READY.
+
+The reviewed tree was `2a652bf` (`vol: releases — V23: volume log entry for the
+eighth-review closure cycle`), against the requested baseline `08ab9ef`; the
+checkout at review time was `85a1031`. The reviewer's own artifact is
+`.ai/SECURITY-REVIEW-9.md` (report only — no shipped source, docs, CI, dependency
+or environment file was changed by the reviewer). Every reproduction used local
+synthetic repositories, a mocked GitHub transport, local Chromium and
+`127.0.0.1` listeners. No production, third-party or public target was scanned,
+no live repository was mutated, no external GitHub Markdown service was called,
+and **no Strix result is claimed** (every configured provider refused the run:
+quota / EOL model / no credits).
+
+### Reproduced findings and their closure
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 9-H1 | **High** | Destination CSS geometry semantics | `[aria-label]{position:fixed;inset-block-start:0;inset-block-end:0;inset-inline-start:0;inset-inline-end:0;z-index:2147483647}` with the `aria-label` remediation → `validation:true`, `harm:null`, verified with confidence 1, 1 fix, 1 write, Chromium measured a fixed `1280×720` overlay; the fixed-pixel twin `width:9999px;height:9999px` and the viewport twin `width:200vw;height:200vh` (`2560×1440`) did the same | The four **logical inset longhands** were absent from the relevant-property, judgement and edge semantics, and the coverage test recognised only the exact value `100%` / `100vw` — a larger length could still span the viewport | The logical longhands (`inset-block-start`, `inset-block-end`, `inset-inline-start`, `inset-inline-end`) joined `RELEVANT_PROPERTIES`, `JUDGEMENT_PROPERTIES` and `GEOMETRY_PROPERTIES` and set the same edges as their physical names in a horizontal writing mode. A size the analyser cannot compute — a fixed length that may be as long as the customer's screen (`9999px`), a viewport unit above 100% (`200vw`), a font-relative length of 64 units or more — is **unprovable**, never harmless |
+| 9-H2 | **High** | Destination CSS sibling-combinator semantics | Repository HTML `<img id="target" src="x"><div id="overlay" class="overlay">owned</div>` with `[alt] ~ .overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647}` → the same valid / harm-null / verified / write result; Chromium started matching the sibling as soon as the fix added `alt` and measured a fixed `1280×720` takeover | `matchSelector` splits a selector and judges **only the subject compound**, so a rule whose subject is another element looked like no rule at all; the seventh-review closure covered `:has()` but not the general combinators | The destination judgement now computes **what the fix changes** (`changesBetween`: the attributes and classes the remediation adds) and asks, for every rule of the repository, whether a compound of its selector asks for one of them (`compoundActivatedByFix`). A rule the fix activates whose subject is **not** the patched element can take over another element of the customer page → the destination is unprovable |
+| 9-H3 | **High** | Repository runtime DOM and style delivery | `const img=document.querySelector('#target');if(img&&img.hasAttribute('alt'))img.classList.add('overlay');` with `.overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647}` → the same valid / harm-null / verified / write result; the inline-style twin, a service worker that intercepted `/styles.css`, and a CSS-in-JS build did the same | The runtime-style detector knew style-element creation, `insertRule(…)`, adopted stylesheets and style-text assignment — but not a script that **mutates the patched element at runtime**, nor a service worker that supplies stylesheet bytes. The isolated axe browser cannot observe repository JavaScript | `src/lib/github.ts` now classifies a repository script that **conditionally mutates** an element (a state read — `hasAttribute(…)`, `getAttribute(…)`, `matches(…)`, an attribute selector — together with a class, attribute or inline-style mutation) as an unanalysable runtime source when it names an attribute the fix adds, and a script that **names the patched element by its id** as an unconditional takeover. A **service worker** (`navigator.serviceWorker.register(…)`, a `fetch`/`install` listener, `caches.open(…)`) and a **CSS-in-JS** library (`styled-components`, `@emotion`, `createGlobalStyle`, `makeStyles`) are runtime style sources. Every one of them makes the destination unprovable → 0 fixes, 0 writes |
+| 9-M1 | Medium | URI attribute preservation | `<img id="target" src="x" alt="Photo" attributionsrc="http://127.0.0.1:<port>/attribution-pixel">` → valid / verified / 1 write; the customer browser then issued `GET /attribution-pixel` | `URI_ATTRIBUTES` in `src/lib/github-pr.ts` omitted `attributionsrc`, so the scheme allowlist, the original-vs-new comparison, the duplicate handling and the list grammar never inspected it | `attributionsrc` joined `URI_ATTRIBUTES` and is parsed with the **space-separated URL list** grammar the browser uses (like `ping`). A newly introduced, changed, masked or dropped remote destination is refused; a preserved or relative destination stays allowed |
+| 9-M2 | Medium | Customer-side CSS resource activation | `[alt]{background-image:url(http://127.0.0.1:<port>/background-pixel)}` → valid / verified / 1 write; the customer browser then issued `GET /background-pixel` | The destination analyser judged geometry and hiding, but never the **network-bearing declarations** of a rule the fix activates; the isolated verification browser blocks every request and therefore never sees it | A rule the fix activates is now checked for a **resource-bearing declaration** (`url(…)`, `image-set(…)`): the request happens in the customer browser, so the destination is unprovable |
+| 9-M3 | Medium | Repository paint and hiding preservation | Six repository-CSS variants each validated, verified with confidence 1, applied one fix and performed one write while Chromium measured customer-visible harm: `[aria-label]{color:transparent}`, `[alt]{margin-inline-start:-10000px}`, `[alt]{position:absolute;left:-9999px;top:0}`, `[alt]{width:0}`, `[alt]{display:contents}` and `[alt]{animation:hide 100ms reverse forwards}` with `@keyframes hide{from{opacity:0}to{opacity:1}}` (computed opacity 0) | The destination state model omitted the repository transparent-colour path, the logical margins, the negative positional offsets, a zero single dimension, `display:contents`, and the animation **direction** when it chose the visible frame | The state model now judges the repository's own **transparent colour** (`transparent`, an alpha of zero, a hex alpha of zero) on a text-bearing element, the **logical margins**, the **negative positional offsets**, a **single zero dimension**, `display:contents` on a replaced element, and the visible frame of an animation **by its direction** (a reversed animation ends at its first frame; the `animation-direction` longhand is read too) |
+
+### Closure evidence
+
+| Fix | Root cause | Permanent regression |
+|---|---|---|
+| Destination geometry (`src/lib/css-context.ts`) | The logical inset longhands and the oversized sizes were unknown | `css-context.test.ts` — the logical inset longhands, the fixed-pixel, viewport and font-relative sizes above the viewport |
+| Activated rules (`src/lib/css-context.ts`) | Only the subject compound of a selector was judged | `css-context.test.ts` — the sibling combinator the fix activates, the repository resource the fix activates |
+| Repository runtime (`src/lib/github.ts`) | The repository's scripts were only inspected for a style they create | `github.test.ts` — the conditional class mutation, the conditional inline-style mutation, the mutation through a tag selector, the sibling activated by the added attribute, the service worker, the CSS-in-JS library, the mutation by id — and an ordinary script that mutates an unrelated element still gets the fix |
+| URI semantics (`src/lib/github-pr.ts`) | `attributionsrc` was not a URI attribute | `github-pr.test.ts` — the remote `attributionsrc`, the list with a remote destination, the changed, dropped, preserved, relative and duplicate `attributionsrc` |
+| Paint and geometry (`src/lib/css-context.ts`) | The repository transparent colour, logical margins, negative offsets, zero dimension, `display:contents` and the animation direction were unknown | `css-context.test.ts` — the transparent repository colour, the logical margin, the negative offset, the single zero dimension, `display:contents`, the reversed animation |
+
+### Gate status
+
+The sixth, seventh, eighth and ninth review closures are shipped. The **release gate
+is still closed**: it opens only when a **tenth** independent review returns READY
+(Critical 0, High 0) against the closure tree. Every ninth-review reproduction is
+blocked in the unsafe direction by the shipped regressions, and the temporary
+payload re-run (the 25 writer-level unsafe payloads of the fourth to the ninth
+reviews, the validator-level payloads and the 12 legitimate behaviour groups)
+passed 42/42 and was deleted after the run.
 
 ## Eighth independent security review (2026-11-22)
 

@@ -1,27 +1,28 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + eighth-review closure** · Date: 2026-11-22 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + ninth-review closure** · Date: 2026-11-23 · Owner: CTO agent
 
 ## What shipped
 
 The four P0 "make the product true" gaps from `.ai/PRODUCT-CRITIQUE-DEEP.md` are closed.
-The first V23 cut was reviewed eight times: the first review found seven more defects
+The first V23 cut was reviewed nine times: the first review found seven more defects
 (3 reproduced P0 defects, 3 High, 4 Medium, 1 Low), the **re-review of that hardening
 found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, the
 **fourth review found 3 High, 9 Medium**, the **fifth review of that closure found
 2 High, 4 Medium**, the **sixth review of that closure found 2 High, 6 Medium**, the
-**seventh review of that closure found 3 High, 4 Medium**, and the **eighth review of
-that closure found 4 High, 2 Medium**.
+**seventh review of that closure found 3 High, 4 Medium**, the **eighth review of
+that closure found 4 High, 2 Medium**, and the **ninth review of that closure found
+3 High, 3 Medium**.
 Every earlier round closed the literal reproductions while an equivalent path stayed
-open. The eighth review re-ran all twelve fourth-review, all six fifth-review, all
-eight sixth-review and all eight seventh-review payloads (all still blocked) and
-independently reproduced six equivalent paths. **All six are now fixed at their root
-cause, with a permanent regression each** (the reviewer-payload re-run: 78/78
-assertions — 26 prior payloads plus the 8 seventh-review and the 8 eighth-review
-reproductions blocked, 9 legitimate behaviours still pass, and the legitimate fix still
-lands).
+open. The ninth review re-ran all twelve fourth-review, all six fifth-review, all
+eight sixth-review, all eight seventh-review and all six eighth-review payloads (all
+still blocked) and independently reproduced six equivalent paths. **All six are now
+fixed at their root cause, with a permanent regression each** (the reviewer-payload
+re-run: 42/42 assertions — 26 writer-level unsafe payloads plus the validator-level
+payloads blocked, 12 legitimate behaviour groups still pass, and the legitimate fix
+still lands).
 **The release verdict is still NOT READY** — the gate requires Critical 0 and High 0
-from an independent pass, and the **ninth review is the next check**.
+from an independent pass, and the **tenth review is the next check**.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -29,6 +30,22 @@ from an independent pass, and the **ninth review is the next check**.
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Ninth independent security review (2026-11-22)
+
+> The verdict was NOT READY — Critical 0, High 3, Medium 3, Low 0 — against tree
+> `2a652bf`. **All six findings are closed** (the closure table and the evidence are
+> in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact is `.ai/SECURITY-REVIEW-9.md`).
+> The release gate opens only when a **tenth independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 9-H1 — the destination CSS reader knew neither the logical inset longhands nor the sizes above the viewport | High | The `aria-label` fix activated a fixed `1280×720` overlay; the `9999px` and `200vw` twins did the same | **Closed** — the four logical inset longhands are geometry, and a size the analyser cannot compute (a fixed length that may be as long as the customer's screen, a viewport unit above 100%, a font-relative length of 64 units) is unprovable |
+| 9-H2 — only the subject compound of a selector was judged, so a sibling combinator the fix activates looked like no rule | High | `[alt] ~ .overlay` took over the customer page the moment the fix added `alt` | **Closed** — the judgement computes what the fix changes and asks which rules start matching: a rule whose subject is another element is unprovable |
+| 9-H3 — the repository's runtime was only inspected for a style it creates | High | A script that reads `alt` and adds a class, and a service worker that supplies the stylesheet bytes, each turned the element into a `1280×720` overlay | **Closed** — a conditional mutation that names an attribute the fix adds, a mutation that names the patched element, a service worker and a CSS-in-JS library make the destination unprovable; an ordinary script still gets its fix |
+| 9-M1 — `attributionsrc` was not a URI attribute | Medium | The fix introduced an attribution pixel the customer browser then requested | **Closed** — `attributionsrc` is a URI attribute and is parsed as the space-separated URL list the browser parses |
+| 9-M2 — the destination analyser never looked at the network-bearing declarations of a rule the fix activates | Medium | The fix activated `background-image:url(…)` and the customer browser issued the request | **Closed** — a resource-bearing declaration of an activated rule makes the destination unprovable |
+| 9-M3 — the repository paint and geometry model was incomplete | Medium | A transparent repository colour, a logical margin, a negative offset, a zero dimension, `display:contents` and a reversed animation each removed the customer-visible content | **Closed** — all six are judged by the destination state model, and the visible frame of an animation follows its direction |
 
 ### Eighth independent security review (2026-11-22)
 
