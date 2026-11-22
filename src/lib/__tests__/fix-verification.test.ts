@@ -6,6 +6,7 @@ import {
   MIN_FIX_CONFIDENCE,
   MAX_FIXES_PER_PR,
   buildVerificationDocument,
+  checkRenderedElement,
   createVerificationContext,
   passesConfidenceGate,
   resolveChromiumExecutable,
@@ -334,6 +335,50 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     expect(results.get('v9')?.status).toBe('failed');
     expect(results.get('v9')?.confidence).toBe(0);
     expect(results.get('v9')?.reason).toContain('visible text');
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('catches a patched element that the browser hides', async () => {
+    // The computed style is the browser's own answer: the check does not
+    // depend on how the hiding was written.
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await createVerificationContext(browser);
+      const page = await context.newPage();
+
+      for (const markup of [
+        '<img src="a.jpg" alt="A" hidden>',
+        '<img src="a.jpg" alt="A" style="display:none">',
+        '<img src="a.jpg" alt="A" style="visibility:hidden">',
+      ]) {
+        await page.setContent(buildVerificationDocument(markup));
+        expect(await checkRenderedElement(page)).toContain('hidden');
+      }
+
+      await page.setContent(buildVerificationDocument('<img src="a.jpg" alt="A">'));
+      expect(await checkRenderedElement(page)).toBeNull();
+    } finally {
+      await browser.close();
+    }
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('catches a patched element whose text the browser cannot show', async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await createVerificationContext(browser);
+      const page = await context.newPage();
+
+      await page.setContent(
+        buildVerificationDocument('<a href="/about" style="color:transparent">Read more</a>')
+      );
+      expect(await checkRenderedElement(page)).toContain('transparent');
+
+      await page.setContent(
+        buildVerificationDocument('<a href="/about">Read more</a>')
+      );
+      expect(await checkRenderedElement(page)).toBeNull();
+    } finally {
+      await browser.close();
+    }
   }, BROWSER_TEST_TIMEOUT);
 
   it('never lets the verification document open a WebSocket', async () => {

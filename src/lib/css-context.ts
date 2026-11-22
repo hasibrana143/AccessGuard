@@ -1,4 +1,4 @@
-// The repository's own stylesheets can restyle a patched element.
+// The repository's own stylesheets can restyle the patched element.
 //
 // A fix is verified in isolation: the remediation snippet is rendered in a
 // document that does not contain the repository's CSS. A rule the repository
@@ -9,18 +9,48 @@
 // This module decides whether the repository's stylesheets can turn the patched
 // element into an overlay or hide it. The decision is made on the repository's
 // CSS, not on the isolated snippet.
+//
+// The judgement is deliberately conservative. A construct the analyser cannot
+// decide (an escape it cannot decode, a nested rule it cannot flatten, a value
+// that depends on a custom property) makes the destination **unprovable**, and
+// an unprovable destination never receives a source patch. What can be decided
+// is decided exactly: the cascade is not simulated, the values of the rules
+// that apply are unioned, so the verdict does not depend on the order the
+// stylesheets were read in.
 
-import { parseHtmlAttributes } from '@/lib/html-attributes';
+import { decodeHtmlEntities, parseTagAttributes } from '@/lib/html-attributes';
 
 /** A CSS rule: the selector and the declarations it applies. */
 export interface CssRule {
+  /** The selector list of the rule. */
   selector: string;
+  /** The declaration block of the rule. */
   declarations: string;
 }
 
-/** The rules of a stylesheet. */
+/** The rules of a stylesheet and the reasons the stylesheet cannot be judged. */
 export interface CssContext {
   rules: CssRule[];
+  /**
+   * Why the stylesheet could not be judged completely. A non-empty list means
+   * the destination is unprovable: no source patch may be written into it.
+   */
+  unprovable: string[];
+  /** The `@import` targets of the stylesheet. */
+  imports: string[];
+  /**
+   * The frames of every animation of the stylesheet, by the name of the
+   * animation. The frames matter only when an element animates with them.
+   */
+  keyframes: Map<string, string[]>;
+}
+
+/** The parts of an element a CSS selector can name. */
+export interface ElementDescriptor {
+  tag: string;
+  classes: Set<string>;
+  id: string | null;
+  attributes: Map<string, string>;
 }
 
 /** The `<style>` blocks of an HTML document. */
@@ -34,226 +64,992 @@ export function extractStyleBlocks(html: string): string[] {
   return blocks;
 }
 
-/** Remove CSS comments: a comment can hide a declaration from a plain reader. */
-function stripComments(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, ' ');
+/** The `href` of every `<link rel="stylesheet">` of a document. */
+export function extractStylesheetLinks(html: string): string[] {
+  const links: string[] = [];
+  const pattern = /<link\b([^>]*)>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(html)) !== null) {
+    const attributes = parseTagAttributes(match[1] ?? '');
+    const rel = (attributes.find(a => a.name === 'rel')?.value ?? '').toLowerCase();
+    if (!rel.split(/\s+/).includes('stylesheet')) continue;
+    const href = attributes.find(a => a.name === 'href')?.value;
+    if (href) links.push(href.trim());
+  }
+  return links;
 }
 
-/** The offset of the `}` that closes the block opened at `open`. */
-function matchingBrace(css: string, open: number): number {
-  let depth = 0;
+/** The targets of the `@import` rules of a stylesheet. */
+export function extractCssImports(css: string): string[] {
+  const imports: string[] = [];
+  const source = stripCssComments(css);
+
+  for (const block of parseBlocks(source)) {
+    if (!/^@import\b/i.test(block.prelude)) continue;
+    const target = /@import\s+(?:url\(\s*)?["']?([^"'\s;)]+)/i.exec(block.prelude)?.[1];
+    if (target) imports.push(target);
+  }
+
+  return imports;
+}
+
+/**
+ * Decode the CSS escapes of a value.
+ *
+ * A browser resolves `p\6fsition` to `position` and `fix\65 d` to `fixed`
+ * before it reads a declaration. An escape that cannot be decoded becomes the
+ * replacement character, which never matches a property or a value.
+ */
+export function decodeCssEscapes(value: string): string {
+  return value.replace(
+    /\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \n\r\t\f])?|(\r\n|[\n\r\f])|(.))/g,
+    (_match, hex: string | undefined, continuation: string | undefined, literal: string | undefined) => {
+      if (hex !== undefined) {
+        const code = Number.parseInt(hex, 16);
+        if (!Number.isFinite(code) || code === 0 || code > 0x10ffff) return '\uFFFD';
+        return String.fromCodePoint(code);
+      }
+      // A backslash before a newline is a line continuation: it joins two lines.
+      if (continuation !== undefined) return '';
+      return literal ?? '';
+    }
+  );
+}
+
+/**
+ * Remove CSS comments.
+ *
+ * A comment is only a comment outside a string: `content:"/*"` is text, not the
+ * start of a comment. A parser that strips it anyway reads a rule that the
+ * browser does not.
+ */
+export function stripCssComments(css: string): string {
+  let out = '';
+  let i = 0;
   let quote: string | null = null;
-  for (let i = open; i < css.length; i++) {
+
+  while (i < css.length) {
     const char = css[i] as string;
+
     if (quote) {
+      out += char;
+      if (char === '\\') {
+        out += css[i + 1] ?? '';
+        i += 2;
+        continue;
+      }
+      if (char === quote) quote = null;
+      i++;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      out += char;
+      i++;
+      continue;
+    }
+
+    if (char === '/' && css[i + 1] === '*') {
+      const end = css.indexOf('*/', i + 2);
+      i = end === -1 ? css.length : end + 2;
+      out += ' ';
+      continue;
+    }
+
+    out += char;
+    i++;
+  }
+
+  return out;
+}
+
+/** Remove the `//` comments of a preprocessor stylesheet (outside strings). */
+export function stripCssLineComments(css: string): string {
+  let out = '';
+  let i = 0;
+  let quote: string | null = null;
+
+  while (i < css.length) {
+    const char = css[i] as string;
+
+    if (quote) {
+      out += char;
+      if (char === '\\') {
+        out += css[i + 1] ?? '';
+        i += 2;
+        continue;
+      }
+      if (char === quote) quote = null;
+      i++;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      out += char;
+      i++;
+      continue;
+    }
+
+    if (char === '/' && css[i + 1] === '/') {
+      while (i < css.length && css[i] !== '\n') i++;
+      continue;
+    }
+
+    out += char;
+    i++;
+  }
+
+  return out;
+}
+
+/** Split a text at a separator that is not inside a string, a bracket or a parenthesis. */
+function splitTopLevel(text: string, separator: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let quote: string | null = null;
+  let depth = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i] as string;
+
+    if (quote) {
+      current += char;
+      if (char === '\\') {
+        current += text[i + 1] ?? '';
+        i++;
+        continue;
+      }
       if (char === quote) quote = null;
       continue;
     }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+
+    if (char === '(' || char === '[') depth++;
+    else if (char === ')' || char === ']') depth = Math.max(0, depth - 1);
+
+    if (char === separator && depth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  parts.push(current);
+  return parts;
+}
+
+/** A block of a stylesheet: the text before its `{` and its body. */
+interface CssBlock {
+  prelude: string;
+  body: string;
+}
+
+/** The blocks of a stylesheet, in source order. */
+function parseBlocks(css: string): CssBlock[] {
+  const blocks: CssBlock[] = [];
+  let i = 0;
+  let prelude = '';
+
+  while (i < css.length) {
+    const char = css[i] as string;
+
+    if (char === '"' || char === "'") {
+      const quote = char;
+      let j = i + 1;
+      while (j < css.length) {
+        if (css[j] === '\\') {
+          j += 2;
+          continue;
+        }
+        if (css[j] === quote) break;
+        j++;
+      }
+      prelude += css.slice(i, Math.min(j + 1, css.length));
+      i = j + 1;
+      continue;
+    }
+
+    if (char === '{') {
+      const block = readBlockBody(css, i + 1);
+      blocks.push({ prelude: prelude.trim(), body: block.body });
+      prelude = '';
+      i = block.end;
+      continue;
+    }
+
+    if (char === ';' && prelude.trim().startsWith('@')) {
+      // An at-rule without a body (`@import`, `@charset`).
+      blocks.push({ prelude: prelude.trim(), body: '' });
+      prelude = '';
+      i++;
+      continue;
+    }
+
+    prelude += char;
+    i++;
+  }
+
+  return blocks;
+}
+
+/** The body of a block and the offset behind its closing brace. */
+function readBlockBody(css: string, from: number): { body: string; end: number } {
+  let depth = 0;
+  let quote: string | null = null;
+
+  for (let i = from; i < css.length; i++) {
+    const char = css[i] as string;
+
+    if (quote) {
+      if (char === '\\') {
+        i++;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+
     if (char === '"' || char === "'") {
       quote = char;
       continue;
     }
+
     if (char === '{') depth++;
     else if (char === '}') {
+      if (depth === 0) return { body: css.slice(from, i), end: i + 1 };
       depth--;
-      if (depth === 0) return i;
     }
   }
-  return css.length;
+
+  return { body: css.slice(from), end: css.length };
+}
+
+/** The at-rules whose body holds rules that apply like the rules around them. */
+const CONDITIONAL_AT_RULES = /^@(media|supports|layer|container|scope|document|starting-style)\b/i;
+
+/** The at-rules that only define values and never select an element. */
+const VALUE_AT_RULES = /^@(charset|namespace|font-face|page|counter-style|font-feature-values|property|font-palette-values|view-transition)\b/i;
+
+/** The at-rules of a preprocessor: their content cannot be judged statically. */
+const PREPROCESSOR_AT_RULES = /^@(mixin|include|extend|function|use|forward|each|for|while|if|else|debug|warn|error|return)\b/i;
+
+/**
+ * The rules of a stylesheet.
+ *
+ * A conditional group (`@media`, `@supports`) holds rules that apply like the
+ * rules around it, so its content is read as well. A nested rule is flattened
+ * the way CSS nesting defines it: `&` is the parent selector, a nested
+ * selector without `&` is a descendant of the parent.
+ */
+export function collectCssRules(css: string): CssContext {
+  const context: CssContext = { rules: [], unprovable: [], imports: [], keyframes: new Map() };
+  collectInto(stripCssComments(css), null, context);
+  return context;
+}
+
+function collectInto(css: string, parentSelector: string | null, context: CssContext): void {
+  for (const block of parseBlocks(css)) {
+    const prelude = block.prelude;
+
+    if (!prelude) continue;
+
+    if (prelude.startsWith('@')) {
+      const name = prelude.split(/\s+/)[0] ?? '';
+
+      if (/^@import\b/i.test(name)) {
+        const target = /@import\s+(?:url\(\s*)?["']?([^"'\s;)]+)/i.exec(prelude)?.[1];
+        if (target) context.imports.push(target);
+        continue;
+      }
+
+      if (PREPROCESSOR_AT_RULES.test(name)) {
+        context.unprovable.push(`the stylesheet uses the preprocessor at-rule ${name}`);
+        continue;
+      }
+
+      if (VALUE_AT_RULES.test(name)) continue;
+
+      if (/^@keyframes\b/i.test(name) || /^@-webkit-keyframes\b/i.test(name)) {
+        // The frames of an animation only matter when an element animates with
+        // them. They are collected under the name of the animation, so a
+        // harmless fade does not block a fix while a frame that covers the
+        // screen does.
+        const animationName = /^@(?:-webkit-)?keyframes\s+([^\s{]+)/i.exec(prelude)?.[1];
+        if (!animationName) {
+          context.unprovable.push('the stylesheet defines an animation without a name');
+          continue;
+        }
+        const frames: string[] = [];
+        for (const frame of parseBlocks(block.body)) {
+          frames.push(frame.body);
+        }
+        context.keyframes.set(animationName, [
+          ...(context.keyframes.get(animationName) ?? []),
+          ...frames,
+        ]);
+        continue;
+      }
+
+      if (CONDITIONAL_AT_RULES.test(name)) {
+        collectInto(block.body, parentSelector, context);
+        continue;
+      }
+
+      // An at-rule the analyser does not know: its content may hold rules that
+      // apply to any element.
+      context.unprovable.push(`the stylesheet uses the unknown at-rule ${name}`);
+      continue;
+    }
+
+    const selector = parentSelector ? flattenSelector(parentSelector, prelude) : prelude;
+    collectBody(selector, block.body, context);
+  }
+}
+
+/** A rule nested inside the body of another rule (CSS nesting). */
+interface NestedRule {
+  prelude: string;
+  body: string;
 }
 
 /**
- * Every rule of a stylesheet.
+ * The declarations and the nested rules of a rule body.
  *
- * A conditional group (`@media`, `@supports`) holds rules that apply like the
- * rules around it, so its content is read as well. Other at-rules (`@font-face`,
- * `@keyframes`) hold no selector that can match an element.
+ * The declarations that do not belong to a nested rule are the declarations of
+ * the parent rule; the nested rules are rules of their own.
  */
-export function collectCssRules(css: string): CssRule[] {
-  const rules: CssRule[] = [];
-  const source = stripComments(css);
+function parseRuleBody(body: string): { declarations: string; nested: NestedRule[] } {
+  const declarations: string[] = [];
+  const nested: NestedRule[] = [];
   let i = 0;
+  let pending = '';
+  let quote: string | null = null;
 
-  while (i < source.length) {
-    const open = source.indexOf('{', i);
-    if (open === -1) break;
-    const close = matchingBrace(source, open);
-    const prelude = source.slice(i, open).trim();
-    const body = source.slice(open + 1, close);
+  while (i < body.length) {
+    const char = body[i] as string;
 
-    if (prelude.startsWith('@')) {
-      if (/^@(media|supports|layer|container|scope|document)\b/i.test(prelude)) {
-        rules.push(...collectCssRules(body));
+    if (quote) {
+      pending += char;
+      if (char === '\\') {
+        pending += body[i + 1] ?? '';
+        i += 2;
+        continue;
       }
-    } else if (prelude) {
-      rules.push({ selector: prelude, declarations: body });
+      if (char === quote) quote = null;
+      i++;
+      continue;
     }
-    i = close + 1;
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      pending += char;
+      i++;
+      continue;
+    }
+
+    if (char === '{') {
+      const block = readBlockBody(body, i + 1);
+      nested.push({ prelude: pending.trim(), body: block.body });
+      pending = '';
+      i = block.end;
+      continue;
+    }
+
+    pending += char;
+    i++;
   }
 
-  return rules;
+  declarations.push(pending);
+  return { declarations: declarations.join(' '), nested };
+}
+
+/** The rules of a rule body: its own declarations and its nested rules. */
+function collectBody(selector: string, body: string, context: CssContext): void {
+  const { declarations, nested } = parseRuleBody(body);
+
+  if (declarations.trim()) {
+    context.rules.push({ selector, declarations });
+  }
+
+  for (const child of nested) {
+    const prelude = child.prelude;
+    if (!prelude) continue;
+
+    if (prelude.startsWith('@')) {
+      const name = prelude.split(/\s+/)[0] ?? '';
+      if (CONDITIONAL_AT_RULES.test(name)) {
+        // The rules inside the conditional group apply like the rules around
+        // it, and `&` still refers to the parent rule.
+        collectInto(child.body, selector, context);
+        continue;
+      }
+      context.unprovable.push(`the stylesheet uses the at-rule ${name} inside a rule`);
+      continue;
+    }
+
+    collectBody(flattenSelector(selector, prelude), child.body, context);
+  }
+}
+
+/** Flatten a nested selector: `&` is the parent selector. */
+function flattenSelector(parent: string, child: string): string {
+  if (child.includes('&')) return child.split('&').join(parent);
+  return `${parent} ${child}`;
 }
 
 /** The rules of a stylesheet, ready to be matched against a patched element. */
 export function buildCssContext(css: string): CssContext {
-  return { rules: collectCssRules(css) };
+  return collectCssRules(css);
 }
 
-/** The tags a snippet contains. */
-function tagsOf(html: string): string[] {
-  return [...html.matchAll(/<\s*([a-zA-Z][^\s/>]*)/g)].map(match => (match[1] ?? '').toLowerCase());
-}
+/** The elements of an HTML snippet. */
+export function describeElements(html: string): ElementDescriptor[] {
+  const elements: ElementDescriptor[] = [];
+  const pattern = /<([a-zA-Z][^\s/>]*)((?:[^>"']|"[^"]*"|'[^']*')*)/g;
+  let match: RegExpExecArray | null;
 
-/** The attributes of every tag in a snippet, by lower-case name. */
-function attributesOf(html: string): Map<string, string[]> {
-  const attributes = new Map<string, string[]>();
-  for (const attribute of parseHtmlAttributes(html)) {
-    const values = attributes.get(attribute.name) ?? [];
-    values.push(attribute.value);
-    attributes.set(attribute.name, values);
-  }
-  return attributes;
-}
+  while ((match = pattern.exec(html)) !== null) {
+    const attributes = new Map<string, string>();
+    const classes = new Set<string>();
+    let id: string | null = null;
 
-/**
- * The hooks a rule can name to reach the patched element.
- *
- * `tags` are the element names, `hooks` the class tokens, ids and data
- * attribute names, `addedAttributes` the attribute names the replacement adds
- * (a rule can select on an attribute the fix introduces).
- */
-interface ElementTerms {
-  tags: Set<string>;
-  hooks: Set<string>;
-  addedAttributes: Set<string>;
-}
-
-function elementTerms(
-  originalElementHtml: string | null | undefined,
-  remediationCode: string | null | undefined
-): ElementTerms {
-  const tags = new Set<string>();
-  const hooks = new Set<string>();
-  const addedAttributes = new Set<string>();
-
-  const originalAttributes = attributesOf(originalElementHtml ?? '');
-  for (const tag of tagsOf(originalElementHtml ?? '')) tags.add(tag);
-
-  const remediationAttributes = attributesOf(remediationCode ?? '');
-  for (const tag of tagsOf(remediationCode ?? '')) tags.add(tag);
-
-  for (const [name, values] of [...originalAttributes, ...remediationAttributes]) {
-    if (name === 'class') {
-      for (const value of values) {
-        for (const token of value.split(/\s+/)) {
-          if (token) hooks.add(token.toLowerCase());
+    for (const attribute of parseTagAttributes(match[2] ?? '')) {
+      if (!attributes.has(attribute.name)) {
+        attributes.set(attribute.name, decodeHtmlEntities(attribute.value));
+      }
+      if (attribute.name === 'class') {
+        for (const token of decodeHtmlEntities(attribute.value).split(/\s+/)) {
+          if (token) classes.add(token.toLowerCase());
         }
       }
-    } else if (name === 'id') {
-      for (const value of values) {
-        if (value) hooks.add(value.toLowerCase());
+      if (attribute.name === 'id') id = decodeHtmlEntities(attribute.value);
+    }
+
+    elements.push({
+      tag: (match[1] ?? '').toLowerCase(),
+      classes,
+      id,
+      attributes,
+    });
+  }
+
+  return elements;
+}
+
+/** What a selector requires of the element it matches. */
+interface SelectorRequirements {
+  tag: string | null;
+  classes: string[];
+  id: string | null;
+  attributes: Array<{ name: string; operator: string | null; value: string | null }>;
+  /** The selector contains a pseudo-class or a pseudo-element. */
+  conditional: boolean;
+  /** The selector could not be read. */
+  malformed: boolean;
+}
+
+/** The requirements of the subject compound of a selector. */
+function parseSubject(selector: string): SelectorRequirements {
+  const requirements: SelectorRequirements = {
+    tag: null,
+    classes: [],
+    id: null,
+    attributes: [],
+    conditional: false,
+    malformed: false,
+  };
+
+  let i = 0;
+  let expectTag = true;
+
+  while (i < selector.length) {
+    const char = selector[i] as string;
+
+    if (/\s/.test(char)) {
+      i++;
+      expectTag = false;
+      continue;
+    }
+
+    if (char === '.') {
+      const name = readIdentifier(selector, i + 1);
+      if (!name) {
+        requirements.malformed = true;
+        return requirements;
       }
-    } else if (name.startsWith('data-')) {
-      hooks.add(name);
+      requirements.classes.push(name.toLowerCase());
+      i += 1 + name.length;
+      expectTag = false;
+      continue;
+    }
+
+    if (char === '#') {
+      const name = readIdentifier(selector, i + 1);
+      if (!name) {
+        requirements.malformed = true;
+        return requirements;
+      }
+      requirements.id = name;
+      i += 1 + name.length;
+      expectTag = false;
+      continue;
+    }
+
+    if (char === '[') {
+      const end = selector.indexOf(']', i);
+      if (end === -1) {
+        requirements.malformed = true;
+        return requirements;
+      }
+      const body = selector.slice(i + 1, end);
+      const parsed = /^\s*([^\s~^$*|=]+)\s*(?:([~^$*|]?=)\s*(?:"([^"]*)"|'([^']*)'|([^\s\]]*)))?\s*([iIsS])?\s*$/.exec(
+        body
+      );
+      if (!parsed) {
+        requirements.malformed = true;
+        return requirements;
+      }
+      const value = parsed[3] ?? parsed[4] ?? parsed[5] ?? null;
+      requirements.attributes.push({
+        name: (parsed[1] ?? '').toLowerCase(),
+        operator: parsed[2] ?? null,
+        value: value === null ? null : decodeCssEscapes(decodeHtmlEntities(value)),
+      });
+      if (parsed[6]) requirements.conditional = true;
+      i = end + 1;
+      expectTag = false;
+      continue;
+    }
+
+    if (char === ':') {
+      // A pseudo-class or a pseudo-element: the rule may or may not apply.
+      requirements.conditional = true;
+      i += selector[i + 1] === ':' ? 2 : 1;
+      const name = readIdentifier(selector, i);
+      i += name.length;
+      if (selector[i] === '(') {
+        const end = skipParentheses(selector, i);
+        if (end === -1) {
+          requirements.malformed = true;
+          return requirements;
+        }
+        i = end;
+      }
+      expectTag = false;
+      continue;
+    }
+
+    if (expectTag && char === '*') {
+      requirements.tag = '*';
+      i++;
+      expectTag = false;
+      continue;
+    }
+
+    if (expectTag && /[a-zA-Z]/.test(char)) {
+      const name = readIdentifier(selector, i);
+      if (!name) {
+        requirements.malformed = true;
+        return requirements;
+      }
+      requirements.tag = name.toLowerCase();
+      i += name.length;
+      expectTag = false;
+      continue;
+    }
+
+    // Anything else (a combinator, a stray character) cannot be read.
+    requirements.malformed = true;
+    return requirements;
+  }
+
+  return requirements;
+}
+
+/** A CSS identifier (a name, an escape or a character). */
+function readIdentifier(source: string, from: number): string {
+  let out = '';
+  let i = from;
+
+  while (i < source.length) {
+    const char = source[i] as string;
+    if (char === '\\') {
+      const match = /^\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \n\r\t\f])?|.)/.exec(source.slice(i));
+      if (!match) break;
+      out += decodeCssEscapes(match[0]);
+      i += match[0].length;
+      continue;
+    }
+    if (!/[a-zA-Z0-9_-]/.test(char)) break;
+    out += char;
+    i++;
+  }
+
+  return out;
+}
+
+/** The offset behind the parenthesis that closes the one at `from`. */
+function skipParentheses(source: string, from: number): number {
+  let depth = 0;
+  for (let i = from; i < source.length; i++) {
+    if (source[i] === '(') depth++;
+    else if (source[i] === ')') {
+      depth--;
+      if (depth === 0) return i + 1;
     }
   }
+  return -1;
+}
 
-  for (const name of remediationAttributes.keys()) {
-    if (!originalAttributes.has(name)) addedAttributes.add(name);
+/** The compounds of a selector, split at the combinators that are outside brackets. */
+function splitCompounds(selector: string): string[] {
+  const compounds: string[] = [];
+  let current = '';
+  let depth = 0;
+
+  for (let i = 0; i < selector.length; i++) {
+    const char = selector[i] as string;
+
+    if (char === '"' || char === "'") {
+      const quote = char;
+      let j = i + 1;
+      while (j < selector.length && selector[j] !== quote) j++;
+      current += selector.slice(i, Math.min(j + 1, selector.length));
+      i = j;
+      continue;
+    }
+
+    if (char === '(' || char === '[') depth++;
+    else if (char === ')' || char === ']') depth = Math.max(0, depth - 1);
+
+    if (depth === 0 && (char === '>' || char === '+' || char === '~' || /\s/.test(char))) {
+      if (current.trim()) compounds.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
   }
 
-  return { tags, hooks, addedAttributes };
+  if (current.trim()) compounds.push(current.trim());
+
+  return compounds;
 }
 
-/**
- * True when a selector can name the patched element.
- *
- * The selector is read as a list of words: a class (`.overlay`), an id
- * (`#target`), an attribute (`[aria-label]`) and a tag (`img`) are all words.
- * A word that belongs to the element makes the rule relevant; the universal
- * selector matches every element.
- */
-function selectorMentions(selector: string, terms: Set<string>): boolean {
-  if (selector.includes('*')) return true;
-  const words = selector.toLowerCase().split(/[^a-z0-9_-]+/).filter(Boolean);
-  return words.some(word => terms.has(word));
+/** How a selector matches an element. */
+type Match = 'yes' | 'no' | 'maybe';
+
+/** True when the attribute value satisfies the selector's operator. */
+function attributeMatches(
+  elementValue: string,
+  operator: string | null,
+  selectorValue: string | null
+): Match {
+  if (operator === null || selectorValue === null) return 'yes';
+
+  const exact = elementValue === selectorValue;
+  const loose = elementValue.toLowerCase() === selectorValue.toLowerCase();
+
+  switch (operator) {
+    case '=':
+      if (exact) return 'yes';
+      return loose ? 'maybe' : 'no';
+    case '^=':
+      if (elementValue.startsWith(selectorValue)) return 'yes';
+      return elementValue.toLowerCase().startsWith(selectorValue.toLowerCase()) ? 'maybe' : 'no';
+    case '$=':
+      if (elementValue.endsWith(selectorValue)) return 'yes';
+      return elementValue.toLowerCase().endsWith(selectorValue.toLowerCase()) ? 'maybe' : 'no';
+    case '*=':
+      if (elementValue.includes(selectorValue)) return 'yes';
+      return elementValue.toLowerCase().includes(selectorValue.toLowerCase()) ? 'maybe' : 'no';
+    case '~=':
+      if (elementValue.split(/\s+/).includes(selectorValue)) return 'yes';
+      return elementValue.toLowerCase().split(/\s+/).includes(selectorValue.toLowerCase())
+        ? 'maybe'
+        : 'no';
+    case '|=':
+      if (elementValue === selectorValue || elementValue.startsWith(`${selectorValue}-`)) return 'yes';
+      const lower = elementValue.toLowerCase();
+      const wanted = selectorValue.toLowerCase();
+      return lower === wanted || lower.startsWith(`${wanted}-`) ? 'maybe' : 'no';
+    default:
+      return 'maybe';
+  }
 }
 
-/** The declarations of a rule, by property. */
-function parseDeclarations(body: string): Map<string, string> {
-  const declarations = new Map<string, string>();
-  for (const part of body.split(';')) {
+/** How the subject compound of a selector matches an element. */
+function matchSubject(requirements: SelectorRequirements, element: ElementDescriptor): Match {
+  if (requirements.malformed) return 'maybe';
+
+  if (requirements.tag && requirements.tag !== '*' && requirements.tag !== element.tag) return 'no';
+
+  for (const className of requirements.classes) {
+    if (!element.classes.has(className)) return 'no';
+  }
+
+  if (requirements.id !== null && element.id !== requirements.id) return 'no';
+
+  let maybe = requirements.conditional;
+
+  for (const requirement of requirements.attributes) {
+    const value = element.attributes.get(requirement.name);
+    if (value === undefined) return 'no';
+    const result = attributeMatches(value, requirement.operator, requirement.value);
+    if (result === 'no') return 'no';
+    if (result === 'maybe') maybe = true;
+  }
+
+  return maybe ? 'maybe' : 'yes';
+}
+
+/** How a selector list matches an element. */
+function matchSelector(selector: string, element: ElementDescriptor): Match {
+  let maybe = false;
+
+  for (const part of splitTopLevel(selector, ',')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    // Only the subject compound decides: an ancestor may or may not match, so
+    // a rule with an ancestor is judged by its subject alone.
+    const compounds = splitCompounds(trimmed);
+    const subject = compounds[compounds.length - 1] ?? trimmed;
+    const result = matchSubject(parseSubject(subject), element);
+
+    if (result === 'yes') return 'yes';
+    if (result === 'maybe') maybe = true;
+  }
+
+  return maybe ? 'maybe' : 'no';
+}
+
+/** A declaration of a rule. */
+interface Declaration {
+  property: string;
+  value: string;
+}
+
+/** The declarations of a rule. */
+function parseDeclarations(body: string): Declaration[] {
+  const declarations: Declaration[] = [];
+
+  for (const part of splitTopLevel(body, ';')) {
     const separator = part.indexOf(':');
     if (separator === -1) continue;
-    const property = part.slice(0, separator).trim().toLowerCase();
-    // The priority suffix is not part of the value.
-    const value = part
-      .slice(separator + 1)
-      .trim()
-      .toLowerCase()
-      .replace(/\s*!\s*important\s*$/, '')
-      .trim();
+    const property = decodeCssEscapes(part.slice(0, separator).trim()).toLowerCase();
+    const value = decodeCssEscapes(part.slice(separator + 1).trim()).toLowerCase();
     if (!property) continue;
-    declarations.set(property, value);
+    declarations.push({ property, value });
   }
+
   return declarations;
 }
 
-/** The declarations of several rules, as one element would see them. */
-function mergeDeclarations(rules: CssRule[]): Map<string, string> {
-  const merged = new Map<string, string>();
-  for (const rule of rules) {
-    for (const [property, value] of parseDeclarations(rule.declarations)) {
-      merged.set(property, value);
+/**
+ * The properties that decide whether an element covers the viewport or is not
+ * rendered. A value of one of them that the analyser cannot compute makes the
+ * destination unprovable when the fix changes it.
+ */
+const RELEVANT_PROPERTIES = new Set([
+  'position', 'inset', 'inset-block', 'inset-inline', 'top', 'right', 'bottom', 'left',
+  'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+  'display', 'visibility', 'opacity', 'transform', 'scale', 'rotate', 'translate',
+  'zoom', 'perspective', 'margin', 'padding', 'overflow', 'clip', 'clip-path',
+  'content', 'font-size', 'line-height', 'text-indent', 'letter-spacing',
+  'white-space', 'word-break', 'vertical-align', 'color', '-webkit-text-fill-color',
+  'background', 'background-color', 'background-position', 'background-size',
+  'float', 'clear', 'flex', 'flex-basis', 'order', 'aspect-ratio', 'contain',
+  'isolation', 'mix-blend-mode', 'filter', 'backdrop-filter', 'mask', '-webkit-mask',
+  'z-index', 'animation', 'animation-name', 'box-sizing', 'gap', 'grid-area',
+  'grid-template', 'grid-template-columns', 'grid-template-rows', 'columns', 'column-count',
+]);
+
+/** The values that make an element span the viewport horizontally. */
+const COVERS_X = /^(100%|100(vw|dvw|svw|lvw))$/;
+
+/** The values that make an element span the viewport vertically. */
+const COVERS_Y = /^(100%|100(vh|dvh|svh|lvh))$/;
+
+/** The values that place an element at an edge of its containing block. */
+const ZERO = /^(0|0px|0%|0em|0rem|0vh|0vw)$/;
+
+/** The values that position an element out of the normal flow. */
+const POSITIONED = /^(fixed|absolute|sticky)$/;
+
+/** The values that remove an element from the rendering. */
+const HIDDEN_DISPLAY = /^none$/;
+const HIDDEN_VISIBILITY = /^(hidden|collapse)$/;
+
+/**
+ * The properties a keyframe may use to cover the screen.
+ *
+ * Only the geometry of a frame can turn the element into an overlay: a frame
+ * that fades the element in and out is ordinary, and the browser shows the
+ * element between the frames.
+ */
+const GEOMETRY_PROPERTIES = new Set([
+  'position', 'inset', 'inset-block', 'inset-inline', 'top', 'right', 'bottom', 'left',
+  'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
+]);
+
+/** The keywords of the `animation` shorthand that are not the name. */
+const ANIMATION_KEYWORDS = new Set([
+  'infinite', 'alternate', 'alternate-reverse', 'reverse', 'both', 'forwards', 'backwards',
+  'normal', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'linear', 'step-start', 'step-end',
+  'running', 'paused',
+]);
+
+/** The name of the animation of a declaration value. */
+function animationNameOf(value: string): string | null {
+  for (const token of value.split(/\s+/).filter(Boolean)) {
+    const lower = token.toLowerCase();
+    if (lower === 'none') return null;
+    // A time, a number or a keyword is not the name of the animation.
+    if (/^[\d.]+m?s$/.test(lower) || /^[\d.]+$/.test(lower)) continue;
+    if (ANIMATION_KEYWORDS.has(lower)) continue;
+    return lower;
+  }
+  return null;
+}
+
+/** The animations that may run on an element. */
+function animationNamesOf(state: ElementState): string[] {
+  const names = new Set<string>();
+  const values = [
+    ...(state.values.get('animation') ?? []),
+    ...(state.values.get('animation-name') ?? []),
+  ];
+
+  for (const value of values) {
+    for (const part of splitTopLevel(value, ',')) {
+      const name = animationNameOf(part);
+      if (name) names.add(name);
     }
   }
-  return merged;
+
+  return [...names];
 }
 
 /**
- * True when the declarations put the element over the whole viewport.
+ * True when a value cannot be computed by the analyser.
  *
- * A positioned element that spans the viewport is an overlay: it covers the
- * page the customer sees.
+ * A custom property, a function (`calc()`, `min()`, `env()`, …) or a
+ * CSS-wide keyword can compute anything, so the verdict cannot be decided.
  */
-function coversViewport(declarations: Map<string, string>): boolean {
-  const position = declarations.get('position');
-  // A position behind a custom property cannot be read here: it is treated as
-  // positioned, because the rule that matters is the one that hides the value.
-  const positioned =
-    position === undefined
-      ? false
-      : position === 'fixed' || position === 'absolute' || position === 'sticky' || position.includes('var(');
-  if (!positioned) return false;
-
-  const zero = (value: string | undefined) => value === '0' || value === '0px' || value === '0%';
-  const inset = declarations.get('inset');
-  const insetZero = inset !== undefined && /^0(\s|$)/.test(inset);
-  const width = declarations.get('width');
-  const height = declarations.get('height');
-
-  const coversX =
-    insetZero ||
-    (zero(declarations.get('left')) && zero(declarations.get('right'))) ||
-    width === '100%' ||
-    width === '100vw';
-  const coversY =
-    insetZero ||
-    (zero(declarations.get('top')) && zero(declarations.get('bottom'))) ||
-    height === '100%' ||
-    height === '100vh';
-
-  return coversX && coversY;
+function isUnprovableValue(value: string): boolean {
+  if (!value) return true;
+  if (value.includes('var(')) return true;
+  if (/\b(inherit|initial|unset|revert|revert-layer)\b/.test(value)) return true;
+  if (/[a-z-]+\(/i.test(value)) return true;
+  return false;
 }
 
-/** True when the declarations hide the element and the text it holds. */
-function hidesElement(declarations: Map<string, string>): boolean {
-  if (declarations.get('display') === 'none') return true;
-  const visibility = declarations.get('visibility');
-  if (visibility === 'hidden' || visibility === 'collapse') return true;
-  const opacity = declarations.get('opacity');
-  if (opacity !== undefined && /^0(\.0+)?$/.test(opacity)) return true;
-  return false;
+/** The rendering state of an element under a set of rules. */
+interface ElementState {
+  positioned: boolean;
+  coversX: boolean;
+  coversY: boolean;
+  hidden: boolean;
+  unprovable: Set<string>;
+  /** The values of every property, by property name. */
+  values: Map<string, string[]>;
+}
+
+/** The state of an element under the rules that apply to it. */
+function stateOf(
+  rules: CssRule[],
+  element: ElementDescriptor,
+  keyframes: Map<string, string[]>
+): ElementState {
+  const state: ElementState = {
+    positioned: false,
+    coversX: false,
+    coversY: false,
+    hidden: false,
+    unprovable: new Set(),
+    values: new Map(),
+  };
+
+  const edges = { top: false, right: false, bottom: false, left: false };
+
+  const apply = ({ property, value }: Declaration): void => {
+    const values = state.values.get(property) ?? [];
+    values.push(value);
+    state.values.set(property, values);
+
+    if (!RELEVANT_PROPERTIES.has(property)) return;
+
+    if (isUnprovableValue(value)) {
+      state.unprovable.add(property);
+      return;
+    }
+
+    if (property === 'position') {
+      if (POSITIONED.test(value)) state.positioned = true;
+    } else if (property === 'inset' || property === 'inset-block' || property === 'inset-inline') {
+      if (ZERO.test(value)) {
+        edges.top = true;
+        edges.right = true;
+        edges.bottom = true;
+        edges.left = true;
+      }
+    } else if (property === 'top' || property === 'bottom' || property === 'right' || property === 'left') {
+      if (ZERO.test(value)) edges[property] = true;
+    } else if (property === 'width' || property === 'min-width') {
+      if (COVERS_X.test(value)) state.coversX = true;
+    } else if (property === 'height' || property === 'min-height') {
+      if (COVERS_Y.test(value)) state.coversY = true;
+    } else if (property === 'display') {
+      if (HIDDEN_DISPLAY.test(value)) state.hidden = true;
+    } else if (property === 'visibility') {
+      if (HIDDEN_VISIBILITY.test(value)) state.hidden = true;
+    } else if (property === 'opacity') {
+      if (/^0(\.0+)?$/.test(value)) state.hidden = true;
+    }
+  };
+
+  for (const rule of rules) {
+    for (const declaration of parseDeclarations(rule.declarations)) {
+      apply(declaration);
+    }
+  }
+
+  // The frames of an animation that runs on the element may move it over the
+  // page. Only the geometry of a frame can cover the screen, so a frame that
+  // fades the element does not hide it.
+  for (const name of animationNamesOf(state)) {
+    const frames = keyframes.get(name);
+    if (!frames) continue;
+    for (const declaration of parseDeclarations(frames.join(';'))) {
+      if (!GEOMETRY_PROPERTIES.has(declaration.property)) continue;
+      apply(declaration);
+    }
+  }
+
+  if (edges.top && edges.bottom) state.coversY = true;
+  if (edges.left && edges.right) state.coversX = true;
+  // `inset:0` puts the element on every edge.
+  if (edges.top && edges.right && edges.bottom && edges.left) {
+    state.coversX = true;
+    state.coversY = true;
+  }
+
+  return state;
+}
+
+/** True when the state covers the whole viewport. */
+function coversViewport(state: ElementState): boolean {
+  return state.positioned && state.coversX && state.coversY;
 }
 
 /**
@@ -268,23 +1064,67 @@ export function destinationCssHarm(
   originalElementHtml: string | null | undefined,
   remediationCode: string | null | undefined
 ): string | null {
-  const terms = elementTerms(originalElementHtml, remediationCode);
-  if (terms.tags.size === 0 && terms.hooks.size === 0) return null;
-
-  // A rule that names the tag can reach the element as well, but a tag rule is
-  // often about a variant of the tag (`input[type=hidden]`), so it only counts
-  // for the overlay, not for hiding.
-  const overlayTerms = new Set([...terms.tags, ...terms.hooks, ...terms.addedAttributes]);
-  const hidingTerms = new Set([...terms.hooks, ...terms.addedAttributes]);
-
-  const overlayRules = context.rules.filter(rule => selectorMentions(rule.selector, overlayTerms));
-  if (overlayRules.length > 0 && coversViewport(mergeDeclarations(overlayRules))) {
-    return 'the repository stylesheet can turn the patched element into a full-viewport overlay';
+  if (context.unprovable.length > 0) {
+    return `the repository stylesheet cannot be judged: ${context.unprovable[0]}`;
   }
 
-  const hidingRules = context.rules.filter(rule => selectorMentions(rule.selector, hidingTerms));
-  if (hidingRules.length > 0 && hidesElement(mergeDeclarations(hidingRules))) {
-    return 'the repository stylesheet can hide the patched element';
+  const patched = describeElements(remediationCode ?? '');
+  if (patched.length === 0) return null;
+
+  const original = describeElements(originalElementHtml ?? '');
+
+  for (let index = 0; index < patched.length; index++) {
+    const element = patched[index] as ElementDescriptor;
+    const before = original[index] ?? null;
+
+    // A rule that applies after the fix but not before it is the only rule that
+    // can change what the element looks like. A rule with a pseudo-class may
+    // apply before as well, so it is judged as well.
+    const afterRules: CssRule[] = [];
+    const beforeRules: CssRule[] = [];
+
+    for (const rule of context.rules) {
+      const after = matchSelector(rule.selector, element);
+      if (after === 'no') continue;
+      afterRules.push(rule);
+
+      if (!before) continue;
+      const earlier = matchSelector(rule.selector, before);
+      if (earlier === 'yes') beforeRules.push(rule);
+    }
+
+    const after = stateOf(afterRules, element, context.keyframes);
+    const earlier = before ? stateOf(beforeRules, before, context.keyframes) : null;
+
+    if (coversViewport(after)) {
+      return 'the repository stylesheet can turn the patched element into a full-viewport overlay';
+    }
+
+    if (after.hidden) {
+      return 'the repository stylesheet can hide the patched element';
+    }
+
+    // A value the analyser cannot compute only matters when the fix changes
+    // the property it belongs to: an unchanged `width: var(--w)` is the
+    // customer's own CSS, not something the fix introduced.
+    const changed = new Set<string>();
+    for (const [property, values] of after.values) {
+      if (!RELEVANT_PROPERTIES.has(property)) continue;
+      const previous = earlier?.values.get(property);
+      const same =
+        previous !== undefined &&
+        previous.length === values.length &&
+        [...previous].sort().join(' ') === [...values].sort().join(' ');
+      if (!same) changed.add(property);
+    }
+
+    if (changed.size > 0) {
+      for (const property of after.unprovable) {
+        if (RELEVANT_PROPERTIES.has(property)) {
+          return `the repository stylesheet cannot be judged: ${property} depends on a value the analyser cannot compute`;
+        }
+      }
+    }
   }
 
   return null;

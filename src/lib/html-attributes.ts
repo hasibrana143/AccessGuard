@@ -68,25 +68,38 @@ export function parseTagAttributes(section: string): ParsedAttribute[] {
   return attributes;
 }
 
-/** Parse the attributes of every tag in an HTML snippet. */
-export function parseHtmlAttributes(html: string): ParsedAttribute[] {
-  const attributes: ParsedAttribute[] = [];
+/** A tag of an HTML snippet and its attributes. */
+export interface HtmlTag {
+  /** Lower-cased tag name. */
+  name: string;
+  attributes: ParsedAttribute[];
+}
+
+/** The tags of an HTML snippet, in document order. */
+export function parseHtmlTags(html: string): HtmlTag[] {
+  const tags: HtmlTag[] = [];
   TAG_PATTERN.lastIndex = 0;
 
   let tag: RegExpExecArray | null;
   while ((tag = TAG_PATTERN.exec(html)) !== null) {
     // The attribute section starts after the tag name.
     const sectionStart = tag.index + 1 + (tag[1]?.length ?? 0);
-    for (const attribute of parseTagAttributes(tag[2] ?? '')) {
-      attributes.push({
+    tags.push({
+      name: (tag[1] ?? '').toLowerCase(),
+      attributes: parseTagAttributes(tag[2] ?? '').map(attribute => ({
         ...attribute,
         start: attribute.start + sectionStart,
         end: attribute.end + sectionStart,
-      });
-    }
+      })),
+    });
   }
 
-  return attributes;
+  return tags;
+}
+
+/** Parse the attributes of every tag in an HTML snippet. */
+export function parseHtmlAttributes(html: string): ParsedAttribute[] {
+  return parseHtmlTags(html).flatMap(tag => tag.attributes);
 }
 
 const TAB = String.fromCharCode(9);

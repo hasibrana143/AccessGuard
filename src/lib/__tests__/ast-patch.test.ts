@@ -5,6 +5,7 @@ import {
   countElementOccurrences,
   elementTextContent,
   hasSyntaxErrors,
+  hidesOwnTarget,
   htmlToJsx,
   isPatchableFile,
   liveTagStarts,
@@ -320,8 +321,49 @@ describe('locateElement (HTML)', () => {
   });
 });
 
-describe('isPatchableFile', () => {
-  it('patches only the files whose context can be proven', () => {
+// The sixth independent review found three ways the live-context scanner read
+// markup the browser never turns into an element.
+describe('live context: markup the browser does not create an element for', () => {
+  it('does not match an element inside a bogus comment', () => {
+    // `<!bogus …>` is not a comment: the HTML parser reads it as one and ends
+    // it at the next `>`, so the markup behind it is text.
+    const content = '<html><body><!bogus <img src="a.jpg">></body></html>';
+    expect(locateElement(content, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
+    expect(countElementOccurrences(content, 'index.html', '<img src="a.jpg">')).toBe(0);
+  });
+
+  it('does not match an element inside a CDATA section', () => {
+    // In HTML a CDATA section is a bogus comment: it ends at the first `>`.
+    const content = '<html><body><![CDATA[<img src="a.jpg">]]></body></html>';
+    expect(locateElement(content, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
+    expect(countElementOccurrences(content, 'index.html', '<img src="a.jpg">')).toBe(0);
+  });
+
+  it('does not match an element behind an end tag inside an attribute value', () => {
+    // The `</template>` belongs to the attribute value: the template is still
+    // open, and the image behind it is inert content.
+    const content =
+      '<html><body><template><div data-x="</template>"><img src="a.jpg"></template></body></html>';
+    expect(locateElement(content, 'index.html', '<img src="a.jpg">', 0)).toBeNull();
+    expect(countElementOccurrences(content, 'index.html', '<img src="a.jpg">')).toBe(0);
+  });
+});
+
+describe('hidesOwnTarget', () => {
+  it('detects an element that hides itself', () => {
+    expect(hidesOwnTarget('<img src="x" alt="Photo" hidden>')).toBe(true);
+    expect(hidesOwnTarget('<img src="x" alt="Photo" style="display:none">')).toBe(true);
+    expect(hidesOwnTarget('<img src="x" alt="Photo" style="visibility:hidden">')).toBe(true);
+    expect(hidesOwnTarget('<img src="x" alt="Photo" style="opacity:0">')).toBe(true);
+  });
+
+  it('leaves a visible element alone', () => {
+    expect(hidesOwnTarget('<img src="x" alt="Photo">')).toBe(false);
+    expect(hidesOwnTarget('<img src="x" alt="Photo" style="color:red">')).toBe(false);
+  });
+});
+
+describe('isPatchableFile', () => {  it('patches only the files whose context can be proven', () => {
     expect(isPatchableFile('index.html')).toBe(true);
     expect(isPatchableFile('Card.tsx')).toBe(true);
     expect(isPatchableFile('Card.jsx')).toBe(true);

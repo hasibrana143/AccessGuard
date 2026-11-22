@@ -189,6 +189,115 @@ describe('applyFixesToRepository', () => {
     expect(result.filesModified).toEqual([]);
   });
 
+  it('reads a blob whose extension does not say whether it is binary', async () => {
+    // A `.dat` file may hold anything: the content decides, not the name. A
+    // text blob holds the element too, so the match is not unique.
+    tree(['index.html', 'payload.dat']);
+    fileContent('index.html', '<html><body><img src="a.jpg"></body></html>');
+    fileContent('payload.dat', '<img src="a.jpg">');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.getContent).toHaveBeenCalledWith(expect.objectContaining({ path: 'payload.dat' }));
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('leaves a blob out of the scan when its content is binary', async () => {
+    // A NUL byte cannot appear in a text file: the blob is binary, so it
+    // cannot hold the element and the match stays unique.
+    tree(['index.html', 'payload.dat']);
+    fileContent('index.html', '<html><body><img src="a.jpg"></body></html>');
+    fileContent('payload.dat', '<img src="a.jpg">\u0000\u0001binary');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img src="a.jpg">', remediationCode: '<img src="a.jpg" alt="A">' }]
+    );
+
+    expect(mocks.getContent).toHaveBeenCalledWith(expect.objectContaining({ path: 'payload.dat' }));
+    expect(result.filesModified).toEqual([{ path: 'index.html', fixesApplied: 1 }]);
+  });
+
+  it('does not patch an element the repository stylesheet turns into an overlay', async () => {
+    // The rule that restyles the patched element lives in a preprocessor
+    // stylesheet of the repository: the isolated verification does not see it.
+    tree(['index.html', 'site.scss']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'site.scss',
+      '[alt]{position:fixed;inset:0;width:100%;height:100%;z-index:999999}'
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img id="target" src="x">', remediationCode: '<img id="target" src="x" alt="Photo">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element a linked stylesheet turns into an overlay', async () => {
+    // The stylesheet is linked from the page: it is part of the destination.
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      '<html><head><link rel="stylesheet" href="styles.css"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent(
+      'styles.css',
+      '[alt]{position:fixed;inset:0;width:100%;height:100%;z-index:999999}'
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img id="target" src="x">', remediationCode: '<img id="target" src="x" alt="Photo">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
+  it('does not patch an element when a preprocessor stylesheet cannot be judged', async () => {
+    // The preprocessor resolves the variable into a value the analyser cannot
+    // see, so the destination is unprovable.
+    tree(['index.html', 'site.scss']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent('site.scss', '[alt]{position:fixed;inset:0;width:$w;height:100%}');
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [{ id: 'v1', ruleId: 'image-alt', elementHtml: '<img id="target" src="x">', remediationCode: '<img id="target" src="x" alt="Photo">' }]
+    );
+
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result.filesModified).toEqual([]);
+  });
+
   it('does not patch anything when the tree holds a submodule', async () => {
     // A submodule holds files the tree does not list: the scan is incomplete,
     // so no match can be proven unique.

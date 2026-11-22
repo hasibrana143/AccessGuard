@@ -187,15 +187,74 @@ const MAX_SOURCE_SCAN_BYTES = 5 * 1024 * 1024;
 
 /**
  * Files that cannot hold markup and are not read: images, fonts, media,
- * archives and other binaries. Every other file of the tree is read, because a
- * file with an extension the writer does not know (a template, a partial, a
- * content file) can hold the same element as the file that is patched.
+ * archives and other binaries in a format that is known. Every other file of
+ * the tree is read, because a file with an extension the writer does not know
+ * (a template, a partial, a content file) can hold the same element as the
+ * file that is patched. An ambiguous suffix (`.dat`, `.bin`) is not proof that
+ * a blob is binary, so those are read as well.
  */
 const BINARY_FILE_PATTERN =
-  /\.(png|jpe?g|gif|webp|bmp|ico|tiff?|avif|heic|svgz|woff2?|ttf|otf|eot|mp3|mp4|m4a|mov|avi|webm|wav|ogg|flac|aac|zip|gz|tgz|bz2|xz|7z|rar|tar|pdf|docx?|xlsx?|pptx?|exe|dll|so|dylib|class|jar|wasm|bin|dat|db|sqlite3?|iso|img|pyc)$/i;
+  /\.(png|jpe?g|gif|webp|bmp|ico|tiff?|avif|heic|svgz|woff2?|ttf|otf|eot|mp3|mp4|m4a|mov|avi|webm|wav|ogg|flac|aac|zip|gz|tgz|bz2|xz|7z|rar|tar|pdf|docx?|xlsx?|pptx?|exe|dll|so|dylib|class|jar|wasm|pyc)$/i;
+
+/**
+ * Files that hold stylesheet source. A preprocessor stylesheet is included:
+ * the destination is judged from the stylesheet the repository owns, not from
+ * the subset of it the writer understands.
+ */
+const CSS_FILE_PATTERN = /\.(css|scss|sass|less|pcss|styl|stylus|sss|postcss)$/i;
+
+/** Preprocessor stylesheets: their `//` comments are not CSS comments. */
+const PREPROCESSOR_FILE_PATTERN = /\.(scss|sass|less|styl|stylus)$/i;
+
+/**
+ * The syntax of a preprocessor that the analyser cannot resolve: an
+ * interpolated selector or value (`#{$x}`, `@{x}`), a variable (`$x`, `@x`)
+ * and an escaped import (`~"x"`). A stylesheet that uses it is not judged.
+ */
+const PREPROCESSOR_SYNTAX = /#\{|@\{|\$[@a-zA-Z_]|~["']|\b[a-z-]+\(\s*[@$]/i;
+
+/**
+ * True when a blob holds binary data.
+ *
+ * A NUL byte cannot appear in a text file, and the browser replaces it, so the
+ * markup around it is not markup. A blob that holds one is not part of the
+ * scan — no matter what its name says: a `.dat` file may hold anything.
+ */
+function isBinaryBlob(content: string): boolean {
+  return content.includes('\u0000');
+}
 
 /** How many files of the tree are read at the same time. */
 const SCAN_CONCURRENCY = 8;
+
+/**
+ * Resolve a stylesheet reference against the tree.
+ *
+ * A reference to a file outside the repository (a CDN stylesheet, an absolute
+ * path of another site) cannot be judged: the destination is unprovable and no
+ * source patch may be written into it.
+ */
+function resolveRepositoryPath(basePath: string, reference: string): string | null {
+  const href = reference.trim().split('#')[0]?.split('?')[0] ?? '';
+  if (!href) return null;
+  // A reference with a scheme or a protocol-relative URL is not in the tree.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) return null;
+
+  const base = basePath.includes('/') ? basePath.slice(0, basePath.lastIndexOf('/')) : '';
+  const parts = (href.startsWith('/') ? href.slice(1) : `${base}/${href}`).split('/');
+  const resolved: string[] = [];
+
+  for (const part of parts) {
+    if (!part || part === '.') continue;
+    if (part === '..') {
+      resolved.pop();
+      continue;
+    }
+    resolved.push(part);
+  }
+
+  return resolved.join('/');
+}
 
 // Apply accessibility fixes to real source files in the repository
 export async function applyFixesToRepository(
@@ -224,7 +283,8 @@ export async function applyFixesToRepository(
   const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate, conflictingRemediationKeys } =
     await import('@/lib/github-pr');
   const { locateElement, isPatchableFile } = await import('@/lib/ast-patch');
-  const { buildCssContext, destinationCssHarm, extractStyleBlocks } = await import('@/lib/css-context');
+  const { buildCssContext, destinationCssHarm, extractStyleBlocks, extractStylesheetLinks, extractCssImports, stripCssLineComments } =
+    await import('@/lib/css-context');
 
   // List source files in the default branch tree
   const { data: tree } = await octokit.git.getTree({ owner, repo, tree_sha: ref, recursive: '1' });
@@ -267,12 +327,14 @@ export async function applyFixesToRepository(
   // One fetch per file: the content is cached so several fixes can land in the same
   // file without the later write overwriting the earlier fix.
   const contentCache = new Map<string, string>();
+  const binaryFiles = new Set<string>();
   const assignments = new Map<string, FileFixViolation[]>();
   const localOccurrence = new Map<string, number>();
   let scannedBytes = 0;
   let scanTruncated = false;
 
   const loadFile = async (path: string): Promise<string | undefined> => {
+    if (binaryFiles.has(path)) return undefined;
     const cached = contentCache.get(path);
     if (cached !== undefined) return cached;
     try {
@@ -291,6 +353,13 @@ export async function applyFixesToRepository(
         return undefined;
       }
       const content = Buffer.from(data.content, 'base64').toString('utf8');
+      // A blob that holds binary data is not markup, even when its name does
+      // not say so. It cannot hold the element, so it is not part of the scan
+      // and it does not use the scan budget.
+      if (isBinaryBlob(content)) {
+        binaryFiles.add(path);
+        return undefined;
+      }
       if (scannedBytes + content.length > MAX_SOURCE_SCAN_BYTES) {
         // The budget is exhausted: the scan is incomplete, so no match can be
         // proven unique and nothing is patched.
@@ -325,17 +394,65 @@ export async function applyFixesToRepository(
 
   // The repository's stylesheets are part of the destination: a rule the
   // repository applies to the patched element is invisible to the isolated
-  // verification. The CSS of every stylesheet and of every `<style>` block is
-  // read, so the destination can be judged before a fix is written.
-  const cssParts: string[] = [];
+  // verification. Every style source the repository owns is read: the
+  // stylesheet files (including the preprocessors), the `<style>` blocks of
+  // every file, the stylesheets a file links and the stylesheets they import.
+  // A style source that cannot be read makes the destination unprovable, and an
+  // unprovable destination never receives a source patch.
+  const cssSources: Array<{ path: string; css: string }> = [];
+  const cssPaths = new Set<string>();
+  const styleProblems: string[] = [];
+
+  const addCssSource = (path: string, css: string): void => {
+    if (cssPaths.has(path)) return;
+    cssPaths.add(path);
+    const preprocessor = PREPROCESSOR_FILE_PATTERN.test(path);
+    if (preprocessor && PREPROCESSOR_SYNTAX.test(css)) {
+      // The preprocessor resolves the syntax into CSS the analyser cannot
+      // see, so the destination is unprovable.
+      styleProblems.push(`the stylesheet ${path} uses syntax the analyser cannot resolve`);
+    }
+    cssSources.push({ path, css: preprocessor ? stripCssLineComments(css) : css });
+  };
+
   for (const [path, content] of contentCache) {
-    if (/\.css$/i.test(path)) {
-      cssParts.push(content);
-    } else if (/\.html?$/i.test(path)) {
-      cssParts.push(...extractStyleBlocks(content));
+    if (CSS_FILE_PATTERN.test(path)) addCssSource(path, content);
+  }
+
+  for (const [path, content] of contentCache) {
+    // Every `<style>` block is a style source of the file that holds it: its
+    // imports are relative to that file.
+    for (const block of extractStyleBlocks(content)) {
+      cssSources.push({ path, css: block });
+    }
+    for (const href of extractStylesheetLinks(content)) {
+      const target = resolveRepositoryPath(path, href);
+      if (!target || !contentCache.has(target)) {
+        styleProblems.push(`the stylesheet ${href} is not part of the repository`);
+        continue;
+      }
+      addCssSource(target, contentCache.get(target) as string);
     }
   }
-  const cssContext = buildCssContext(cssParts.join('\n'));
+
+  // The imports of a stylesheet are relative to the stylesheet itself.
+  const pending = [...cssSources];
+  while (pending.length > 0) {
+    const source = pending.shift() as { path: string; css: string };
+    for (const imported of extractCssImports(source.css)) {
+      const target = resolveRepositoryPath(source.path, imported);
+      if (!target || !contentCache.has(target)) {
+        styleProblems.push(`the stylesheet ${source.path} imports ${imported}, which is not part of the repository`);
+        continue;
+      }
+      const already = cssPaths.has(target);
+      addCssSource(target, contentCache.get(target) as string);
+      if (!already) pending.push({ path: target, css: contentCache.get(target) as string });
+    }
+  }
+
+  const cssContext = buildCssContext(cssSources.map(source => source.css).join('\n'));
+  cssContext.unprovable.push(...styleProblems);
 
   // At most 10 fixes are written into source files per PR (the rest stay in the PR
   // as review files). Keeps the number of repository reads and AST parses bounded.

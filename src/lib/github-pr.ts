@@ -8,6 +8,7 @@ import {
   containsPlaceholder,
   countElementOccurrences,
   hasSyntaxErrors,
+  hidesOwnTarget,
   isPatchableFile,
   locateElement,
   preservesVisibleContent,
@@ -17,6 +18,7 @@ import {
   isEventHandlerAttribute,
   normalizeUriValue,
   parseHtmlAttributes,
+  parseHtmlTags,
 } from '@/lib/html-attributes';
 
 // Flexible violation type that works with both strict types and Prisma results
@@ -248,8 +250,39 @@ function checkUriAttribute(name: string, value: string): string | null {
   return null;
 }
 
-/** Check a style attribute for declarations that can take over the screen. */
-function checkStyleAttribute(value: string): string | null {
+/**
+ * True when a colour value makes the text invisible.
+ *
+ * `transparent` and every colour with an alpha of zero are invisible: the text
+ * stays in the document, so the rendered-text check does not catch it.
+ */
+function isTransparentColor(value: string): boolean {
+  const normalized = value.replace(/\s+/g, '').toLowerCase();
+  if (normalized === 'transparent') return true;
+
+  const functional = /^(?:rgba|hsla)\(([^)]*)\)$/.exec(normalized);
+  if (functional) {
+    const parts = (functional[1] ?? '').split(',');
+    if (parts.length < 4) return false;
+    const alpha = parts[3] ?? '';
+    return /^0(?:\.0+)?$/.test(alpha);
+  }
+
+  // The modern syntax: `rgb(0 0 0 / 0)`.
+  const slash = /\/\s*([\d.]+)\s*\)$/.exec(normalized);
+  if (slash) return Number.parseFloat(slash[1] ?? '') === 0;
+
+  return false;
+}
+
+/**
+ * Check a style attribute for declarations that can take over the screen.
+ *
+ * `isTarget` marks the style of the element the fix patches: that element may
+ * not be hidden, while a nested element may (a fix that moves the text into a
+ * hidden element is caught by the rendered-text check).
+ */
+function checkStyleAttribute(value: string, isTarget: boolean): string | null {
   // A browser decodes the entities of the attribute value, treats a CSS comment
   // as whitespace (`position/**/:fixed` is `position: fixed`) and resolves the
   // CSS escapes (`p\6fsition:fixed` is `position: fixed`) before it reads a
@@ -290,6 +323,22 @@ function checkStyleAttribute(value: string): string | null {
     if (property === 'opacity' && /^0(\.0+)?$/.test(cssValue)) {
       return 'remediation code hides the element with opacity: 0';
     }
+    // The same holds for the element itself: a fix that hides the element it
+    // patches replaces a visible element with an invisible one.
+    if (isTarget && property === 'display' && cssValue === 'none') {
+      return 'remediation code hides the element with display: none';
+    }
+    if (isTarget && property === 'visibility' && /^(hidden|collapse)$/.test(cssValue)) {
+      return 'remediation code hides the element with visibility: hidden';
+    }
+    // Transparent text is invisible text: the user reads nothing although the
+    // text is still in the document.
+    if (
+      (property === 'color' || property === '-webkit-text-fill-color') &&
+      isTransparentColor(cssValue)
+    ) {
+      return 'remediation code makes the text transparent';
+    }
   }
 
   return null;
@@ -319,6 +368,36 @@ function classTokensOf(html: string): string[] {
     }
   }
   return tokens;
+}
+
+/**
+ * The remote URLs of a snippet.
+ *
+ * A URL is remote when it carries an `http` or `https` scheme. A relative URL
+ * stays inside the customer's own site and cannot call home.
+ */
+function remoteUrlsOf(html: string): string[] {
+  const urls: string[] = [];
+
+  for (const attribute of parseHtmlAttributes(html)) {
+    if (!URI_ATTRIBUTES.has(attribute.name)) continue;
+
+    // `srcset` holds a comma separated list of candidate URLs.
+    const candidates =
+      attribute.name === 'srcset'
+        ? attribute.value.split(',').map(part => part.trim().split(/\s+/)[0] ?? '')
+        : [attribute.value];
+
+    for (const candidate of candidates) {
+      // The scheme is read the way the browser reads it (entities decoded,
+      // control characters removed); the URL itself is compared as it is.
+      const normalized = normalizeUriValue(candidate);
+      if (!/^https?:\/\//.test(normalized)) continue;
+      urls.push(decodeHtmlEntities(candidate).trim());
+    }
+  }
+
+  return urls;
 }
 
 // Validate AI-generated remediation code before applying it to source files
@@ -378,6 +457,13 @@ export function validateRemediation(
     }
   }
 
+  // No HTML comment syntax: a comment ends at the first `-->`, so a comment
+  // opener in the remediation swallows the markup that follows it in the
+  // customer's page.
+  if (/<!--|-->|--!>/.test(code)) {
+    return { valid: false, reason: 'remediation code contains HTML comment syntax' };
+  }
+
   // No server-template grammar: `<% … %>`, `<? … ?>` and `{{ … }}` are
   // evaluated by the template engine of the customer's build, so a fix that
   // carries them becomes executable code on the customer's server.
@@ -403,6 +489,22 @@ export function validateRemediation(
     }
   }
 
+  // The remediation may not introduce a remote URL the original element does
+  // not have: the verification browser blocks every network request, so a new
+  // URL is invisible to it. Once the fix is written, that URL loads from the
+  // customer's browser (a tracking pixel) or points the user somewhere else.
+  if (originalElementHtml) {
+    const originalUrls = new Set(remoteUrlsOf(originalElementHtml));
+    for (const url of remoteUrlsOf(code)) {
+      if (!originalUrls.has(url)) {
+        return {
+          valid: false,
+          reason: 'remediation code introduces a remote URL the original element does not have',
+        };
+      }
+    }
+  }
+
   // No javascript:, vbscript: or data:text/html URIs — quoted or unquoted.
   if (/\b(?:javascript|vbscript)\s*:/i.test(code) || /\bdata\s*:\s*text\/html/i.test(code)) {
     return { valid: false, reason: 'remediation code contains an active URI scheme' };
@@ -412,18 +514,31 @@ export function validateRemediation(
   // rejected unconditionally: the scanned page may already carry one, and the
   // handler's code is attacker controlled either way. Every URI attribute is
   // checked against a scheme allowlist after entity decoding.
-  const attributes = parseHtmlAttributes(code);
-  for (const attribute of attributes) {
-    if (isEventHandlerAttribute(attribute.name)) {
-      return { valid: false, reason: `remediation code contains an event handler: ${attribute.name}` };
-    }
+  //
+  // The first tag of the remediation is the element the fix patches: it may
+  // not hide itself.
+  const tags = parseHtmlTags(code);
+  for (const [index, tag] of tags.entries()) {
+    const isTarget = index === 0;
 
-    const uriProblem = checkUriAttribute(attribute.name, attribute.value);
-    if (uriProblem) return { valid: false, reason: uriProblem };
+    for (const attribute of tag.attributes) {
+      if (isEventHandlerAttribute(attribute.name)) {
+        return { valid: false, reason: `remediation code contains an event handler: ${attribute.name}` };
+      }
 
-    if (attribute.name === 'style') {
-      const styleProblem = checkStyleAttribute(attribute.value);
-      if (styleProblem) return { valid: false, reason: styleProblem };
+      // A fix may not hide the element it patches: the rule check passes while
+      // the user loses the element.
+      if (isTarget && attribute.name === 'hidden') {
+        return { valid: false, reason: 'remediation code hides the patched element with the hidden attribute' };
+      }
+
+      const uriProblem = checkUriAttribute(attribute.name, attribute.value);
+      if (uriProblem) return { valid: false, reason: uriProblem };
+
+      if (attribute.name === 'style') {
+        const styleProblem = checkStyleAttribute(attribute.value, isTarget);
+        if (styleProblem) return { valid: false, reason: styleProblem };
+      }
     }
   }
 
@@ -583,6 +698,12 @@ export function applyFixesToFile(
     }
     if (!preservesVisibleContent(originalElement, replacement)) {
       errors.push(`[${v.ruleId}] skipped: patch removes the visible text of the element`);
+      continue;
+    }
+    // A fix may not hide the element it patches: the rule check passes while
+    // the user loses the element.
+    if (hidesOwnTarget(replacement)) {
+      errors.push(`[${v.ruleId}] skipped: patch hides the element it patches`);
       continue;
     }
     if (claimed.some(c => location.start < c.end && location.end > c.start)) {

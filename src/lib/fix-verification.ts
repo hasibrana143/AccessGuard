@@ -7,7 +7,7 @@
 // browser, unknown rule, incomplete result) the fix stays unverified and is skipped.
 
 import fs from 'node:fs';
-import { chromium, type Browser, type BrowserContext } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import * as axeCore from 'axe-core';
 import { validateFixCandidate } from '@/lib/github-pr';
 import { visibleTextContent } from '@/lib/ast-patch';
@@ -177,6 +177,68 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 }
 
 /**
+ * Check the rendered patched element.
+ *
+ * The patched element has to stay visible: a fix that hides it (`hidden`,
+ * `display:none`, `visibility:hidden`) or makes its text transparent passes the
+ * rule check while the user loses what the element shows. The computed style is
+ * the browser's own answer, so the check does not depend on how the hiding was
+ * written.
+ *
+ * Returns the reason the element may not be written, or null.
+ */
+export async function checkRenderedElement(page: Page): Promise<string | null> {
+  const rendering = await page.evaluate(() => {
+    const alpha = (value: string): number => {
+      const match = /rgba?\(([^)]*)\)/.exec(value);
+      if (!match) return 1;
+      const parts = (match[1] ?? '').split(/[,\s/]+/).filter(Boolean);
+      if (parts.length < 4) return 1;
+      const parsed = Number.parseFloat(parts[3] ?? '1');
+      return Number.isFinite(parsed) ? parsed : 1;
+    };
+
+    const elements = Array.from(document.body.querySelectorAll('*')).filter(
+      element => !['META', 'LINK', 'STYLE', 'SCRIPT', 'TITLE'].includes(element.tagName)
+    );
+
+    // The patched element is the first element of the rendered snippet.
+    const target = elements[0] ?? null;
+    let hidden = false;
+    if (target) {
+      const style = window.getComputedStyle(target);
+      hidden =
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        style.visibility === 'collapse' ||
+        Number.parseFloat(style.opacity || '1') === 0;
+    }
+
+    // Transparent text is invisible text: it stays in the document, so the
+    // rendered-text check does not catch it.
+    let transparentText = false;
+    for (const element of elements) {
+      const hasText = Array.from(element.childNodes).some(
+        node => node.nodeType === 3 && (node.textContent ?? '').trim().length > 0
+      );
+      if (!hasText) continue;
+      const style = window.getComputedStyle(element);
+      const fill = style.getPropertyValue('-webkit-text-fill-color') || 'rgb(0, 0, 0)';
+      if (alpha(style.color) === 0 || alpha(fill) === 0) {
+        transparentText = true;
+        break;
+      }
+    }
+
+    return { hidden, transparentText };
+  });
+
+  if (rendering.hidden) return 'the patched element is hidden in the rendered page';
+  if (rendering.transparentText) return 'the patched element shows transparent text';
+  return null;
+}
+
+/**
  * Chromium flags. The OS sandbox is only disabled where it cannot be used (the
  * Docker image runs Chromium as root); everywhere else the sandbox stays on.
  */
@@ -242,6 +304,14 @@ async function runRuleInBrowser(
           detail: 'the patched element no longer shows the original visible text',
         };
       }
+    }
+
+    // The patched element itself has to stay visible: a fix that hides it or
+    // makes its text transparent passes the rule check while the user loses
+    // what the element shows.
+    const renderingProblem = await checkRenderedElement(page);
+    if (renderingProblem) {
+      return { fired: true, evaluated: true, detail: renderingProblem };
     }
 
     const summary = await withTimeout(

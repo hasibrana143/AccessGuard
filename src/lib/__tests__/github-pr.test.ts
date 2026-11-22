@@ -363,6 +363,57 @@ describe('validateRemediation', () => {
     expect(result.valid).toBe(false);
     expect(result.reason).toContain('opacity');
   });
+
+  it('rejects a remediation that carries HTML comment syntax', () => {
+    // A comment ends at the first `-->`, so a comment opener in the fix
+    // swallows the markup that follows it in the customer's page.
+    const result = validateRemediation('<img id="target" src="x" alt="Photo"><!--');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('comment');
+  });
+
+  it('rejects a remediation that hides the element it patches', () => {
+    for (const remediation of [
+      '<img id="target" src="x" alt="Photo" hidden>',
+      '<img id="target" src="x" alt="Photo" style="display:none">',
+      '<img id="target" src="x" alt="Photo" style="visibility:hidden">',
+    ]) {
+      const result = validateRemediation(remediation, '<img id="target" src="x">');
+      expect(result.valid).toBe(false);
+    }
+  });
+
+  it('rejects a remediation that makes the text transparent', () => {
+    for (const style of [
+      'color:transparent',
+      'color:rgba(0,0,0,0)',
+      'color:hsla(0,0%,0%,0)',
+      '-webkit-text-fill-color:transparent',
+    ]) {
+      const result = validateRemediation(`<a href="/about" style="${style}">Read more</a>`);
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('transparent');
+    }
+  });
+
+  it('rejects a remediation that introduces a remote URL', () => {
+    // The verification browser blocks every network request, so the new URL is
+    // invisible to it and loads from the customer's browser once it is written.
+    const result = validateRemediation(
+      '<img id="target" src="http://127.0.0.1:9/pixel?token=local" alt="Photo">',
+      '<img id="target" src="x">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('remote');
+  });
+
+  it('keeps a remote URL the original element already had', () => {
+    const result = validateRemediation(
+      '<img id="target" src="https://cdn.example/photo.png" alt="Photo">',
+      '<img id="target" src="https://cdn.example/photo.png">'
+    );
+    expect(result.valid).toBe(true);
+  });
 });
 
 describe('applyFixesToFile', () => {
@@ -385,6 +436,21 @@ describe('applyFixesToFile', () => {
     expect(result.errors.length).toBe(1);
     expect(result.content).toContain('alt="A"');
     expect(result.content).not.toContain('<script>evil()</script>');
+  });
+
+  it('writes nothing when the fix hides the element it patches', () => {
+    // The rule check passes while the user loses the element.
+    const original = '<html><body><img src="a.jpg"></body></html>';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'image-alt',
+        elementHtml: '<img src="a.jpg">',
+        remediationCode: '<img src="a.jpg" alt="A" hidden>',
+      },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.errors.join(' ')).toContain('hides');
   });
 
   it('adds comment block when fixes cannot be matched', () => {

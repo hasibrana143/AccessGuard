@@ -167,7 +167,15 @@ function findRawTextEnd(content: string, tag: string, from: number): number {
   return -1;
 }
 
-/** The offset of the end tag that closes an element with inert content. */
+/**
+ * The offset of the end tag that closes an element with inert content.
+ *
+ * The content of an inert element is parsed like any other markup, so an end
+ * tag inside a quoted attribute value belongs to the attribute and not to the
+ * element: `<template><div data-x="</template>"><img src="x"></template>`
+ * keeps the image inside the template, and the browser creates no element for
+ * it.
+ */
 function findInertEnd(content: string, tag: string, from: number): number {
   const lower = content.toLowerCase();
   const open = `<${tag}`;
@@ -175,23 +183,40 @@ function findInertEnd(content: string, tag: string, from: number): number {
   let depth = 1;
   let i = from;
 
-  while (i < lower.length) {
-    const nextOpen = lower.indexOf(open, i);
-    const nextClose = lower.indexOf(close, i);
-    if (nextClose === -1) return -1;
+  while (i < content.length) {
+    const lt = content.indexOf('<', i);
+    if (lt === -1) return -1;
 
-    if (nextOpen !== -1 && nextOpen < nextClose) {
-      const after = lower[nextOpen + open.length];
-      if (after === '>' || after === '/' || (after !== undefined && /\s/.test(after))) {
-        depth++;
-      }
-      i = nextOpen + open.length;
+    // A comment may hold anything, including an end tag.
+    if (content.startsWith('<!--', lt)) {
+      const end = content.indexOf('-->', lt + 4);
+      i = end === -1 ? content.length : end + 3;
       continue;
     }
 
-    depth--;
-    if (depth === 0) return nextClose;
-    i = nextClose + close.length;
+    if (lower.startsWith(close, lt)) {
+      const after = content[lt + close.length];
+      if (after === undefined || after === '>' || after === '/' || /\s/.test(after)) {
+        depth--;
+        if (depth === 0) return lt;
+        i = lt + close.length;
+        continue;
+      }
+    }
+
+    if (lower.startsWith(open, lt)) {
+      const after = content[lt + open.length];
+      if (after === '>' || after === '/' || (after !== undefined && /\s/.test(after))) {
+        depth++;
+        // The whole tag is skipped, so an end tag inside one of its attribute
+        // values is not read.
+        i = findTagEnd(content, lt) + 1;
+        continue;
+      }
+    }
+
+    // Any other tag: its attributes are skipped as well.
+    i = findTagEnd(content, lt) + 1;
   }
 
   return -1;
@@ -217,6 +242,16 @@ export function liveTagStarts(content: string): Set<number> {
       const ends = [content.indexOf('-->', lt + 4), content.indexOf('--!>', lt + 4)]
         .filter(index => index !== -1);
       i = ends.length ? Math.min(...ends) + 3 : content.length;
+      continue;
+    }
+
+    // A markup declaration that is not a comment (`<!bogus …>`, a doctype, a
+    // CDATA section) is read as a bogus comment: it ends at the next `>` and
+    // everything behind it is its text, not an element. The browser creates no
+    // element for the markup inside it, so a fix may not be written there.
+    if (content.startsWith('<!', lt)) {
+      const end = content.indexOf('>', lt);
+      i = end === -1 ? content.length : end + 1;
       continue;
     }
 
@@ -514,6 +549,20 @@ export function htmlToJsx(html: string): string {
 /** The text that replaces the located element in the target file. */
 export function buildReplacement(filePath: string, remediationCode: string): string {
   return isJsxLikeFile(filePath) ? htmlToJsx(remediationCode) : remediationCode;
+}
+
+/**
+ * True when an element hides itself.
+ *
+ * A fix that hides the element it patches replaces a visible element with an
+ * invisible one: the rule check passes while the user loses the element. The
+ * `hidden` attribute and the styles that remove the element from the rendering
+ * (`display:none`, `visibility:hidden`, `opacity:0`) are all ways to do that.
+ */
+export function hidesOwnTarget(element: string): boolean {
+  const open = element.match(/^<([a-zA-Z][a-zA-Z0-9:._-]*)\b([^>]*)>/);
+  if (!open) return false;
+  return hidesContent(open[2] ?? '');
 }
 
 /**
