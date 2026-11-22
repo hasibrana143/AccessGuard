@@ -120,6 +120,18 @@ The Docker job is the proof for the image gate: every step of `build-and-push`
 is green, including the Trivy step that fails on HIGH/CRITICAL. The code-scanning
 dashboard after this run: **0 open alerts** (0 High, 0 Critical).
 
+The push that carries the pipeline record itself (`8516dc8`, `.ai/DEPLOYMENT.md`
+only — `git diff --quiet 08ab9ef..8516dc8 -- src` is clean) was re-verified:
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45032422517 | CI | ✅ success |
+| 45032422576 | Deploy | ✅ success |
+| 45032422528 | AccessGuard Scan | ✅ success |
+| 45032422524 | Docker | ✅ success — `Trivy image scan (fail on HIGH/CRITICAL)` ✅, `Upload Trivy SARIF` ✅, `Syft SBOM attest` ✅ |
+
+Code-scanning after that run: **0 open alerts**.
+
 ### How this cycle was shipped
 
 The `/ship` skill was invoked for this cycle, but its helper binaries
