@@ -105,6 +105,18 @@ The code-scanning dashboard after this run: **0 open High, 0 open Critical**
 (9 historical High and 20 Medium alerts, all closed). The Trivy step is the gate
 and it passed.
 
+### How this cycle was shipped
+
+The `/ship` skill was invoked for this cycle, but its helper binaries
+(`gstack-ship-preflight`, `gstack-skill-end`) are `bun` scripts and **bun is not
+installed on this machine** (documented in `AGENTS.md`: use `npm`/`node`), so the
+workflow stops at pre-flight — it also refuses to work on the base branch by
+design. The repository's volume definition of done mandates a **direct push to
+`origin/main`** with `vol: <area> — V<n>: <summary>` commits, so the DoD steps were
+executed manually and each one is evidenced above: the gate suite (tsc, lint, vitest
++ coverage, build, Playwright, `npm audit`), the four DoD-ordered commits and the
+four green workflow runs.
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the
