@@ -1,6 +1,36 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-23 (tenth-review closure)
+Last run: 2026-11-23 (eleventh independent security review)
+
+## Eleventh independent review evidence
+
+| Check | Result |
+|---|---|
+| Eleventh independent security review | **NOT READY — Critical 0, High 3, Medium 3, Low 0** against the closure tree `7ec51ee` (checkout `0df2299`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-11.md` |
+| Tenth-review closure matrix re-run | PASS — 19/19 (the nine unsafe reproductions blocked, the ten legitimate groups allowed) |
+| Ninth-review closure matrix re-run | PASS — 42/42 (26 writer-level unsafe payloads, four validator-level groups, twelve legitimate groups) |
+| Prior / legitimate assertion matrix re-run | PASS — 118/118 after a **harness-only** correction: one assertion expected confidence `0` for a candidate rejected before verification, while the API correctly returns confidence `null`. The harness was corrected to assert the required unsafe direction directly (validation false or non-null harm, no eligible / verified fix, 0 fixes, 0 writes). Not a product change |
+| New equivalent-path writer / verifier / Chromium harness | PASS — 17/17 (each reproduced unsafe candidate reaches one fix / one write and local Chromium reproduces the takeover, the clipping, the request and the animation result) |
+| Remaining-equivalent probe | PASS — 1/1 (`clip-path:inset(100%)` blocked with 0 fixes / 0 writes; the `box-shadow`, the positive-delay and the negative-delay animations reproduced) |
+| Real-route / audit harness | PASS — 9/9 (the destination refusal, the intent-audit failure, the closing-audit failure, the branch failure, the planning failure, the pull-request failure and the refused-source-write paths; the inline-handler and zoom cases returned HTTP `200` and opened a pull request) |
+| Shipped create-PR route regressions | PASS — 16/16 |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 770/770, coverage 65.35/57.52/67.96/67.05, build 0, Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
+| Secret scan | PASS — only `.env.example` is tracked in the `.env*` name family; the actual `.env` was neither tracked nor inspected; no tracked private key, GitHub-token shape, OpenAI-style key, Google API key, Stripe live key or Slack token was found (path-only categories) |
+
+### Findings to close
+
+| Finding | Severity | Surface | Closure scope |
+|---|---|---|---|
+| 11-H1 | **High** | the event-handler attributes of repository HTML and the generic attribute state reads (`getAttributeNames()`, `getAttributeNode()`, `attributes.getNamedItem()`) | `src/lib/github.ts` |
+| 11-H2 | **High** | the effective painted surface — the logical padding / border longhands, `zoom`, an unconstrained `scale`, `aspect-ratio`, `box-shadow` | `src/lib/css-context.ts` |
+| 11-M1 | Medium | a zero `max-height` / `max-width` with a clipping overflow | `src/lib/css-context.ts` |
+| 11-M2 | Medium | the customer-side request hidden behind a `var(--pixel)` reference and the missing inherited `:root` definition | `src/lib/css-context.ts` |
+| 11-M3 | Medium | the animation delay, the negative delay of a paused timeline and the fill mode | `src/lib/css-context.ts` |
+
+### Closure evidence (the eleventh-review closure run)
+
+Pending — the closure scopes are in progress. The gate suite and the reviewer-payload
+re-run are recorded here when the closure lands.
 
 ## Tenth-review closure evidence
 

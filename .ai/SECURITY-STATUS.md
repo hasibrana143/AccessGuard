@@ -2,6 +2,55 @@
 
 Last verification: 2026-11-23
 
+## Eleventh independent security review (2026-11-23) — closure in progress
+
+**Verdict: NOT READY — Critical 0, High 3, Medium 3, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree is **not releasable** until every High
+reproduction is blocked in the unsafe direction, permanent regressions cover the
+root causes, and a fresh independent review returns READY.
+
+The reviewed closure tree was `7ec51ee` (`vol: security — V23: close the tenth
+review's runtime, geometry, focus, plan and audit findings`), against the
+requested baseline `08ab9ef`; the checkout at report time was `0df2299` (the
+state commit that carries the pipeline evidence — `git diff --quiet
+7ec51ee..HEAD -- src` is exit 0, so the reviewed source is the closure tree
+itself). The reviewer's own artifact is `.ai/SECURITY-REVIEW-11.md` (report only
+— no shipped source, docs, CI, dependency or environment file was changed by the
+reviewer). Every reproduction used local synthetic repositories, a mocked GitHub
+transport, local Chromium and `127.0.0.1` listeners. No production, third-party
+or public target was scanned, no live repository was mutated, no external GitHub
+Markdown service was called, and **no Strix result is claimed**.
+
+### Reproduced findings
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 11-H1 | **High** | Repository runtime carriers and state reads | An inline `onload` handler in the repository HTML (`if(t.hasAttribute('alt'))t.classList.add('overlay')`) and the script twins `getAttributeNames()`, `getAttributeNode()` and `attributes.getNamedItem()` each returned valid / harm-null / verified confidence `1` / 1 fix / 1 write while Chromium turned the target from a static `16×16` image into a fixed `1280×720` takeover; the real route answered `200 success:true` and opened a pull request for the inline-handler case | The runtime scanner inspects `<script>` blocks and script **files**, but not the **event-handler attributes** of repository HTML; `RUNTIME_STATE_READ_PATTERN` recognises no DOM API that reads an attribute's presence generically | **In progress** — the handler attributes of repository HTML are analysed like inline scripts, and `getAttributeNames()` / `getAttributeNode()` / `attributes.getNamedItem()` are state reads |
+| 11-H2 | **High** | Effective painted surface and geometry | The logical padding longhands, `zoom:3`, an unconstrained `scale:100`, `width:100%;aspect-ratio:1` and a fixed `1×1` element with `box-shadow:0 0 0 10000px #f0f` each returned valid / harm-null / verified / 1 fix / 1 write; Chromium painted a viewport-wide target for the four layout variants and an opaque viewport-wide shadow for the fifth (921,357 of 921,600 pixels). The real route opened a pull request for the zoom variant | `sideInputsOf()` reads the physical padding and the `padding-block` / `padding-inline` shorthands but not the four logical padding longhands; `zoom` is listed but never composed into the painted box; `scale` is multiplied only into a **declared** size, so an intrinsic-size element is missed; `aspect-ratio` is never composed; and the paint extensions (`box-shadow`) are outside the model | **In progress** — the logical padding and border longhands join the sides, `zoom` is a scale factor, a scale above one without a declared size is unprovable, an aspect ratio that fills an undeclared axis is unprovable, and a shadow grows the painted box by its spread and blur |
+| 11-M1 | Medium | Repository clipping preservation | `[aria-label]{max-height:0;overflow:hidden}` with the ordinary button-name remediation returned valid / harm-null / verified / 1 fix / 1 write; Chromium showed the patched control's blue paint before the attribute and no blue paint after it | `max-height` is a **cap**, not a size: the model never composes the cap with the overflow, so a zero cap with a clipping overflow leaves the control painted | **In progress** — a zero `max-height` / `max-width` together with a clipping overflow removes the painted control |
+| 11-M2 | Medium | Customer-side CSS resource activation through a custom property | `:root{--pixel:url(http://127.0.0.1:<port>/pixel)}[aria-label]{background-image:var(--pixel)}` returned valid / harm-null / verified / 1 fix / 1 write; the local listener received no request before the fix and `GET /pixel` after it | The activated-rule resource check reads the **raw** declaration value, so `var(--pixel)` hides the `url(...)`; the custom-property definitions are collected only from the rules that provably match the patched element, so the inherited `:root` definition is missing | **In progress** — the resource check resolves the `var()` references against the definitions that can reach the element, the global ones included, and an unresolved reference is unprovable |
+| 11-M3 | Medium | Repository animation timing and fill semantics | A paused animation with `animation-delay:-0.4s` and the positive-delay `animation-fill-mode:backwards` twin each returned valid / harm-null / verified / 1 fix / 1 write; Chromium held the computed opacity at `0` | A paused animation is modelled as its first frame, but a negative delay moves the paused timeline to a later frame; the model ignores the delay and the fill mode, so the first frame can stay visible to the model while the browser displays a different or hidden frame | **In progress** — the delay, the duration and the fill mode decide the frame the customer sees, and the keyframe offsets are kept so a paused timeline can be placed |
+
+### Re-run evidence of the eleventh review
+
+| Harness | Result |
+|---|---|
+| Tenth-review closure matrix | 19/19 |
+| Ninth-review closure matrix | 42/42 |
+| Prior / legitimate assertion matrix | 118/118 (one harness-only confidence expectation corrected — not a product change) |
+| New equivalent-path writer / verifier / Chromium harness | 17/17 |
+| Remaining-equivalent probe | 1/1 (`clip-path:inset(100%)` blocked; `box-shadow`, the positive-delay and the negative-delay animations reproduced) |
+| Real-route / audit harness | 9/9 (the inline-handler and zoom cases returned `200` and opened a pull request) |
+| Shipped create-PR route regressions | 16/16 |
+| Build, source-only typecheck, lint, vitest 770/770, Playwright 79/79, `npm audit` Critical 0 / High 0 | PASS |
+
+### Gate status
+
+The sixth through tenth review closures are shipped; the eleventh review returned
+**NOT READY** (High 3, Medium 3) and its closure is in progress. The **release
+gate is still closed**: it opens only when a **twelfth independent review**
+returns READY (Critical 0, High 0) against the closure tree.
+
 ## Tenth independent security review (2026-11-23) — closed 2026-11-23
 
 **Verdict: NOT READY — Critical 0, High 4, Medium 4, Low 0.** The READY gate
