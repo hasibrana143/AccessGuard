@@ -1,6 +1,6 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + twelfth-review closure** · Date: 2026-11-23 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + thirteenth-review closure** · Date: 2026-11-23 · Owner: CTO agent
 
 ## What shipped
 
@@ -13,8 +13,9 @@ found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, th
 **seventh review of that closure found 3 High, 4 Medium**, the **eighth review of
 that closure found 4 High, 2 Medium**, the **ninth review of that closure found
 3 High, 3 Medium**, the **tenth review of that closure found 4 High, 4 Medium**, the
-**eleventh review of that closure found 3 High, 3 Medium**, and the **twelfth review
-of that closure found 6 High, 3 Medium**.
+**eleventh review of that closure found 3 High, 3 Medium**, the **twelfth review
+of that closure found 6 High, 3 Medium** and the **thirteenth review of that
+closure found 5 High, 2 Medium**.
 Every earlier round closed the literal reproductions while an equivalent path stayed
 open. The tenth review independently reproduced eight equivalent paths — an inline
 `<script>` carrier, a DOM property getter, an escaped attribute **name**, the painted
@@ -42,8 +43,20 @@ direction and every benign twin still allowed; the real-route harness: 8/8 — s
 refusals with `400` and no branch, no write and no pull request, and the benign
 image-alt fix still opening a pull request; the recovered prior matrices 37/37,
 42/42, 19/19, 9/9 and 118/118).
+The thirteenth review independently reproduced seven more equivalent paths — the
+**document base URL**, the **computed runtime state reads**, the **CSS transition
+semantics**, the **focusability transition**, the **outline paint geometry**, the
+**inset shorthand offsets** and the **safety order against the source budget**.
+**All seven are now fixed at their root cause, with a permanent regression each**
+(the closure matrix: 21/21 assertions — every finding blocked in the unsafe
+direction and every benign twin still allowed; the recovered prior matrices 26/26,
+37/37, 42/42, 19/19, 9/9 and 118/118; the two pre-closure harnesses failing
+exactly as expected, 12 failed + 5 passed and 2 failed + 7 passed).
+One false positive the review never asked for was found and fixed with them: the
+document-base reader parsed every file of a repository as markup, so an ordinary
+script file made the whole repository unprovable.
 **The release verdict is still NOT READY** — the gate requires Critical 0 and High 0
-from an independent pass, and the **thirteenth review is the next check**.
+from an independent pass, and the **fourteenth review is the next check**.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -51,6 +64,24 @@ from an independent pass, and the **thirteenth review is the next check**.
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Thirteenth independent security review (2026-11-23)
+
+> The verdict was NOT READY — Critical 0, High 5, Medium 2, Low 0 — against tree
+> `11065e4`. **All seven findings are closed** in `be81d02` (the closure table and the
+> evidence are in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact is
+> `.ai/SECURITY-REVIEW-13.md`).
+> The release gate opens only when a **fourteenth independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 13-H1 — the repository's stylesheet and script references were resolved against the containing file's directory, not the document's **effective base URL** | High | `<base href="/sub/">` with `<link rel="stylesheet" href="theme.bin">`: the writer analysed the benign root stylesheet while Chromium loaded the unreviewed `sub/theme.bin`; the candidate verified with confidence `1`, applied 1 fix, wrote 1 file and the real route opened a pull request | **Closed** — the first live `<base href>` of a document is read and the references are resolved against it; a base that cannot be resolved from repository source or that points outside the repository makes the destination unprovable |
+| 13-H2 — a **computed** property or selector read bypassed the runtime state-read gate | High | `img["al"+"t"]` and `img.matches("["+"al"+"t"+"]")` each changed the target to class `overlay` and a fixed `1280×720` takeover at the viewport centre; both applied 1 fix and 1 write and the real route opened a pull request | **Closed** — a computed read is resolved when it is a concatenation of string literals, and a name the reader cannot resolve is a generic dynamic state read (fail closed) |
+| 13-H3 — the CSS transition model missed an attribute **value change**, a nested negation and the `:nth-child(… of …)` selector list | High | `#target:not([data-state="active"]) ~ .overlay`, `img:nth-child(1 of [alt]) ~ .overlay` and `#target:not(:not([alt])) ~ .overlay` each took the page over (the sibling grew from less than `1280` wide to a fixed `1280×720`) | **Closed** — the value change, the selector list and the nested negation are modelled, and a functional pseudo-class whose transition cannot be read fails closed |
+| 13-H4 — an added `href` changed the **focusability** of an element | High | Before the fix Tab did not focus the anchor; after it, Tab focused it and the sibling became a fixed `1280×720` takeover | **Closed** — the actual focusability is compared before and after the fix (an added `href`, an added `contenteditable`, a `tabindex` value change) |
+| 13-H5 — the **outline** was absent from the painted surface | High | `[alt]{outline:100000px solid #f0f}` computed `outline-width:100000px` and the screenshot origin and midpoint changed from white to the opaque outline colour | **Closed** — `outline-width` and `outline-offset` grow the painted area on every side, and an outline the analyser cannot compute is unprovable |
+| 13-M1 — the `inset` shorthand did not use the large-offset rule | Medium | `[alt]{position:relative;inset:-9999px}` computed `left: -9999px` and `top: -9999px`; the image left the viewport | **Closed** — the `inset`, `inset-block` and `inset-inline` shorthands are expanded into their physical edges and use the direction-free rule |
+| 13-M2 — a candidate **after** the ten-source-write budget skipped the safety analysis and still received review artifacts | Medium | The eleventh candidate skipped the analysis; the route answered `200 success:true`, created a branch and opened a pull request and wrote `image-alt-v11.md` and `summary.md` for the unsafe candidate | **Closed** — validation, runtime analysis and destination analysis run for every candidate; the budget limits the source writes, never the safety decision |
 
 ### Twelfth independent security review (2026-11-23)
 
@@ -344,6 +375,10 @@ Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same co
 - `7ec51ee` / `50fa70d` / `cd85358` / `94acf80` / `0df2299` — the tenth-review closure (code, docs, state, volume entry, pipeline evidence)
 - `2506792` — the eleventh independent security review (state)
 - `d429c6b` / `d53daf7` — the eleventh-review closure (code, docs); the state and volume entry follow in the same cycle
+- `7858a1f` — the twelfth independent security review (state)
+- `11065e4` / `9cee793` — the twelfth-review closure (code, docs); the state and volume entry follow in the same cycle
+- `b723be5` — the thirteenth independent security review (state)
+- `be81d02` / `24263f3` — the thirteenth-review closure (code, docs); the state and volume entry follow in the same cycle
 
 ## What this does NOT prove (read before making a claim)
 
@@ -369,10 +404,11 @@ Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same co
 - **The fifth independent security review returned NOT READY (High 2, Medium 4)**,
   **the sixth returned NOT READY (High 2, Medium 6)**, **the seventh returned
   NOT READY (High 3, Medium 4)**, **the eighth (High 4, Medium 2)**, **the ninth
-  (High 3, Medium 3)**, **the tenth (High 4, Medium 4)** and **the eleventh
-  (High 3, Medium 3)**. Every set of equivalent paths was reproduced in
+  (High 3, Medium 3)**, **the tenth (High 4, Medium 4)**, **the eleventh
+  (High 3, Medium 3)**, **the twelfth (High 6, Medium 3)** and **the thirteenth
+  (High 5, Medium 2)**. Every set of equivalent paths was reproduced in
   local, mocked conditions and is now fixed at its root cause, but the release gate
-  stays closed until a **twelfth independent pass returns READY**; see
+  stays closed until a **fourteenth independent pass returns READY**; see
   `.ai/SECURITY-STATUS.md`.
 - The destination CSS judgement is **static**: CSS-in-JS, CDN stylesheets, a style
   written by a script at runtime and a custom property the analyser cannot resolve
@@ -385,6 +421,13 @@ Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same co
   attributes of any element and then mutates anything refuses the fix, even when the
   mutation cannot reach the patched element. The cost is a false positive — such a
   repository receives a review suggestion instead of a source patch (risk 46).
+- The thirteenth-review closure added three more deliberate fail-closed directions,
+  each with a documented cost: a document whose `<base href>` cannot be resolved or
+  points outside the repository (risk 49), a computed property or selector read whose
+  name the reader cannot resolve (risk 50), a functional pseudo-class whose transition
+  semantics cannot be read (risk 52) and a document that carries a `<base>` the reader
+  cannot parse (risk 53). In every case the fix ships as a review suggestion instead of
+  a source patch.
 
 ## Follow-ups logged, not done here
 

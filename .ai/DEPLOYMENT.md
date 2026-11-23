@@ -1,6 +1,6 @@
 # AccessGuard — Deployment Status
 
-Last verification: 2026-11-22
+Last verification: 2026-11-23
 
 ## The pipelines
 
@@ -346,6 +346,35 @@ The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
 Critical 0 / High 0, plus the temporary closure matrix at 26/26, the real-route
 closure harness at 8/8 and the recovered prior matrices at 37/37, 42/42, 19/19,
 9/9 and 118/118 (all deleted after the run).
+
+Strix was **not** run for this cycle: every configured provider refuses the run
+(quota / EOL model / no credits), so no Strix result is claimed.
+
+### How the thirteenth-review cycle was shipped
+
+The commits, in the order the volume definition of done asks for:
+
+| Commit | Layer | Content |
+|---|---|---|
+| `b723be5` | state | the thirteenth independent review recorded — the reviewer's own artifact `.ai/SECURITY-REVIEW-13.md` and the dispositions |
+| `be81d02` | security | the seven thirteenth-review findings closed at their root cause, with 26 permanent regressions (the document base URL, the computed runtime state reads, the CSS transition semantics, the focusability transition, the outline paint geometry, the inset shorthand offsets, the safety order against the source budget and the false positive the closure introduced) |
+| `24263f3` | ai | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
+| the state commit | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
+| the releases commit | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
+
+The hash of the releases commit itself is written into this table by that
+commit — the chain in `docs/VOLUMES.md` is the authoritative one.
+
+The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
+0, `npm run lint` 0, `npx vitest run --coverage` 53 files / 853 tests, coverage
+68.02 / 60.67 / 71.05 / 69.81 (thresholds 55 / 50 / 58 / 57), `npm run build` 0,
+`npx playwright test --project=chromium` 79/79, `npm audit --audit-level=high`
+Critical 0 / High 0, plus the temporary closure matrix at 21/21, the false-positive
+probe at 3/3 after the fix, and the recovered prior matrices at 26/26, 37/37,
+42/42, 19/19, 9/9 and 118/118 (all deleted after the run). The two pre-closure
+eleventh-review harnesses failed exactly as expected (12 failed + 5 passed and
+2 failed + 7 passed) — the failures assert that the eleventh-review
+vulnerabilities still exist, so they confirm the closure.
 
 Strix was **not** run for this cycle: every configured provider refuses the run
 (quota / EOL model / no credits), so no Strix result is claimed.

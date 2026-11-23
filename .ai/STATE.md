@@ -2,15 +2,35 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 thirteenth-review closure in progress** 🟡 |
-| Current task | Close the seven findings of the thirteenth independent security review (Critical 0, **High 5**, Medium 2) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) from a **fourteenth** independent review |
+| Current phase | **SECURITY FIX LOOP — V23 thirteenth-review closure shipped, fourteenth review pending** 🟡 |
+| Current task | Run the fourteenth independent security review against the thirteenth-review closure tree `be81d02`; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the thirteenth review reproduced seven working paths (the document base URL, the computed runtime state reads, the CSS transition semantics, the focusability transition, the outline paint geometry, the inset shorthand offsets and the safety order against the source budget); the closure is in progress, the gate stays closed until a fresh independent review returns READY |
+| Status | AMBER — all seven thirteenth-review findings (High 5, Medium 2) are closed at their root cause with a permanent regression each, the gate suite is green and the closure is pushed; the gate stays closed until a fresh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Finish the thirteenth-review closure (the CSS scope and the repository-runtime scope), run the closure matrix and the full gate suite, commit in the volume DoD order, push to `origin/main` and then run the fourteenth independent security review |
-| Last verification | 2026-11-23 — thirteenth review: **NOT READY (High 5, Medium 2)**; the reviewer's own gate suite was green (tsc 0, lint 0, 829/829 vitest, build 0, Playwright 79/79, audit High 0), the recovered fourth- through twelfth-review assertions were 259/259 and the new equivalent-path harnesses were 24/24 |
+| Next action | Verify the four workflows on the pushed closure head, record the runs in `.ai/DEPLOYMENT.md`, then run the fourteenth independent security review (baseline `08ab9ef`, reviewed tree = the closure commit `be81d02`) |
+| Last verification | 2026-11-23 — thirteenth-review closure: tsc 0, lint 0, vitest 53 files/853 tests, coverage 68.02/60.67/71.05/69.81, build 0, Playwright 79/79, npm audit High 0, closure matrix 21/21, recovered prior matrices 26/26 + 37/37 + 42/42 + 19/19 + 9/9 + 118/118, the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-23, thirteenth-review closure)
+
+| Check | Result |
+|---|---|
+| Thirteenth-review closure | PASS — all seven findings (13-H1…13-H5, 13-M1, 13-M2) fixed at their root cause in `be81d02`; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-13.md` |
+| Permanent regressions | PASS — 26 new tests (the base-relative stylesheet, the base-relative script, the base outside the repository, the base inside the repository, a script file that is not a document, the computed property read, the computed selector read, the unresolved property name, the unresolved selector, the unsafe candidate after the budget, four route refusals, the negated attribute value change, the `:nth-child(… of …)` selector list, the nested negation, the unreadable functional pseudo-class, the added anchor `href`, the added `contenteditable`, the `tabindex` value change, the large outline, the large `inset` shorthand, the harmless dynamic pseudo-class); the shipped suites are 117 (`css-context.test.ts`) and 79 (`github.test.ts`) tests |
+| Thirteenth-review closure matrix (temporary) | PASS — 21/21: the seven findings are blocked in the unsafe direction (0 fixes, 0 writes, non-null destination harm or `validation:false`) and the benign twins stay allowed. The file was deleted after the run |
+| False positive found while reviewing the closure | FIXED — the document-base reader parsed **every** file of a repository as markup, so an ordinary script file that holds a comparison and an apostrophe made the whole repository unprovable and refused every fix. A script file is runtime code and not a document, and a document without a `<base>` element has its own URL as the base; the regression `13-H1e` locks the behaviour down |
+| Prior payload matrices (recovered) | PASS — the twelfth-review closure matrix 26/26, the eleventh-review closure matrix 37/37, the ninth-review closure matrix 42/42, the tenth-review closure matrix 19/19, the eleventh-review route matrix 9/9 and the prior / legitimate matrix 118/118 (run with `tsx` and Playwright Chromium) |
+| Pre-closure eleventh-review harnesses (recovered) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 853/853 tests (was 53/829) |
+| Coverage | PASS — statements 68.02% (threshold 55) · branches 60.67% (50) · functions 71.05% (58) · lines 69.81% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS — 79/79 on the clean re-run; the first run reported 78 with one retry (the accessibility spec failed its first attempt and passed on the retry, no assertion failed on the re-run) |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
+| Tracked-file secret scan | PASS — 780 tracked files, 779 scanned; only `.env.example` is tracked in the `.env*` name family; one AWS-key-shaped **documentation example** (path and category only, value never printed) and no live credential |
+| Release gate | CLOSED — opens only when a **fourteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, thirteenth independent security review)
 
@@ -20,7 +40,7 @@
 | Reviewer's own re-runs | PASS — the recovered fourth- through twelfth-review assertions 259/259, the pre-closure eleventh-review harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed), the new equivalent-path writer / verifier / Chromium harness 17/17 and the new equivalent-path route harness 7/7 — the five High root causes each reached the writer and opened a pull request |
 | Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 829/829, coverage 67.15/59.74/69.83/68.81, build 0 (116 static pages), Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
 | The seven findings | **13-H1** (High) — a `<base href>` changes the document base URL, so the writer analysed the wrong stylesheet; **13-H2** (High) — a computed property read (`img["al"+"t"]`) and a computed selector read (`img.matches("["+"al"+"t"+"]")`) bypass the mutation gate; **13-H3** (High) — a negated attribute value change, `:nth-child(... of ...)` and a nested negation are not modelled transitions; **13-H4** (High) — an added `href` makes an anchor focusable and the `:focus` rule takes the page over; **13-H5** (High) — `outline` is absent from the painted surface; **13-M1** — the `inset` shorthand moves the target off-screen; **13-M2** — a candidate beyond the ten-source-write budget skips the safety analysis and receives review artifacts |
-| Closure scopes | IN PROGRESS — (1) destination CSS: the transition semantics, the focusability comparison, the outline paint geometry and the inset shorthands; (2) repository runtime: the document base URL, the computed state reads and the safety order against the source budget |
+| Closure scopes | CLOSED — (1) destination CSS (`be81d02`): the transition semantics, the focusability comparison, the outline paint geometry and the inset shorthands; (2) repository runtime (`be81d02`): the document base URL, the computed state reads and the safety order against the source budget |
 | Release gate | CLOSED — opens only when a **fourteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, twelfth-review closure)

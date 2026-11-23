@@ -1,6 +1,26 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-23 (thirteenth independent security review)
+Last run: 2026-11-23 (thirteenth-review closure)
+
+## Thirteenth-review closure evidence
+
+| Check | Result |
+|---|---|
+| Thirteenth-review closure | PASS — all seven findings (13-H1…13-H5, 13-M1, 13-M2) closed at their root cause in `be81d02`; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-13.md` |
+| Permanent regressions | PASS — 26 new tests: 10 in `github.test.ts` (the base-relative stylesheet, the base-relative script, the base outside the repository, the base inside the repository, a script file that is not a document, the computed property read, the computed selector read, the unresolved property name, the unresolved selector, the unsafe candidate after the budget), 4 in `route.test.ts` (the document base, the computed property read, the computed selector read, the unsafe candidate after the budget) and 12 in `css-context.test.ts` (the negated attribute value change, the `:nth-child(… of …)` selector list, the nested negation, the unreadable functional pseudo-class, the added anchor `href`, the added `contenteditable`, the `tabindex` value change, the large outline, the small outline, the large `inset` shorthand, the small `inset` shorthand, the harmless dynamic pseudo-class) |
+| Thirteenth-review closure matrix (temporary) | PASS — 21/21: every finding is blocked in the unsafe direction (0 fixes, 0 writes, non-null destination harm or `validation:false`) and every benign twin stays allowed. The file was deleted after the run |
+| False-positive probe (temporary) | FOUND AND FIXED — the document-base reader parsed every file of a repository as markup, so an ordinary script file that holds a comparison and an apostrophe made the whole repository unprovable and refused every fix (1 of 3 probes failed). A script file is runtime code and not a document, and a document without a `<base>` element has its own URL as the base; the permanent regression `13-H1e` locks the behaviour down. The probe file was deleted after the run |
+| Prior payload matrices (recovered) | PASS — the twelfth-review closure matrix 26/26, the eleventh-review closure matrix 37/37, the ninth-review closure matrix 42/42, the tenth-review closure matrix 19/19, the eleventh-review route matrix 9/9 and the prior / legitimate matrix 118/118 (run with `tsx` and Playwright Chromium) |
+| Pre-closure eleventh-review harnesses (recovered) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 853/853 tests (was 53/829) |
+| Coverage | PASS — statements 68.02% (threshold 55) · branches 60.67% (50) · functions 71.05% (58) · lines 69.81% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0, no diagnostics |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS — 79/79 on the clean re-run; the first run reported 78 with one retry (the accessibility spec failed its first attempt and passed on the retry, no assertion failed on the re-run) |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
+| Tracked-file secret scan | PASS — 780 tracked files, 779 scanned; only `.env.example` is tracked in the `.env*` name family; one AWS-key-shaped **documentation example** (path and category only, value never printed) and no live credential |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
 
 ## Thirteenth independent review evidence
 
