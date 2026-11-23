@@ -281,6 +281,49 @@ The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
 Critical 0 / High 0, plus the temporary reviewer-payload re-run at 19/19 (deleted
 after the run).
 
+## The eleventh-review closure run (2026-11-23)
+
+All four workflows are green on `435f72e` (the eleventh-review closure cycle):
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45140537033 | CI | ✅ success (5m27s) — lint, source-only typecheck, vitest + coverage, `next build`, `npm audit`, Playwright |
+| 45140537127 | Deploy | ✅ success |
+| 45140537097 | AccessGuard Scan | ✅ success (skips without the API key) |
+| 45140537132 | Docker | ✅ success (17m25s) — `Trivy image scan (fail on HIGH/CRITICAL)` ✅, `Upload Trivy SARIF` ✅, `Syft SBOM attest` ✅ |
+
+The Docker job is the proof for the image gate: every step of `build-and-push` is
+green, including the Trivy step that fails on HIGH/CRITICAL — **no new HIGH
+finding**. The code-scanning dashboard after this run: **0 open alerts** (29
+historical alerts, all in the `fixed` state).
+
+The same two deprecation annotations rode along with the green runs: the pinned
+actions target Node.js 20 and are forced to Node.js 24, and CodeQL Action v3 is
+deprecated in December 2026. Both stay recorded as risk #35 with the exact
+upgrade targets. The upgrade was deliberately kept out of this cycle, so the
+pipeline record stays bound to the reviewed tree: `git diff --quiet
+08ab9ef..d429c6b -- src` is the only source change set of the cycle, and
+`git diff --quiet d429c6b..HEAD -- src` is clean.
+
+### How the eleventh-review cycle was shipped
+
+The commits, in the order the volume definition of done asks for:
+
+| Commit | Layer | Content |
+|---|---|---|
+| `2506792` | state | the eleventh independent review recorded — the reviewer's own artifact `.ai/SECURITY-REVIEW-11.md` and the dispositions |
+| `d429c6b` | security | the six eleventh-review findings closed at their root cause, with 29 permanent regressions (the runtime carriers and the generic state reads, the effective painted surface, the clipping preservation, the custom-property resource resolution, the animation timing) |
+| `d53daf7` | ai | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
+| `dce11ae` | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
+| `435f72e` | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
+
+The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
+0, `npm run lint` 0, `npx vitest run --coverage` 53 files / 799 tests, coverage
+66.59 / 59.2 / 69.02 / 68.3 (thresholds 55 / 50 / 58 / 57), `npm run build` 0,
+`npx playwright test --project=chromium` 79/79, `npm audit --audit-level=high`
+Critical 0 / High 0, plus the temporary closure matrix at 46/46 and the recovered
+prior matrices at 19/19, 42/42 and 118/118 (all deleted after the run).
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the

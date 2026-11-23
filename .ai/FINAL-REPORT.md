@@ -335,16 +335,24 @@ Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same co
   human-agent reviews (including the re-review) plus `npm audit`; Strix must be re-run
   before it can be cited.
 - **The fifth independent security review returned NOT READY (High 2, Medium 4)**,
-  **the sixth returned NOT READY (High 2, Medium 6)** and **the seventh returned
-  NOT READY (High 3, Medium 4)**. Every set of equivalent paths was reproduced in
+  **the sixth returned NOT READY (High 2, Medium 6)**, **the seventh returned
+  NOT READY (High 3, Medium 4)**, **the eighth (High 4, Medium 2)**, **the ninth
+  (High 3, Medium 3)**, **the tenth (High 4, Medium 4)** and **the eleventh
+  (High 3, Medium 3)**. Every set of equivalent paths was reproduced in
   local, mocked conditions and is now fixed at its root cause, but the release gate
-  stays closed until an **eighth independent pass returns READY**; see
+  stays closed until a **twelfth independent pass returns READY**; see
   `.ai/SECURITY-STATUS.md`.
 - The destination CSS judgement is **static**: CSS-in-JS, CDN stylesheets, a style
   written by a script at runtime and a custom property the analyser cannot resolve
   are outside it (an unresolved custom property fails the destination closed when the
   fix changes that property). A repository whose stylesheets use syntax the analyser
   cannot judge receives review suggestions instead of source patches.
+- The painted box reads the element's **own** `zoom`, but `zoom` is inherited: a zoom
+  on an **ancestor** of the patched element is outside the model (risk 45).
+- The generic attribute-read gate is deliberately broad: a script that enumerates the
+  attributes of any element and then mutates anything refuses the fix, even when the
+  mutation cannot reach the patched element. The cost is a false positive — such a
+  repository receives a review suggestion instead of a source patch (risk 46).
 
 ## Follow-ups logged, not done here
 
