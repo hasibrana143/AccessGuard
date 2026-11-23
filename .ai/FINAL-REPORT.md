@@ -1,19 +1,20 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + eleventh-review closure** · Date: 2026-11-23 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + twelfth-review closure** · Date: 2026-11-23 · Owner: CTO agent
 
 ## What shipped
 
 The four P0 "make the product true" gaps from `.ai/PRODUCT-CRITIQUE-DEEP.md` are closed.
-The first V23 cut was reviewed eleven times: the first review found seven more defects
+The first V23 cut was reviewed twelve times: the first review found seven more defects
 (3 reproduced P0 defects, 3 High, 4 Medium, 1 Low), the **re-review of that hardening
 found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, the
 **fourth review found 3 High, 9 Medium**, the **fifth review of that closure found
 2 High, 4 Medium**, the **sixth review of that closure found 2 High, 6 Medium**, the
 **seventh review of that closure found 3 High, 4 Medium**, the **eighth review of
 that closure found 4 High, 2 Medium**, the **ninth review of that closure found
-3 High, 3 Medium**, the **tenth review of that closure found 4 High, 4 Medium**, and
-the **eleventh review of that closure found 3 High, 3 Medium**.
+3 High, 3 Medium**, the **tenth review of that closure found 4 High, 4 Medium**, the
+**eleventh review of that closure found 3 High, 3 Medium**, and the **twelfth review
+of that closure found 6 High, 3 Medium**.
 Every earlier round closed the literal reproductions while an equivalent path stayed
 open. The tenth review independently reproduced eight equivalent paths — an inline
 `<script>` carrier, a DOM property getter, an escaped attribute **name**, the painted
@@ -30,8 +31,19 @@ scale, `aspect-ratio` and `box-shadow`), the **clipping preservation**, the
 unsafe direction, the benign twins still allowed, the route refusing both new cases
 with `400` and no branch, no write and no pull request; the recovered prior matrices
 19/19, 42/42 and 118/118).
+The twelfth review independently reproduced nine more equivalent paths — the
+**runtime attribute-name resolution**, the **functional pseudo-classes**, the
+**focusability transition**, the **painted surface of a non-positioned element**, the
+**script carrier**, the **remediation-introduced element**, the **positive off-screen
+offsets**, the **introduced destination** and the **nested hidden target**.
+**All nine are now fixed at their root cause, with a permanent regression each**
+(the closure matrix: 26/26 assertions — every finding blocked in the unsafe
+direction and every benign twin still allowed; the real-route harness: 8/8 — seven
+refusals with `400` and no branch, no write and no pull request, and the benign
+image-alt fix still opening a pull request; the recovered prior matrices 37/37,
+42/42, 19/19, 9/9 and 118/118).
 **The release verdict is still NOT READY** — the gate requires Critical 0 and High 0
-from an independent pass, and the **twelfth review is the next check**.
+from an independent pass, and the **thirteenth review is the next check**.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -39,6 +51,26 @@ from an independent pass, and the **twelfth review is the next check**.
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Twelfth independent security review (2026-11-23)
+
+> The verdict was NOT READY — Critical 0, High 6, Medium 3, Low 0 — against tree
+> `d429c6b`. **All nine findings are closed** in `11065e4` (the closure table and the
+> evidence are in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact is
+> `.ai/SECURITY-REVIEW-12.md`).
+> The release gate opens only when a **thirteenth independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 12-H1 — a runtime attribute read whose name the script **builds** (`'a'+'lt'`) or cannot resolve, and the standard `hasAttributes()`, were not state reads | High | The built-name read and the `hasAttributes()` twin each turned the target into a fixed `1280×720` takeover with 1 fix and 1 write; the real route answered `200 success:true` and opened a pull request | **Closed** — a concatenation of string literals names the attribute it evaluates to, an unresolvable name fails closed into the generic bucket, and `hasAttributes()` joins the generic attribute reads |
+| 12-H2 — the arguments of `:is()` / `:where()` / `:not()` were opaque, and a **removed** class did not activate a rule | High | `input:is([aria-label]) ~ .overlay` and `#target:not(.card) ~ .overlay` each took the page over (the sibling grew from `1264×18` to a fixed `1280×720`) | **Closed** — the functional pseudo-classes are read and matched the way the browser matches them, and the fix's removed classes and attributes are tracked |
+| 12-H3 — an added `tabindex` was not a focusability transition | High | A `div[role="button"]:focus ~ .overlay` rule with a remediation that adds `tabindex="0"` took the page over as soon as the customer focused the element | **Closed** — an added `tabindex` reaches the same focus-activation decision as `autofocus` |
+| 12-H4 — the painted surface was composed for **positioned** elements only | High | `[alt]{scale:100}` scaled the image from `64×64` to `6400×6400` and it covered the viewport | **Closed** — the painted surface is composed for every element, and a painted box that covers the viewport because of the fix is refused |
+| 12-H5 — a `<script src>` target was never followed into the tree | High | `<script src="/runtime.php">` whose body reacts to the added `alt` took the page over; the real route opened a pull request | **Closed** — a script target is followed into the tree and inspected whatever its name is (a browser executes by MIME type, not by suffix); a target outside the repository makes the destination unprovable |
+| 12-H6 — the runtime gate correlated only with the original target's id and the first element's attributes | High | A remediation that adds `<div id="overlay">` next to the patched image, with a script that mutates `getElementById('overlay')`, produced a fixed `1280×720` takeover | **Closed** — the whole remediation is judged: a script that names an added id or reads an added attribute refuses the fix; a multi-element remediation stays legal (the `label` rule) |
+| 12-M1 — a large **positive** offset or margin was not off-screen | Medium | `[alt]{left:9999px}` and `[alt]{margin-left:9999px}` moved the image from a left edge of `8` to `10007` | **Closed** — a large offset is a large offset in either direction |
+| 12-M2 — a remediation could introduce a URI attribute the original did not have | Medium | `<a id="target">Text</a>` → `<a id="target" href="/destination">Text</a>` made the local listener receive `GET /destination` | **Closed** — a remediation may not introduce a URI attribute; only a pure in-page fragment (`#main`) stays allowed |
+| 12-M3 — only the **first** tag of a replacement was judged | Medium | A remediation that wraps the patched image in a `<span>` and marks the image `hidden` was written; Chromium measured the image at `0×0` with `display:none` | **Closed** — no live element of the replacement may be hidden: the `hidden` attribute and the hiding styles are refused on every live tag |
 
 ### Eleventh independent security review (2026-11-23)
 

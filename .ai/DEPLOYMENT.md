@@ -324,6 +324,33 @@ The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
 Critical 0 / High 0, plus the temporary closure matrix at 46/46 and the recovered
 prior matrices at 19/19, 42/42 and 118/118 (all deleted after the run).
 
+### How the twelfth-review cycle was shipped
+
+The commits, in the order the volume definition of done asks for:
+
+| Commit | Layer | Content |
+|---|---|---|
+| `7858a1f` | state | the twelfth independent review recorded — the reviewer's own artifact `.ai/SECURITY-REVIEW-12.md` and the dispositions |
+| `11065e4` | security | the nine twelfth-review findings closed at their root cause, with 30 permanent regressions (the resolved attribute-name reads, the script-carrier discovery, the remediation-introduced elements, the functional pseudo-classes, the removal semantics, the focusability transition, the painted surface of a non-positioned element, the direction-free offsets, the URI preservation and the nested hiding) |
+| `9cee793` | ai | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
+| the state commit | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
+| the releases commit | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
+
+The hash of the state commit and of this releases commit is written into this
+table by the releases commit itself — the chain in `docs/VOLUMES.md` is the
+authoritative one.
+
+The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
+0, `npm run lint` 0, `npx vitest run --coverage` 53 files / 829 tests, coverage
+67.15 / 59.74 / 69.83 / 68.81 (thresholds 55 / 50 / 58 / 57), `npm run build` 0,
+`npx playwright test --project=chromium` 79/79, `npm audit --audit-level=high`
+Critical 0 / High 0, plus the temporary closure matrix at 26/26, the real-route
+closure harness at 8/8 and the recovered prior matrices at 37/37, 42/42, 19/19,
+9/9 and 118/118 (all deleted after the run).
+
+Strix was **not** run for this cycle: every configured provider refuses the run
+(quota / EOL model / no credits), so no Strix result is claimed.
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the

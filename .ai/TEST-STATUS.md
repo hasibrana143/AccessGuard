@@ -1,6 +1,33 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-23 (twelfth independent security review)
+Last run: 2026-11-23 (twelfth-review closure)
+
+## Twelfth-review closure evidence
+
+| Check | Result |
+|---|---|
+| Twelfth-review closure matrix (temporary) | PASS — 26/26: the nine findings are blocked in the unsafe direction (0 fixes, 0 writes, non-null destination harm or `validation:false`) and the benign twins stay allowed. The file was deleted after the run |
+| Twelfth-review real-route closure harness (temporary) | PASS — 8/8: seven route refusals (`400`, no branch, no write, no pull request) and the benign image-alt fix still opens a pull request. The file was deleted after the run |
+| Eleventh-review closure matrix re-run | PASS — 37/37 |
+| Ninth-review closure matrix re-run | PASS — 42/42 |
+| Tenth-review closure matrix re-run | PASS — 19/19 |
+| Eleventh-review route matrix re-run | PASS — 9/9 |
+| Prior / legitimate assertion matrix re-run | PASS — 118/118 |
+| Permanent regressions added | 30 (15 in `css-context.test.ts`, 8 in `github.test.ts`, 7 across `github-pr.test.ts` and `ast-patch.test.ts`) |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 829/829 tests (was 53/799) |
+| Coverage | PASS — statements 67.15% (threshold 55) · branches 59.74% (50) · functions 69.83% (58) · lines 68.81% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0 / High 0 (15 moderate, dev toolchain) |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
+
+Two existing expectations changed with the 12-M3 design: a remediation that
+hides a nested element is now refused **before** the verification browser
+(`unverified`, `rejected before verification`) instead of failing the browser
+check afterwards. The browser-level checks stay covered by their own
+regressions.
 
 ## Twelfth independent review evidence
 
@@ -15,19 +42,19 @@ Last run: 2026-11-23 (twelfth independent security review)
 | Route / audit harness with the literal closure plus the new route probes | PASS — 12/12 (the dynamic state read, the functional pseudo-class and the nonstandard script extension each returned `200 success:true` and opened a pull request) |
 | Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 799/799, coverage 66.59/59.2/69.02/68.3, build 0 (116 static pages), Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
 
-### Findings to close
+### Findings to close — all closed in `11065e4`
 
-| Finding | Severity | Surface | Closure scope |
-|---|---|---|---|
-| 12-H1 | **High** | the runtime attribute reads whose name the script builds or cannot resolve, and the standard `hasAttributes()` | `src/lib/github.ts` |
-| 12-H2 | **High** | the arguments of `:is()` / `:where()` / `:not()` and the **removed** classes and attributes | `src/lib/css-context.ts` |
-| 12-H3 | **High** | an added `tabindex` as a focusability transition | `src/lib/css-context.ts` |
-| 12-H4 | **High** | the painted surface of a **non-positioned** element | `src/lib/css-context.ts` |
-| 12-H5 | **High** | the discovery of a runtime carrier through a `<script src>` target | `src/lib/github.ts` |
-| 12-H6 | **High** | a runtime mutation of an element the **remediation introduces** | `src/lib/github.ts` |
-| 12-M1 | Medium | a large **positive** positional offset or margin | `src/lib/css-context.ts` |
-| 12-M2 | Medium | a remediation that introduces a URI attribute | `src/lib/github-pr.ts` |
-| 12-M3 | Medium | a replacement that hides a **nested** live element | `src/lib/github-pr.ts`, `src/lib/ast-patch.ts` |
+| Finding | Severity | Surface | Closure scope | Status |
+|---|---|---|---|---|
+| 12-H1 | **High** | the runtime attribute reads whose name the script builds or cannot resolve, and the standard `hasAttributes()` | `src/lib/github.ts` | CLOSED |
+| 12-H2 | **High** | the arguments of `:is()` / `:where()` / `:not()` and the **removed** classes and attributes | `src/lib/css-context.ts` | CLOSED |
+| 12-H3 | **High** | an added `tabindex` as a focusability transition | `src/lib/css-context.ts` | CLOSED |
+| 12-H4 | **High** | the painted surface of a **non-positioned** element | `src/lib/css-context.ts` | CLOSED |
+| 12-H5 | **High** | the discovery of a runtime carrier through a `<script src>` target | `src/lib/github.ts` | CLOSED |
+| 12-H6 | **High** | a runtime mutation of an element the **remediation introduces** | `src/lib/github.ts` | CLOSED |
+| 12-M1 | Medium | a large **positive** positional offset or margin | `src/lib/css-context.ts` | CLOSED |
+| 12-M2 | Medium | a remediation that introduces a URI attribute | `src/lib/github-pr.ts` | CLOSED |
+| 12-M3 | Medium | a replacement that hides a **nested** live element | `src/lib/github-pr.ts`, `src/lib/ast-patch.ts` | CLOSED |
 
 ## Eleventh independent review evidence
 
