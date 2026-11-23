@@ -1,6 +1,8 @@
 // GitHub integration for AccessGuard
 import { Octokit } from '@octokit/rest';
-import { decodeHtmlEntities, parseTagAttributes } from '@/lib/html-attributes';
+import { decodeHtmlEntities, parseTagAttributes, URI_BASE } from '@/lib/html-attributes';
+
+const REPOSITORY_ORIGIN = new URL(URI_BASE).origin;
 
 // Check if GitHub is configured
 export function isGitHubConfigured(): boolean {
@@ -278,12 +280,76 @@ function extractScriptSources(content: string): string[] {
   return sources;
 }
 
+/** Elements whose content the browser does not parse as live markup. */
+const RAW_TEXT_TAGS = new Set([
+  'iframe',
+  'noembed',
+  'noframes',
+  'noscript',
+  'plaintext',
+  'script',
+  'style',
+  'textarea',
+  'title',
+  'xmp',
+]);
+
+interface DocumentBase {
+  url: URL | null;
+  problem: string | null;
+}
+
+/** The effective base URL of a document, or why it cannot be proved. */
+function resolveDocumentBase(documentPath: string, content: string | null): DocumentBase {
+  let documentUrl: URL;
+  try {
+    documentUrl = new URL(documentPath, URI_BASE);
+  } catch {
+    return { url: null, problem: 'the document URL cannot be resolved' };
+  }
+
+  // A script file is runtime code, not a document, and a document without a
+  // <base> element has its own URL as the base. Neither is read as markup:
+  // a file that is not a document may hold anything.
+  if (content === null || !/<base[\s/>]/i.test(content)) {
+    return { url: documentUrl, problem: null };
+  }
+
+  const extracted = extractEventHandlerAttributes(content);
+  if (extracted.incomplete) {
+    return { url: null, problem: 'the document base cannot be read' };
+  }
+  if (extracted.baseHref === null) return { url: documentUrl, problem: null };
+
+  const href = extracted.baseHref.trim();
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) {
+    return { url: null, problem: 'the document base points outside the repository' };
+  }
+
+  try {
+    const baseUrl = new URL(href, documentUrl);
+    if (baseUrl.origin !== REPOSITORY_ORIGIN) {
+      return { url: null, problem: 'the document base points outside the repository' };
+    }
+    return { url: baseUrl, problem: null };
+  } catch {
+    return { url: null, problem: 'the document base cannot be resolved' };
+  }
+}
+
 /**
- * Event-handler attributes are runtime code too; markup whose attribute value
- * cannot be read cannot be followed safely.
+ * The live base and event-handler attributes of a document.
+ *
+ * Markup whose attribute value cannot be read cannot be followed safely.
  */
-function extractEventHandlerAttributes(markup: string): { handlers: string[]; incomplete: boolean } {
+function extractEventHandlerAttributes(markup: string): {
+  handlers: string[];
+  baseHref: string | null;
+  incomplete: boolean;
+} {
   const handlers: string[] = [];
+  let baseHref: string | null = null;
+  let templateDepth = 0;
   let cursor = 0;
 
   while (cursor < markup.length) {
@@ -292,15 +358,24 @@ function extractEventHandlerAttributes(markup: string): { handlers: string[]; in
 
     if (markup.startsWith('<!--', open)) {
       const close = markup.indexOf('-->', open + 4);
-      if (close < 0) return { handlers, incomplete: true };
+      if (close < 0) return { handlers, baseHref, incomplete: true };
       cursor = close + 3;
       continue;
     }
 
     if (markup.startsWith('<!', open) || markup.startsWith('<?', open)) {
       const close = markup.indexOf('>', open + 2);
-      if (close < 0) return { handlers, incomplete: true };
+      if (close < 0) return { handlers, baseHref, incomplete: true };
       cursor = close + 1;
+      continue;
+    }
+
+    if (markup.startsWith('</', open)) {
+      const end = markup.indexOf('>', open + 2);
+      if (end < 0) return { handlers, baseHref, incomplete: true };
+      const name = markup.slice(open + 2, end).trim().split(/[\s/]/)[0]?.toLowerCase();
+      if (name === 'template' && templateDepth > 0) templateDepth--;
+      cursor = end + 1;
       continue;
     }
 
@@ -335,25 +410,39 @@ function extractEventHandlerAttributes(markup: string): { handlers: string[]; in
       }
       index++;
     }
-    if (end < 0 || quote) return { handlers, incomplete: true };
+    if (end < 0 || quote) return { handlers, baseHref, incomplete: true };
 
-    for (const attribute of parseTagAttributes(markup.slice(sectionStart, end))) {
+    const attributes = parseTagAttributes(markup.slice(sectionStart, end));
+    for (const attribute of attributes) {
       if (/^on/i.test(attribute.name) && attribute.value) {
         handlers.push(decodeHtmlEntities(attribute.value));
+      }
+      if (
+        tagName === 'base' &&
+        templateDepth === 0 &&
+        baseHref === null &&
+        attribute.name === 'href'
+      ) {
+        baseHref = decodeHtmlEntities(attribute.value);
       }
     }
     cursor = end + 1;
 
-    if (tagName === 'style' || tagName === 'textarea' || tagName === 'title') {
+    if (tagName === 'template') {
+      templateDepth++;
+      continue;
+    }
+    if (RAW_TEXT_TAGS.has(tagName)) {
+      if (tagName === 'plaintext') break;
       const closing = new RegExp(`</${tagName}\\s*>`, 'ig');
       closing.lastIndex = cursor;
       const close = closing.exec(markup);
-      if (!close) return { handlers, incomplete: true };
+      if (!close) return { handlers, baseHref, incomplete: true };
       cursor = close.index + close[0].length;
     }
   }
 
-  return { handlers, incomplete: false };
+  return { handlers, baseHref, incomplete: false };
 }
 
 /**
@@ -390,10 +479,43 @@ const ATTRIBUTE_NAME_READ_PATTERN =
  * is a name the analyser cannot read.
  */
 function resolveStringExpression(expression: string): string | null {
-  let out = '';
+  const parts: string[] = [];
+  let part = '';
+  let quote: string | null = null;
+  let escaped = false;
 
-  for (const part of expression.split(/\s*\+\s*/)) {
-    const literal = /^(['"`])((?:\\.|(?!\1)[^\\])*)\1$/.exec(part);
+  for (const character of expression) {
+    if (quote) {
+      part += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+      part += character;
+      continue;
+    }
+    if (character === '+') {
+      parts.push(part);
+      part = '';
+      continue;
+    }
+    part += character;
+  }
+
+  if (quote) return null;
+  parts.push(part);
+
+  let out = '';
+  for (const rawPart of parts) {
+    const literal = /^(['"`])((?:\\.|(?!\1)[^\\])*)\1$/.exec(rawPart.trim());
     if (!literal) return null;
     // An interpolated template is not a constant.
     if (literal[1] === '`' && literal[2]?.includes('${')) return null;
@@ -415,6 +537,59 @@ function attributeNameReads(content: string): { name: string | null }[] {
   return reads;
 }
 
+/** A computed property read such as `element["al"+"t"]`. */
+const COMPUTED_PROPERTY_READ_PATTERN = /\b[A-Za-z_$][\w$]*\s*(?:\?\.)?\s*\[\s*([^\]]*)\]/g;
+
+/** A selector argument passed to a DOM selection API. */
+const SELECTOR_READ_PATTERN =
+  /\b(?:matches|closest|querySelector|querySelectorAll)\s*\(\s*([^)]*)\)/gi;
+
+/** The property names a script reads, and the ones it cannot resolve. */
+function propertyNameReads(content: string): { name: string | null }[] {
+  const reads: { name: string | null }[] = [];
+
+  for (const match of content.matchAll(COMPUTED_PROPERTY_READ_PATTERN)) {
+    const expression = (match[1] ?? '').trim();
+    if (/^\d+$/.test(expression)) continue;
+    reads.push({ name: resolveStringExpression(expression) });
+  }
+
+  return reads;
+}
+
+/** The selectors a script reads, and the ones it cannot resolve. */
+function selectorNameReads(content: string): { name: string | null }[] {
+  const reads: { name: string | null }[] = [];
+
+  for (const match of content.matchAll(SELECTOR_READ_PATTERN)) {
+    reads.push({ name: resolveStringExpression((match[1] ?? '').trim()) });
+  }
+
+  return reads;
+}
+
+interface SelectorAttributes {
+  names: string[];
+  dynamic: boolean;
+}
+
+/** The attribute names a selector names, and whether one is unreadable. */
+function selectorAttributes(selector: string): SelectorAttributes {
+  const names: string[] = [];
+  let dynamic = false;
+
+  for (const match of selector.matchAll(/\[\s*([^\s~^$=\]#:]+)/g)) {
+    const name = match[1] ?? '';
+    if (!/^[A-Za-z_][\w-]*$/.test(name)) {
+      dynamic = true;
+      continue;
+    }
+    names.push(name.toLowerCase());
+  }
+
+  return { names, dynamic };
+}
+
 /**
  * True when a script reads an attribute whose name it cannot resolve.
  *
@@ -423,6 +598,18 @@ function attributeNameReads(content: string): { name: string | null }[] {
  */
 function scriptReadsDynamicAttribute(content: string): boolean {
   return attributeNameReads(content).some(read => read.name === null);
+}
+
+/** True when a computed property name cannot be read statically. */
+function scriptReadsDynamicProperty(content: string): boolean {
+  return propertyNameReads(content).some(read => read.name === null);
+}
+
+/** True when a selector argument or its attribute name cannot be read. */
+function scriptReadsDynamicSelector(content: string): boolean {
+  return selectorNameReads(content).some(
+    read => read.name === null || selectorAttributes(read.name).dynamic
+  );
 }
 
 /** Class, inline-style and attribute mutations the analyser cannot follow. */
@@ -446,6 +633,18 @@ function scriptRefersToElementId(content: string, id: string): boolean {
   ).test(content);
 }
 
+/** True when a selector read names one of the attributes. */
+function scriptSelectorNamesAttribute(content: string, names: Set<string>): boolean {
+  const wanted = new Set([...names].map(name => name.toLowerCase()));
+
+  for (const read of selectorNameReads(content)) {
+    if (read.name === null) continue;
+    if (selectorAttributes(read.name).names.some(name => wanted.has(name))) return true;
+  }
+
+  return false;
+}
+
 /**
  * True when a script names one of the attributes the fix adds.
  *
@@ -465,7 +664,7 @@ function scriptNamesAttribute(content: string, names: Set<string>): boolean {
     if (read.name !== null && wanted.has(read.name.toLowerCase())) return true;
   }
 
-  return false;
+  return scriptSelectorNamesAttribute(content, names);
 }
 
 /**
@@ -485,27 +684,32 @@ function scriptReadsIntroducedAttribute(content: string, names: Set<string>): bo
   return scriptReadsAttributeProperty(content, names);
 }
 
+/** The DOM property names that reflect an attribute. */
+function attributePropertyAliases(name: string): string[] {
+  const lower = name.toLowerCase();
+  const aliases: string[] = [];
+
+  if (lower.startsWith('data-')) {
+    const key = name
+      .slice(5)
+      .replace(/-([a-z0-9])/gi, (_, character: string) => character.toUpperCase());
+    if (key) aliases.push(`dataset.${key}`);
+  } else {
+    aliases.push(name.replace(/-([a-z0-9])/gi, (_, character: string) => character.toUpperCase()));
+    if (lower === 'class') aliases.push('className');
+    if (lower === 'for') aliases.push('htmlFor');
+  }
+
+  return aliases;
+}
+
 /**
  * True when a script reads an attribute through the DOM property that
  * reflects it.
  */
 function scriptReadsAttributeProperty(content: string, names: Set<string>): boolean {
   for (const name of names) {
-    const lower = name.toLowerCase();
-    const aliases: string[] = [];
-
-    if (lower.startsWith('data-')) {
-      const key = name
-        .slice(5)
-        .replace(/-([a-z0-9])/gi, (_, character: string) => character.toUpperCase());
-      if (key) aliases.push(`dataset.${key}`);
-    } else {
-      aliases.push(name.replace(/-([a-z0-9])/gi, (_, character: string) => character.toUpperCase()));
-      if (lower === 'class') aliases.push('className');
-      if (lower === 'for') aliases.push('htmlFor');
-    }
-
-    for (const alias of aliases) {
+    for (const alias of attributePropertyAliases(name)) {
       const [object, property] = alias.includes('.') ? alias.split('.', 2) : ['', alias];
       const escapedProperty = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const expression = object
@@ -514,6 +718,16 @@ function scriptReadsAttributeProperty(content: string, names: Set<string>): bool
       if (new RegExp(expression, 'i').test(content)) return true;
     }
   }
+
+  for (const read of propertyNameReads(content)) {
+    if (read.name === null) continue;
+    const propertyName = read.name;
+    for (const name of names) {
+      const aliases = attributePropertyAliases(name).filter(alias => !alias.includes('.'));
+      if (aliases.some(alias => alias.toLowerCase() === propertyName.toLowerCase())) return true;
+    }
+  }
+
   return false;
 }
 
@@ -545,26 +759,20 @@ const SCAN_CONCURRENCY = 8;
  * path of another site) cannot be judged: the destination is unprovable and no
  * source patch may be written into it.
  */
-function resolveRepositoryPath(basePath: string, reference: string): string | null {
+function resolveRepositoryPath(basePath: string, reference: string, baseUrl?: URL): string | null {
   const href = reference.trim().split('#')[0]?.split('?')[0] ?? '';
   if (!href) return null;
   // A reference with a scheme or a protocol-relative URL is not in the tree.
   if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) return null;
 
-  const base = basePath.includes('/') ? basePath.slice(0, basePath.lastIndexOf('/')) : '';
-  const parts = (href.startsWith('/') ? href.slice(1) : `${base}/${href}`).split('/');
-  const resolved: string[] = [];
-
-  for (const part of parts) {
-    if (!part || part === '.') continue;
-    if (part === '..') {
-      resolved.pop();
-      continue;
-    }
-    resolved.push(part);
+  try {
+    const base = baseUrl ?? new URL(basePath, URI_BASE);
+    const resolved = new URL(href, base);
+    if (resolved.origin !== REPOSITORY_ORIGIN) return null;
+    return decodeURIComponent(resolved.pathname.replace(/^\/+/, '')) || null;
+  } catch {
+    return null;
   }
-
-  return resolved.join('/');
 }
 
 export interface RepositoryFixPlan {
@@ -606,14 +814,11 @@ export async function planRepositoryFixes(
     await import('@/lib/css-context');
 
   const candidates = violations.filter(v => v.remediationCode && v.elementHtml);
-  // The source patch budget is ten; the rest stay review documents.
-  const sourceCandidates = candidates.slice(0, 10);
+  // The source patch budget is ten; the rest stay review documents after the
+  // same safety analysis every source candidate receives.
+  const sourceCandidateIds = new Set(candidates.slice(0, 10).map(violation => violation.id));
   const pendingFixIds = new Set<string>();
-  for (const [index, violation] of candidates.entries()) {
-    if (index >= 10) {
-      reviewFixIds.add(violation.id);
-      continue;
-    }
+  for (const violation of candidates) {
     if (!validateFixCandidate(violation).valid) {
       refusedFixIds.add(violation.id);
       continue;
@@ -750,11 +955,13 @@ export async function planRepositoryFixes(
   // every file, the stylesheets a file links and the stylesheets they import.
   // A style source that cannot be read makes the destination unprovable, and an
   // unprovable destination never receives a source patch.
-  const cssSources: Array<{ path: string; css: string }> = [];
+  const cssSources: Array<{ path: string; css: string; baseUrl?: URL }> = [];
   const cssPaths = new Set<string>();
   const styleProblems: string[] = [];
+  const documentBases = new Map<string, URL>();
   const runtimeMutationScripts: string[] = [];
   const conditionalMutationScripts: string[] = [];
+  const selectorMutationScripts: string[] = [];
   const genericStateReadMutationScripts: string[] = [];
 
   const addCssSource = (path: string, css: string): void => {
@@ -788,12 +995,19 @@ export async function planRepositoryFixes(
       if (RUNTIME_STATE_READ_PATTERN.test(content)) {
         conditionalMutationScripts.push(content);
       }
+      if (selectorNameReads(content).length > 0) {
+        selectorMutationScripts.push(content);
+      }
       if (RUNTIME_GENERIC_STATE_READ_PATTERN.test(content)) {
         genericStateReadMutationScripts.push(content);
       }
       if (scriptReadsDynamicAttribute(content)) {
         // The script reads an attribute whose name it builds at runtime: the
         // read may be the attribute the fix adds.
+        genericStateReadMutationScripts.push(content);
+      }
+      if (scriptReadsDynamicProperty(content) || scriptReadsDynamicSelector(content)) {
+        // A computed property or selector may read the state the fix adds.
         genericStateReadMutationScripts.push(content);
       }
     }
@@ -803,13 +1017,25 @@ export async function planRepositoryFixes(
     if (CSS_FILE_PATTERN.test(path)) addCssSource(path, content);
   }
 
+  for (const [path, content] of contentCache) {
+    // A script file is runtime code, not a document: it carries no base.
+    const base = resolveDocumentBase(path, SCRIPT_FILE_PATTERN.test(path) ? null : content);
+    if (!base.url) {
+      styleProblems.push(`the document base in ${path} ${base.problem ?? 'cannot be resolved'}`);
+      continue;
+    }
+    documentBases.set(path, base.url);
+  }
+
   // The script targets of the repository. A browser executes the response of a
   // `<script src>` by its MIME type, so the name of the file says nothing:
   // every target is runtime code and is inspected as such.
   const scriptTargets = new Set<string>();
   for (const [path, content] of contentCache) {
+    const base = documentBases.get(path);
+    if (!base) continue;
     for (const source of extractScriptSources(content)) {
-      const target = resolveRepositoryPath(path, source);
+      const target = resolveRepositoryPath(path, source, base);
       if (!target || !contentCache.has(target)) {
         styleProblems.push(`the script ${source} is not part of the repository`);
         continue;
@@ -826,10 +1052,13 @@ export async function planRepositoryFixes(
         styleProblems.push(`the stylesheet ${path} uses a dynamic style source the analyser cannot resolve`);
         continue;
       }
-      cssSources.push({ path, css: source.css });
+      cssSources.push({ path, css: source.css, baseUrl: documentBases.get(path) });
     }
-    for (const href of extractStylesheetLinks(content)) {
-      const target = resolveRepositoryPath(path, href);
+    for (const link of extractStylesheetLinks(content)) {
+      const base = documentBases.get(path);
+      if (!base) continue;
+      const href = decodeHtmlEntities(link);
+      const target = resolveRepositoryPath(path, href, base);
       if (!target || !contentCache.has(target)) {
         styleProblems.push(`the stylesheet ${href} is not part of the repository`);
         continue;
@@ -860,9 +1089,9 @@ export async function planRepositoryFixes(
   // The imports of a stylesheet are relative to the stylesheet itself.
   const pending = [...cssSources];
   while (pending.length > 0) {
-    const source = pending.shift() as { path: string; css: string };
+    const source = pending.shift() as { path: string; css: string; baseUrl?: URL };
     for (const imported of extractCssImports(source.css)) {
-      const target = resolveRepositoryPath(source.path, imported);
+      const target = resolveRepositoryPath(source.path, imported, source.baseUrl);
       if (!target || !contentCache.has(target)) {
         styleProblems.push(`the stylesheet ${source.path} imports ${imported}, which is not part of the repository`);
         continue;
@@ -880,7 +1109,7 @@ export async function planRepositoryFixes(
   // mapped to the occurrences of that element.
   const conflictingKeys = conflictingRemediationKeys(violations);
 
-  for (const violation of sourceCandidates) {
+  for (const violation of candidates) {
     if (!pendingFixIds.has(violation.id)) continue;
 
     // A script that names the patched element can take it over at runtime even
@@ -934,6 +1163,7 @@ export async function planRepositoryFixes(
       if (
         added.size > 0 &&
         (conditionalMutationScripts.some(content => scriptNamesAttribute(content, added)) ||
+          selectorMutationScripts.some(content => scriptSelectorNamesAttribute(content, added)) ||
           runtimeMutationScripts.some(content => scriptReadsAttributeProperty(content, added)) ||
           genericStateReadMutationScripts.length > 0)
       ) {
@@ -961,6 +1191,12 @@ export async function planRepositoryFixes(
     if (destinationCssHarm(cssContext, violation.elementHtml, violation.remediationCode)) {
       pendingFixIds.delete(violation.id);
       refusedFixIds.add(violation.id);
+      continue;
+    }
+
+    if (!sourceCandidateIds.has(violation.id)) {
+      pendingFixIds.delete(violation.id);
+      reviewFixIds.add(violation.id);
       continue;
     }
 

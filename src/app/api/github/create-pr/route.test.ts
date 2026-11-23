@@ -18,6 +18,15 @@ const mocks = vi.hoisted(() => ({
   verifyFixes: vi.fn(),
   planRepositoryFixes: vi.fn(),
   applyRepositoryFixPlan: vi.fn(),
+  getTree: vi.fn(),
+  getContent: vi.fn(),
+}));
+
+vi.mock('@octokit/rest', () => ({
+  Octokit: class {
+    git = { getTree: mocks.getTree };
+    repos = { getContent: mocks.getContent };
+  },
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -85,6 +94,24 @@ function request(ids: string[]): NextRequest {
     method: 'POST',
     body: JSON.stringify({ violationIds: ids, repository: 'owner/repo' }),
     headers: { 'Content-Type': 'application/json', 'x-github-token': 'token' },
+  });
+}
+
+async function useActualRepositoryPlanner() {
+  const actual = await vi.importActual<typeof import('@/lib/github')>('@/lib/github');
+  mocks.planRepositoryFixes.mockImplementation(actual.planRepositoryFixes);
+}
+
+function mockRepository(files: Record<string, string>) {
+  mocks.getTree.mockResolvedValue({
+    data: {
+      tree: Object.keys(files).map(path => ({ type: 'blob', path })),
+    },
+  });
+  mocks.getContent.mockImplementation(async ({ path }: { path: string }) => {
+    const content = files[path];
+    if (content === undefined) throw new Error('not found');
+    return { data: { content: Buffer.from(content, 'utf8').toString('base64') } };
   });
 }
 
@@ -450,5 +477,115 @@ describe('POST /api/github/create-pr', () => {
     expect(mocks.createAuditLogWithRetry).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'github_pr_created' })
     );
+  });
+
+  it('13-H1: opens no pull request when the document base selects a different stylesheet', async () => {
+    await useActualRepositoryPlanner();
+    mocks.findMany.mockResolvedValue([
+      violation('v1', {
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      }),
+    ]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mockRepository({
+      'index.html':
+        '<html><head><base href="/sub/"><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>',
+      'theme.bin': 'img{color:red}',
+      'sub/theme.bin':
+        '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}',
+    });
+
+    const res = await POST(request(['v1']));
+
+    expect(res.status).toBe(400);
+    expect(mocks.createBranch).not.toHaveBeenCalled();
+    expect(mocks.createFile).not.toHaveBeenCalled();
+    expect(mocks.createPullRequest).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('13-H2a: opens no pull request when a computed property read reacts to the fix', async () => {
+    await useActualRepositoryPlanner();
+    mocks.findMany.mockResolvedValue([
+      violation('v1', {
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      }),
+    ]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mockRepository({
+      'index.html':
+        '<html><head><style>.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}</style></head><body><img id="target" src="x"><script>document.querySelectorAll("img").forEach(function(img){if(img["al"+"t"])img.classList.add("overlay")});</script></body></html>',
+    });
+
+    const res = await POST(request(['v1']));
+
+    expect(res.status).toBe(400);
+    expect(mocks.createBranch).not.toHaveBeenCalled();
+    expect(mocks.createFile).not.toHaveBeenCalled();
+    expect(mocks.createPullRequest).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('13-H2b: opens no pull request when a computed selector read reacts to the fix', async () => {
+    await useActualRepositoryPlanner();
+    mocks.findMany.mockResolvedValue([
+      violation('v1', {
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      }),
+    ]);
+    mocks.verifyFixes.mockResolvedValue(
+      new Map([['v1', { status: 'verified', confidence: 1, reason: 'ok' }]])
+    );
+    mockRepository({
+      'index.html':
+        '<html><head><style>.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}</style></head><body><img id="target" src="x"><script>document.querySelectorAll("img").forEach(function(img){if(img.matches("["+"al"+"t"+"]"))img.classList.add("overlay")});</script></body></html>',
+    });
+
+    const res = await POST(request(['v1']));
+
+    expect(res.status).toBe(400);
+    expect(mocks.createBranch).not.toHaveBeenCalled();
+    expect(mocks.createFile).not.toHaveBeenCalled();
+    expect(mocks.createPullRequest).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('13-M2: opens no pull request when the unsafe candidate is after the source budget', async () => {
+    await useActualRepositoryPlanner();
+    const targets = Array.from({ length: 11 }, (_, index) => `target${index + 1}`);
+    mocks.findMany.mockResolvedValue(
+      targets.map(id =>
+        violation(`v-${id}`, {
+          elementHtml: `<img id="${id}" src="${id}.jpg">`,
+          remediationCode: `<img id="${id}" src="${id}.jpg" alt="Photo">`,
+        })
+      )
+    );
+    mocks.verifyFixes.mockResolvedValue(
+      new Map(
+        targets.map(id => [`v-${id}`, { status: 'verified', confidence: 1, reason: 'ok' }])
+      )
+    );
+    mockRepository({
+      'index.html': `<html><body>${targets.map(id => `<img id="${id}" src="${id}.jpg">`).join('')}</body></html>`,
+      'styles.css': `${targets.slice(0, 10).map(id => `#${id}{display:none}`).join('')}#target11:nth-child(11 of [alt]){position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}`,
+    });
+
+    const res = await POST(request(targets.map(id => `v-${id}`)));
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(mocks.createBranch).not.toHaveBeenCalled();
+    expect(mocks.createFile).not.toHaveBeenCalled();
+    expect(mocks.createPullRequest).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -587,6 +587,10 @@ interface SelectorRequirements {
   alternatives: SelectorRequirements[];
   /** The arguments of a `:not()` selector. */
   negated: SelectorRequirements[];
+  /** The selector lists of an `:nth-child()` or `:nth-last-child()` rule. */
+  functionalAlternatives: SelectorRequirements[];
+  /** A functional pseudo-class whose transition semantics cannot be read. */
+  opaqueFunctional: boolean;
   /** The selector contains a conditional whose state the analyser cannot read. */
   opaqueConditional: boolean;
   /** The compound contains a focus pseudo-class. */
@@ -598,6 +602,55 @@ interface SelectorRequirements {
 /** The pseudo-classes the `autofocus` remediation can activate. */
 const FOCUS_PSEUDO_CLASSES = new Set(['focus', 'focus-within', 'focus-visible']);
 
+/** The positive requirement a double negation is equivalent to. */
+function doubleNegationPositive(requirements: SelectorRequirements): SelectorRequirements | null {
+  if (
+    requirements.malformed ||
+    requirements.opaqueConditional ||
+    requirements.opaqueFunctional ||
+    requirements.tag !== null ||
+    requirements.classes.length > 0 ||
+    requirements.id !== null ||
+    requirements.attributes.length > 0 ||
+    requirements.alternatives.length > 0 ||
+    requirements.functionalAlternatives.length > 0 ||
+    requirements.negated.length !== 1
+  ) {
+    return null;
+  }
+
+  return requirements.negated[0] ?? null;
+}
+
+/** Merge a positive requirement into the compound that contains it. */
+function mergePositiveRequirements(
+  target: SelectorRequirements,
+  source: SelectorRequirements
+): void {
+  if (source.tag !== null && source.tag !== '*') {
+    if (target.tag !== null && target.tag !== source.tag) target.malformed = true;
+    else target.tag = source.tag;
+  }
+
+  if (source.id !== null) {
+    if (target.id !== null && target.id !== source.id) target.malformed = true;
+    else target.id = source.id;
+  }
+
+  target.classes.push(...source.classes);
+  target.attributes.push(...source.attributes);
+  target.alternatives.push(...source.alternatives);
+  target.focusPseudo ||= source.focusPseudo;
+}
+
+/** The selector list of an `:nth-child()` or `:nth-last-child()` rule. */
+function nthChildSelectorList(argument: string): string | null {
+  const words = splitTopLevel(argument.replace(/[\t\n\r\f]+/g, ' '), ' ').filter(Boolean);
+  const ofIndex = words.findIndex(word => word.toLowerCase() === 'of');
+  if (ofIndex <= 0 || ofIndex === words.length - 1) return null;
+  return words.slice(ofIndex + 1).join(' ');
+}
+
 /** The requirements of the subject compound of a selector. */
 function parseSubject(selector: string): SelectorRequirements {
   const requirements: SelectorRequirements = {
@@ -607,6 +660,8 @@ function parseSubject(selector: string): SelectorRequirements {
     attributes: [],
     alternatives: [],
     negated: [],
+    functionalAlternatives: [],
+    opaqueFunctional: false,
     opaqueConditional: false,
     focusPseudo: false,
     malformed: false,
@@ -709,10 +764,40 @@ function parseSubject(selector: string): SelectorRequirements {
               if (splitCompounds(part).length !== 1) argument.malformed = true;
               return argument;
             });
-          if (name === 'not') requirements.negated.push(...parsed);
-          else requirements.alternatives.push(...parsed);
+          if (name === 'not') {
+            const positive = parsed.length === 1 ? doubleNegationPositive(parsed[0] as SelectorRequirements) : null;
+            if (positive) {
+              mergePositiveRequirements(requirements, positive);
+            } else {
+              requirements.negated.push(...parsed);
+              if (parsed.some(argument => argument.malformed || argument.negated.length > 0 || argument.opaqueFunctional)) {
+                requirements.opaqueFunctional = true;
+              }
+            }
+          } else {
+            requirements.alternatives.push(...parsed);
+            if (parsed.some(argument => argument.malformed || argument.opaqueFunctional)) {
+              requirements.opaqueFunctional = true;
+            }
+          }
+        } else if (!pseudoElement && (name === 'nth-child' || name === 'nth-last-child')) {
+          const selectorList = nthChildSelectorList(selector.slice(i + 1, end - 1));
+          if (selectorList !== null) {
+            const parts = splitTopLevel(selectorList, ',');
+            if (parts.length === 0 || parts.every(part => !part.trim())) {
+              requirements.opaqueFunctional = true;
+            }
+            for (const part of parts) {
+              const argument = parseSubject(part);
+              if (splitCompounds(part).length !== 1) argument.malformed = true;
+              if (argument.malformed || argument.opaqueFunctional) requirements.opaqueFunctional = true;
+              else requirements.functionalAlternatives.push(argument);
+            }
+          }
+          requirements.opaqueConditional = true;
         } else {
           requirements.opaqueConditional = true;
+          if (!pseudoElement) requirements.opaqueFunctional = true;
         }
         i = end;
       } else {
@@ -928,9 +1013,62 @@ function matchSelector(selector: string, element: ElementDescriptor): Match {
   return maybe ? 'maybe' : 'no';
 }
 
+/** The tags that are focusable without a tabindex attribute. */
+const NATIVE_FOCUSABLE_TAGS = new Set([
+  'button', 'select', 'textarea', 'iframe', 'object', 'embed',
+]);
+
+/** The tags whose disabled attribute removes them from the focus order. */
+const DISABLEABLE_TAGS = new Set([
+  'button', 'input', 'select', 'textarea', 'fieldset', 'optgroup', 'option',
+]);
+
+/** The numeric tabindex of an element, when it has a valid one. */
+function tabIndexOf(element: ElementDescriptor): number | null {
+  const value = element.attributes.get('tabindex');
+  if (value === undefined || !/^[+-]?\d+$/.test(value.trim())) return null;
+  const tabIndex = Number(value.trim());
+  return Number.isSafeInteger(tabIndex) ? tabIndex : null;
+}
+
+/** True when an element can receive focus. */
+function canReceiveFocus(element: ElementDescriptor | null): boolean {
+  if (!element) return false;
+  if (element.attributes.has('hidden') || element.attributes.has('inert')) return false;
+  if (DISABLEABLE_TAGS.has(element.tag) && element.attributes.has('disabled')) return false;
+
+  if (tabIndexOf(element) !== null) return true;
+
+  const editable = element.attributes.get('contenteditable');
+  if (editable !== undefined && editable.toLowerCase() !== 'false') return true;
+
+  if (element.tag === 'a' || element.tag === 'area') {
+    return element.attributes.has('href');
+  }
+
+  if (element.tag === 'input') {
+    return (element.attributes.get('type') ?? 'text').toLowerCase() !== 'hidden';
+  }
+
+  if (element.tag === 'audio' || element.tag === 'video') {
+    return element.attributes.has('controls');
+  }
+
+  return NATIVE_FOCUSABLE_TAGS.has(element.tag);
+}
+
+/** True when an element can receive focus from the keyboard. */
+function isKeyboardFocusable(element: ElementDescriptor | null): boolean {
+  if (!canReceiveFocus(element) || element === null) return false;
+
+  const tabIndex = tabIndexOf(element);
+  return tabIndex === null || tabIndex >= 0;
+}
+
 /** What the fix changes about the patched element. */
 interface ElementChanges {
   attributes: Map<string, string>;
+  changedAttributes: Map<string, { before: string; after: string }>;
   classes: Set<string>;
   removedAttributes: Map<string, string>;
   removedClasses: Set<string>;
@@ -951,12 +1089,16 @@ function changesBetween(
   after: ElementDescriptor
 ): ElementChanges {
   const attributes = new Map<string, string>();
+  const changedAttributes = new Map<string, { before: string; after: string }>();
   const classes = new Set<string>();
   const removedAttributes = new Map<string, string>();
   const removedClasses = new Set<string>();
 
   for (const [name, value] of after.attributes) {
-    if (before?.attributes.get(name) !== value) attributes.set(name, value);
+    const previous = before?.attributes.get(name);
+    if (previous === value) continue;
+    attributes.set(name, value);
+    if (previous !== undefined) changedAttributes.set(name, { before: previous, after: value });
   }
   for (const token of after.classes) {
     if (!before?.classes.has(token)) classes.add(token);
@@ -971,9 +1113,19 @@ function changesBetween(
   }
 
   const focus = after.attributes.has('autofocus') && !before?.attributes.has('autofocus');
-  const focusable = after.attributes.has('tabindex') && !before?.attributes.has('tabindex');
+  const focusable =
+    (!canReceiveFocus(before) && canReceiveFocus(after)) ||
+    (!isKeyboardFocusable(before) && isKeyboardFocusable(after));
 
-  return { attributes, classes, removedAttributes, removedClasses, focus, focusable };
+  return {
+    attributes,
+    changedAttributes,
+    classes,
+    removedAttributes,
+    removedClasses,
+    focus,
+    focusable,
+  };
 }
 
 /**
@@ -982,14 +1134,22 @@ function changesBetween(
  * The compound asks for an attribute value or a class the fix adds, so the
  * rule it belongs to starts to apply when the fix lands.
  */
-function compoundActivatedByFix(compound: string, changes: ElementChanges): boolean {
+function compoundActivatedByFix(compound: string, changes: ElementChanges): boolean | 'unprovable' {
   const requirements = parseSubject(compound);
 
   const positiveRequirementActivated = (candidate: SelectorRequirements): boolean => {
     for (const requirement of candidate.attributes) {
       const value = changes.attributes.get(requirement.name);
       if (value === undefined) continue;
-      if (attributeMatches(value, requirement.operator, requirement.value) !== 'no') return true;
+
+      const changed = changes.changedAttributes.get(requirement.name);
+      if (changed) {
+        const before = attributeMatches(changed.before, requirement.operator, requirement.value);
+        const after = attributeMatches(changed.after, requirement.operator, requirement.value);
+        if (before === 'no' && after !== 'no') return true;
+      } else if (attributeMatches(value, requirement.operator, requirement.value) !== 'no') {
+        return true;
+      }
     }
 
     for (const className of candidate.classes) {
@@ -1001,9 +1161,19 @@ function compoundActivatedByFix(compound: string, changes: ElementChanges): bool
 
   const positiveRequirementRemoved = (candidate: SelectorRequirements): boolean => {
     for (const requirement of candidate.attributes) {
-      const value = changes.removedAttributes.get(requirement.name);
-      if (value === undefined) continue;
-      if (attributeMatches(value, requirement.operator, requirement.value) !== 'no') return true;
+      const removed = changes.removedAttributes.get(requirement.name);
+      if (removed !== undefined && attributeMatches(removed, requirement.operator, requirement.value) !== 'no') {
+        return true;
+      }
+
+      const changed = changes.changedAttributes.get(requirement.name);
+      if (
+        changed &&
+        attributeMatches(changed.before, requirement.operator, requirement.value) !== 'no' &&
+        attributeMatches(changed.after, requirement.operator, requirement.value) === 'no'
+      ) {
+        return true;
+      }
     }
 
     for (const className of candidate.classes) {
@@ -1013,6 +1183,29 @@ function compoundActivatedByFix(compound: string, changes: ElementChanges): bool
     return candidate.alternatives.some(positiveRequirementRemoved);
   };
 
+  const functionalRequirementMayChange = (candidate: SelectorRequirements): boolean => {
+    for (const requirement of candidate.attributes) {
+      if (
+        changes.attributes.has(requirement.name) ||
+        changes.removedAttributes.has(requirement.name) ||
+        changes.changedAttributes.has(requirement.name)
+      ) {
+        return true;
+      }
+    }
+
+    for (const className of candidate.classes) {
+      if (changes.classes.has(className) || changes.removedClasses.has(className)) return true;
+    }
+
+    return (
+      candidate.alternatives.some(functionalRequirementMayChange) ||
+      candidate.negated.some(functionalRequirementMayChange)
+    );
+  };
+
+  if (requirements.opaqueFunctional) return 'unprovable';
+  if (requirements.functionalAlternatives.some(functionalRequirementMayChange)) return 'unprovable';
   if (positiveRequirementActivated(requirements)) return true;
   return requirements.negated.some(positiveRequirementRemoved);
 }
@@ -1088,48 +1281,47 @@ function resourceState(
  * the bottom, four values set every edge on its own.
  */
 function insetEdges(value: string): {
-  top: boolean;
-  right: boolean;
-  bottom: boolean;
-  left: boolean;
+  top: string;
+  right: string;
+  bottom: string;
+  left: string;
 } {
   const parts = value.split(/\s+/).filter(Boolean);
-  const zero = (part: string | undefined): boolean => part !== undefined && isZeroLength(part);
-  const edges = { top: false, right: false, bottom: false, left: false };
+  const edges = { top: '', right: '', bottom: '', left: '' };
 
   if (parts.length === 1) {
-    edges.top = edges.right = edges.bottom = edges.left = zero(parts[0]);
+    edges.top = edges.right = edges.bottom = edges.left = parts[0] ?? '';
   } else if (parts.length === 2) {
-    edges.top = edges.bottom = zero(parts[0]);
-    edges.left = edges.right = zero(parts[1]);
+    edges.top = edges.bottom = parts[0] ?? '';
+    edges.left = edges.right = parts[1] ?? '';
   } else if (parts.length === 3) {
-    edges.top = zero(parts[0]);
-    edges.left = edges.right = zero(parts[1]);
-    edges.bottom = zero(parts[2]);
+    edges.top = parts[0] ?? '';
+    edges.left = edges.right = parts[1] ?? '';
+    edges.bottom = parts[2] ?? '';
   } else if (parts.length === 4) {
-    edges.top = zero(parts[0]);
-    edges.right = zero(parts[1]);
-    edges.bottom = zero(parts[2]);
-    edges.left = zero(parts[3]);
+    edges.top = parts[0] ?? '';
+    edges.right = parts[1] ?? '';
+    edges.bottom = parts[2] ?? '';
+    edges.left = parts[3] ?? '';
   }
 
   return edges;
 }
 
 /** The block edges an `inset-block` shorthand sets. */
-function insetBlockEdges(value: string): { top: boolean; bottom: boolean } {
+function insetBlockEdges(value: string): { top: string; bottom: string } {
   const parts = value.split(/\s+/).filter(Boolean);
   const first = parts[0] ?? '';
   const second = parts[1] ?? first;
-  return { top: isZeroLength(first), bottom: isZeroLength(second) };
+  return { top: first, bottom: second };
 }
 
 /** The inline edges an `inset-inline` shorthand sets. */
-function insetInlineEdges(value: string): { left: boolean; right: boolean } {
+function insetInlineEdges(value: string): { left: string; right: string } {
   const parts = value.split(/\s+/).filter(Boolean);
   const first = parts[0] ?? '';
   const second = parts[1] ?? first;
-  return { left: isZeroLength(first), right: isZeroLength(second) };
+  return { left: first, right: second };
 }
 
 /** The physical edge a logical inset longhand sets in a horizontal writing mode. */
@@ -1271,7 +1463,7 @@ const RELEVANT_PROPERTIES = new Set([
   'background', 'background-color', 'background-position', 'background-size',
   'float', 'clear', 'flex', 'flex-basis', 'order', 'aspect-ratio', 'contain',
   'isolation', 'mix-blend-mode', 'filter', 'backdrop-filter', 'mask', '-webkit-mask',
-  'content-visibility',
+  'content-visibility', 'outline', 'outline-width', 'outline-style', 'outline-offset',
   'z-index', 'animation', 'animation-name', 'animation-duration', 'animation-delay',
   'animation-fill-mode', 'animation-play-state', 'animation-direction', 'box-sizing', 'gap', 'grid-area',
   'grid-template', 'grid-template-columns', 'grid-template-rows', 'columns', 'column-count',
@@ -2109,6 +2301,122 @@ function boxShadowGrowthOf(state: ElementState): ShadowGrowth {
   return growth;
 }
 
+/** The outline styles that paint an outline. */
+const OUTLINE_STYLES = new Set([
+  'auto', 'dashed', 'dotted', 'double', 'groove', 'hidden', 'inset', 'none', 'outset', 'ridge', 'solid',
+]);
+
+/** The outline width keywords in pixels. */
+const OUTLINE_WIDTH_KEYWORDS: Record<string, number> = { thin: 1, medium: 3, thick: 5 };
+
+/** The parsed parts of an `outline` shorthand. */
+interface OutlineShorthand {
+  style: 'painted' | 'none' | 'unknown';
+  width: number | null;
+  widthUnknown: boolean;
+}
+
+/** The fixed pixel width of an outline width. */
+function outlineWidthPixels(value: string): number | null {
+  const keyword = OUTLINE_WIDTH_KEYWORDS[value];
+  if (keyword !== undefined) return keyword;
+
+  const length = parseCssLength(value);
+  if (!length || length.amount < 0) return null;
+  return fixedPixelsOf(length);
+}
+
+/** True when a token is a colour in an outline shorthand. */
+function isOutlineColor(value: string): boolean {
+  return (
+    /^#[0-9a-f]+$/i.test(value) ||
+    /^[a-z-]+$/i.test(value) ||
+    /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/i.test(value)
+  );
+}
+
+/** Parse the width and style of an `outline` shorthand. */
+function parseOutlineShorthand(value: string): OutlineShorthand {
+  const tokens = splitTopLevel(value.replace(/[\t\n\r\f]+/g, ' '), ' ').filter(Boolean);
+  let style: OutlineShorthand['style'] | null = null;
+  let width: number | null = null;
+  let widthUnknown = false;
+  let widthSeen = false;
+
+  for (const token of tokens) {
+    if (OUTLINE_STYLES.has(token)) {
+      const candidate = token === 'none' || token === 'hidden'
+        ? 'none'
+        : token === 'auto'
+          ? 'unknown'
+          : 'painted';
+      style = style === null || style === candidate ? candidate : 'unknown';
+      continue;
+    }
+
+    const parsed = outlineWidthPixels(token);
+    if (parsed !== null) {
+      if (widthSeen) widthUnknown = true;
+      else width = parsed;
+      widthSeen = true;
+      continue;
+    }
+
+    if (!isOutlineColor(token)) widthUnknown = true;
+  }
+
+  if (style === null) style = 'none';
+  if (style === 'painted' && !widthSeen) width = 3;
+  return { style, width, widthUnknown };
+}
+
+/** The outside growth painted by the outline of an element. */
+function outlineGrowthOf(state: ElementState): ShadowGrowth {
+  const growth: ShadowGrowth = { x: 0, y: 0, unknown: false };
+  const widths: number[] = [];
+  let paintedStyle = false;
+  let unknownStyle = false;
+  let unknownWidth = false;
+
+  for (const value of state.values.get('outline') ?? []) {
+    const parsed = parseOutlineShorthand(value);
+    if (parsed.style === 'painted') paintedStyle = true;
+    else if (parsed.style === 'unknown') unknownStyle = true;
+    if (parsed.width !== null) widths.push(parsed.width);
+    unknownWidth ||= parsed.widthUnknown;
+  }
+
+  for (const value of state.values.get('outline-style') ?? []) {
+    if (value === 'none' || value === 'hidden') continue;
+    if (value === 'auto' || !OUTLINE_STYLES.has(value)) unknownStyle = true;
+    else paintedStyle = true;
+  }
+
+  for (const value of state.values.get('outline-width') ?? []) {
+    const width = outlineWidthPixels(value);
+    if (width === null) unknownWidth = true;
+    else widths.push(width);
+  }
+
+  if (!paintedStyle && !unknownStyle) return growth;
+  if (unknownStyle || unknownWidth) growth.unknown = true;
+  if (!paintedStyle) return growth;
+
+  const width = widths.length > 0 ? Math.max(...widths) : 3;
+  const offsets = [0];
+  for (const value of state.values.get('outline-offset') ?? []) {
+    const length = parseCssLength(value);
+    const offset = length ? fixedPixelsOf(length) : null;
+    if (offset === null) growth.unknown = true;
+    else offsets.push(offset);
+  }
+
+  const outside = Math.max(0, width + Math.max(...offsets));
+  growth.x = outside;
+  growth.y = outside;
+  return growth;
+}
+
 /** Split a one-to-four-value shorthand. */
 function splitBoxShorthand(value: string): string[] | null {
   if (value.includes('(')) return null;
@@ -2489,8 +2797,14 @@ function paintedBoxOf(state: ElementState): PaintedBox {
     unprovableY: false,
   };
   const shadow = boxShadowGrowthOf(state);
-  box.unprovableX = shadow.unknown || shadow.x >= VIEWPORT_LENGTH;
-  box.unprovableY = shadow.unknown || shadow.y >= VIEWPORT_LENGTH;
+  const outline = outlineGrowthOf(state);
+  const outsideGrowth: ShadowGrowth = {
+    x: shadow.x + outline.x,
+    y: shadow.y + outline.y,
+    unknown: shadow.unknown || outline.unknown,
+  };
+  box.unprovableX = outsideGrowth.unknown || outsideGrowth.x >= VIEWPORT_LENGTH;
+  box.unprovableY = outsideGrowth.unknown || outsideGrowth.y >= VIEWPORT_LENGTH;
 
   const sides = sideInputsOf(state);
   const growthX = axisGrowthOf(sides, 'x');
@@ -2518,11 +2832,13 @@ function paintedBoxOf(state: ElementState): PaintedBox {
     size: AxisSize,
     growth: AxisGrowth,
     factor: number,
-    shadowGrowth: number
+    outside: ShadowGrowth,
+    axis: 'x' | 'y'
   ): { covers: boolean; unprovable: boolean } => {
+    const outsideSize = axis === 'x' ? outside.x : outside.y;
     let ratio = size.ratio;
-    let fixedPx = size.fixedPx + shadowGrowth * 2;
-    let unknown = size.unknown || shadow.unknown || shadowGrowth >= VIEWPORT_LENGTH;
+    let fixedPx = size.fixedPx + outsideSize * 2;
+    let unknown = size.unknown || outside.unknown || outsideSize >= VIEWPORT_LENGTH;
 
     // Scaling an intrinsic size cannot be computed: the element's own size is
     // unknown, so a scale above one may carry it across the viewport.
@@ -2557,8 +2873,8 @@ function paintedBoxOf(state: ElementState): PaintedBox {
     };
   };
 
-  const x = paintAxis(sizeX, growthX, factors.x, shadow.x);
-  const y = paintAxis(sizeY, growthY, factors.y, shadow.y);
+  const x = paintAxis(sizeX, growthX, factors.x, outsideGrowth, 'x');
+  const y = paintAxis(sizeY, growthY, factors.y, outsideGrowth, 'y');
   box.coversX = x.covers;
   box.coversY = y.covers;
   box.unprovableX = x.unprovable;
@@ -2602,6 +2918,10 @@ function stateOf(
   };
 
   const edges = { top: false, right: false, bottom: false, left: false };
+  const applyInsetEdge = (edge: keyof typeof edges, value: string): void => {
+    if (isZeroLength(value)) edges[edge] = true;
+    if (isLargeOffset(value)) state.hidden = true;
+  };
 
   const apply = ({ property, value }: Declaration): void => {
     const values = state.values.get(property) ?? [];
@@ -2619,18 +2939,18 @@ function stateOf(
       if (POSITIONED.test(value)) state.positioned = true;
     } else if (property === 'inset') {
       const assigned = insetEdges(value);
-      edges.top = edges.top || assigned.top;
-      edges.right = edges.right || assigned.right;
-      edges.bottom = edges.bottom || assigned.bottom;
-      edges.left = edges.left || assigned.left;
+      applyInsetEdge('top', assigned.top);
+      applyInsetEdge('right', assigned.right);
+      applyInsetEdge('bottom', assigned.bottom);
+      applyInsetEdge('left', assigned.left);
     } else if (property === 'inset-block') {
       const assigned = insetBlockEdges(value);
-      edges.top = edges.top || assigned.top;
-      edges.bottom = edges.bottom || assigned.bottom;
+      applyInsetEdge('top', assigned.top);
+      applyInsetEdge('bottom', assigned.bottom);
     } else if (property === 'inset-inline') {
       const assigned = insetInlineEdges(value);
-      edges.left = edges.left || assigned.left;
-      edges.right = edges.right || assigned.right;
+      applyInsetEdge('left', assigned.left);
+      applyInsetEdge('right', assigned.right);
     } else if (property === 'top' || property === 'bottom' || property === 'right' || property === 'left') {
       if (isZeroLength(value)) edges[property] = true;
       // A large offset moves the element out of the view.
@@ -2891,11 +3211,15 @@ export function destinationCssHarm(
 
           const compounds = splitCompounds(trimmed);
           const subject = compounds[compounds.length - 1] ?? trimmed;
-          const activated = compounds.some(
-            compound =>
-              compoundActivatedByFix(compound, changes) ||
-              ((changes.focus || changes.focusable) && compoundActivatedByFocus(compound, element))
-          );
+          const fixActivation = compounds.map(compound => compoundActivatedByFix(compound, changes));
+          if (fixActivation.includes('unprovable')) {
+            return 'the repository stylesheet cannot be judged: a functional pseudo-class may activate a rule on the patched element or another element';
+          }
+          const activated = fixActivation.some(Boolean) ||
+            compounds.some(
+              compound =>
+                (changes.focus || changes.focusable) && compoundActivatedByFocus(compound, element)
+            );
           if (!activated) continue;
 
           if (matchSubject(parseSubject(subject), element) === 'no') {

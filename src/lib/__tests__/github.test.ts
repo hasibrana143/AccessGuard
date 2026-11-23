@@ -1550,6 +1550,176 @@ describe('the twelfth review regressions', () => {
   });
 });
 
+describe('the thirteenth review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix() {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  it('13-H1a: does not patch an element when the document base selects a different stylesheet', async () => {
+    tree(['index.html', 'theme.bin', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><base href="/sub/"><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('theme.bin', 'img{color:red}');
+    fileContent(
+      'sub/theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('13-H1b: does not patch an element when the document base selects a different script', async () => {
+    tree(['index.html', 'runtime.bin', 'sub/runtime.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><base href="/sub/"><script src="runtime.bin"></script></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('runtime.bin', "console.log('root runtime');");
+    fileContent(
+      'sub/runtime.bin',
+      'document.querySelectorAll("img").forEach(function(img){if(img.hasAttribute("alt"))img.classList.add("overlay")});'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('13-H1c: does not patch an element when the document base points outside the repository', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      '<html><head><base href="https://example.com/"><link rel="stylesheet" href="styles.css"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('styles.css', 'img{color:red}');
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('13-H1d: writes a fix when the document base resolves inside the repository', async () => {
+    tree(['index.html', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><base href="/sub/"><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('sub/theme.bin', 'img{color:red}');
+
+    const plan = await planAltFix();
+
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+  });
+
+  it('13-H1e: writes a fix when a script file is not a document', async () => {
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent('app.js', 'const label = "a<b"; const msg = "it\'s fine";');
+
+    const plan = await planAltFix();
+
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.fileWrites).toHaveLength(1);
+  });
+
+  it('13-H2a: does not patch an element a script activates through a computed property read', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><head><style>.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}</style></head><body><img id="target" src="x"><script>document.querySelectorAll("img").forEach(function(img){if(img["al"+"t"])img.classList.add("overlay")});</script></body></html>'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('13-H2b: does not patch an element a script activates through a computed selector read', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><head><style>.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}</style></head><body><img id="target" src="x"><script>document.querySelectorAll("img").forEach(function(img){if(img.matches("["+"al"+"t"+"]"))img.classList.add("overlay")});</script></body></html>'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('13-H2c: does not patch an element a script activates through an unresolved property name', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><body><img id="target" src="x"><script>const attributeName="alt";document.querySelectorAll("img").forEach(function(img){if(img[attributeName])img.classList.add("overlay")});</script></body></html>'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('13-H2d: does not patch an element a script activates through an unresolved selector', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><body><img id="target" src="x"><script>const selector="["+"al"+"t"+"]";document.querySelectorAll("img").forEach(function(img){if(img.matches(selector))img.classList.add("overlay")});</script></body></html>'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('13-M2: refuses an unsafe candidate after the ten-candidate source budget', async () => {
+    const targets = Array.from({ length: 11 }, (_, index) => `target${index + 1}`);
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body>${targets.map(id => `<img id="${id}" src="${id}.jpg">`).join('')}</body></html>`
+    );
+    fileContent(
+      'styles.css',
+      `${targets.slice(0, 10).map(id => `#${id}{display:none}`).join('')}#target11:nth-child(11 of [alt]){position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}`
+    );
+
+    const plan = await planRepositoryFixes(
+      'token',
+      'owner',
+      'repo',
+      'main',
+      targets.map(id => ({
+        id: `v-${id}`,
+        ruleId: 'image-alt',
+        elementHtml: `<img id="${id}" src="${id}.jpg">`,
+        remediationCode: `<img id="${id}" src="${id}.jpg" alt="Photo">`,
+      }))
+    );
+
+    expect(plan.refusedFixIds).toEqual(targets.map(id => `v-${id}`));
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();

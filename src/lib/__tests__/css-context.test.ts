@@ -158,6 +158,13 @@ describe('destination CSS: the rules the browser applies', () => {
     expect(harm(':not(.foo){position:fixed;inset:0;width:100%;height:100%}')).toContain('overlay');
   });
 
+  it('keeps a dynamic pseudo-class harmless', () => {
+    // `:hover` is not a functional pseudo-class: what it matches does not
+    // depend on what the fix changes, so the rule is not a transition.
+    expect(harm('a:hover{color:red}')).toBeNull();
+    expect(harm('div:focus-within{color:red}')).toBeNull();
+  });
+
   it('sees the dynamic viewport units', () => {
     expect(harm('[alt]{position:fixed;width:100dvw;height:100dvh}')).toContain('overlay');
   });
@@ -928,5 +935,160 @@ describe('destination CSS: the twelfth review regressions', () => {
       '<img id="target" src="x" width="64" height="64" alt="Photo">'
     );
     expect(result).toBeNull();
+  });
+});
+
+describe('destination CSS: the thirteenth review regressions', () => {
+  function harm(css: string, original: string, patched: string): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('judges a sibling rule activated by a negated attribute value change', () => {
+    const css =
+      '#target:not([data-state="active"]) ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}';
+    const original = '<img id="target" data-state="active" src="x">';
+    const patched = '<img id="target" data-state="safe" src="x" alt="Photo">';
+
+    expect(harm(css, original, patched)).not.toBeNull();
+    expect(
+      harm(css, original, '<img id="target" data-state="active" src="x" alt="Photo">')
+    ).toBeNull();
+  });
+
+  it('judges a sibling rule activated by an nth-child selector list', () => {
+    const css =
+      'img:nth-child(1 of [alt]) ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}';
+    const original = '<img id="target" src="x">';
+    const patched = '<img id="target" src="x" alt="Photo">';
+
+    expect(harm(css, original, patched)).not.toBeNull();
+    expect(
+      harm(
+        'img:nth-last-child(1 of [alt]) ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}',
+        original,
+        patched
+      )
+    ).not.toBeNull();
+    expect(
+      harm(
+        'img:nth-child(1 of [src]) ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}',
+        original,
+        patched
+      )
+    ).toBeNull();
+  });
+
+  it('judges a sibling rule activated by a nested negation', () => {
+    const css =
+      '#target:not(:not([alt])) ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}';
+    const original = '<img id="target" src="x">';
+    const patched = '<img id="target" src="x" alt="Photo">';
+
+    expect(harm(css, original, patched)).not.toBeNull();
+    expect(
+      harm(
+        '#target:not(:not([data-state="active"])) ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}',
+        '<img id="target" data-state="active" src="x">',
+        '<img id="target" data-state="active" src="x" alt="Photo">'
+      )
+    ).toBeNull();
+  });
+
+  it('refuses a functional pseudo-class whose transition it cannot read', () => {
+    const result = harm(
+      'img:lang(en) ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}',
+      '<img id="target" src="x" lang="fr">',
+      '<img id="target" src="x" lang="en" alt="Photo">'
+    );
+    expect(result).toContain('cannot be judged');
+  });
+
+  it('judges a sibling rule activated by an added anchor href', () => {
+    const css =
+      'a:focus ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}';
+    const original = '<a id="target">Text</a>';
+    const patched = '<a id="target" href="#main" aria-label="Text">Text</a>';
+
+    expect(harm(css, original, patched)).not.toBeNull();
+    expect(
+      harm(
+        css,
+        '<a id="target" href="#main">Text</a>',
+        '<a id="target" href="#main" aria-label="Text">Text</a>'
+      )
+    ).toBeNull();
+  });
+
+  it('judges a sibling rule activated by added contenteditable', () => {
+    const css =
+      'div:focus ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}';
+
+    expect(
+      harm(
+        css,
+        '<div id="target">Text</div>',
+        '<div id="target" contenteditable aria-label="Label">Text</div>'
+      )
+    ).not.toBeNull();
+    expect(
+      harm(
+        css,
+        '<div id="target" contenteditable="false">Text</div>',
+        '<div id="target" contenteditable="false" aria-label="Label">Text</div>'
+      )
+    ).toBeNull();
+  });
+
+  it('judges a sibling rule activated by a focusable tabindex value change', () => {
+    const css =
+      'div:focus ~ .overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}';
+
+    expect(
+      harm(
+        css,
+        '<div id="target" tabindex="-1">Text</div>',
+        '<div id="target" tabindex="0" aria-label="Label">Text</div>'
+      )
+    ).not.toBeNull();
+    expect(
+      harm(
+        css,
+        '<div id="target" tabindex="-1">Text</div>',
+        '<div id="target" tabindex="-1" aria-label="Label">Text</div>'
+      )
+    ).toBeNull();
+  });
+
+  it('composes a large outline into the painted surface', () => {
+    const original = '<img id="target" src="x" width="64" height="64">';
+    const patched = '<img id="target" src="x" width="64" height="64" alt="Photo">';
+
+    expect(harm('[alt]{outline:100000px solid #f0f}', original, patched)).not.toBeNull();
+    expect(harm('[alt]{outline:2px solid #06c}', original, patched)).toBeNull();
+    expect(
+      harm('[alt]{outline:calc(100000px + 1px) solid #f0f}', original, patched)
+    ).toContain('cannot be judged');
+    expect(
+      harm('[alt]{outline:2px solid #f0f;outline-offset:calc(1px + 1px)}', original, patched)
+    ).toContain('cannot be judged');
+  });
+
+  it('treats large inset shorthands as off-screen', () => {
+    const original = '<img id="target" src="x" width="64" height="64">';
+    const patched = '<img id="target" src="x" width="64" height="64" alt="Photo">';
+
+    expect(harm('[alt]{position:relative;inset:-9999px;background:#f0f}', original, patched)).toContain(
+      'hide'
+    );
+    expect(
+      harm('[alt]{position:relative;inset-block:-9999px;background:#f0f}', original, patched)
+    ).toContain('hide');
+    expect(
+      harm('[alt]{position:relative;inset-inline:-9999px;background:#f0f}', original, patched)
+    ).toContain('hide');
+    expect(
+      harm('[alt]{position:relative;inset:9999px;background:#f0f}', original, patched)
+    ).toContain('hide');
+    expect(harm('[alt]{position:relative;inset:4px;background:#f0f}', original, patched)).toBeNull();
   });
 });
