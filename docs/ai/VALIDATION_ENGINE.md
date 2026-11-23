@@ -202,6 +202,31 @@ writes anything into a customer's repository:
   running animation with a positive delay shows the **first** frame during the delay
   when the fill mode is `backwards` or `both`.
 
+   Nine more gaps of the same judgement are closed after that. **Attribute reads
+   whose name the script builds** are resolved: a concatenation of string literals
+   (`'a'+'lt'`) names the attribute it evaluates to, and a name the reader cannot
+   resolve fails closed into the generic bucket — `hasAttributes()` joins the
+   generic reads (`getAttributeNames()`, `getAttributeNode()`,
+   `attributes.getNamedItem()`). A **`<script src>` target** is followed into the
+   tree and read as runtime code whatever the file is called — a browser executes
+   the response by its MIME type, not by its suffix — and a target outside the
+   repository makes the destination unprovable. The runtime is judged against
+   **every element the remediation introduces**: a script that names an added id or
+   reads an added attribute reaches that element only after the fix lands. The
+   **functional pseudo-classes** `:is()`, `:where()` and `:not()` are read and
+   matched the way the browser matches them, and the fix's **removed** classes and
+   attributes are tracked — removing `.card` makes `:not(.card)` start matching. An
+   added **`tabindex`** is a focusability transition like `autofocus`, so every
+   focus rule whose compound can match the element is judged. The **painted
+   surface** is composed for a **non-positioned** element as well, and a painted
+   box that covers the viewport **because of the fix** is refused. A large
+   **positive** offset or margin is off-screen just like a large negative one. A
+   remediation may not **introduce a URI attribute** the original element does not
+   have — a relative path is a request from the customer's browser — and only a
+   pure in-page fragment (`#main`) stays allowed. No **live element** of the
+   replacement may be hidden: the `hidden` attribute and the hiding styles are
+   refused on every live tag, not only on the first one.
+
 An incomplete scan never patches a file; the fix stays a review suggestion. The
 review comment that is written into the file instead neutralizes the comment
 terminator (`*/`, `-->`, `--!>`), so untrusted text cannot close the comment and
