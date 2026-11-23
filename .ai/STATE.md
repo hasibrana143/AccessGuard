@@ -2,15 +2,33 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 eleventh-review closure in progress** 🔴 |
-| Current task | Close the six eleventh-review findings — 11-H1 (runtime carriers and generic state reads), 11-H2 (the effective painted surface), 11-M1 (clipping preservation), 11-M2 (custom-property resource resolution), 11-M3 (animation delay and fill semantics) — at their root cause, with a permanent regression each |
+| Current phase | **SECURITY FIX LOOP — V23 eleventh-review closure shipped, twelfth review pending** 🟡 |
+| Current task | Run the twelfth independent security review against the eleventh-review closure tree `d429c6b`; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | RED — the eleventh independent review returned **NOT READY (Critical 0, High 3, Medium 3)**: the runtime scanner and the painted-surface model still had equivalent open paths, so the release gate stays closed until a **twelfth** independent review returns READY (Critical 0, High 0) |
+| Status | AMBER — all six eleventh-review findings (High 2, Medium 3 — the review counted the two runtime paths and the five geometry paths as three High) are closed at their root cause with a permanent regression each, the gate suite is green and the closure is pushed; the gate stays closed until a fresh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Land the two closure scopes (the destination CSS analyser and the repository runtime scanner), re-run the fourth-through-tenth-review payload matrix plus the eleven new reproductions in the unsafe direction, then run the full gate suite and push the closure |
-| Last verification | 2026-11-23 — eleventh review: NOT READY (High 3, Medium 3) against the closure tree `7ec51ee` (checkout `0df2299`, baseline `08ab9ef`); the reviewer's own gate suite was green (tsc 0, lint 0, vitest 53 files/770 tests, coverage 65.35/57.52/67.96/67.05, build 0, Playwright 79/79, npm audit Critical 0 / High 0) and its payload re-runs passed 42/42, 19/19, 118/118, 17/17, 9/9 and the shipped route regressions 16/16 |
+| Next action | Verify the four workflows on the pushed closure head, record the runs in `.ai/DEPLOYMENT.md`, then run the twelfth independent security review (baseline `08ab9ef`, reviewed tree = the closure commit `d429c6b`) |
+| Last verification | 2026-11-23 — eleventh-review closure: tsc 0, lint 0, vitest 53 files/799 tests, coverage 66.59/59.2/69.02/68.3, build 0, Playwright 79/79, npm audit High 0, closure matrix 46/46, prior matrices 19/19 + 42/42 + 118/118; the eleventh review's own gate suite was green (770/770, Playwright 79/79) and its verdict was NOT READY (High 3, Medium 3) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-23, eleventh-review closure)
+
+| Check | Result |
+|---|---|
+| Eleventh-review closure | PASS — all six findings (11-H1, 11-H2, 11-M1, 11-M2, 11-M3) fixed at their root cause in `d429c6b`; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-11.md` |
+| Permanent regressions | PASS — 29 new tests (the event-handler carrier, the three generic attribute reads, the attribute iteration, the unreadable handler, the logical padding and border longhands, `zoom`, the unconstrained scale, the aspect ratio, the box shadow, the zero cap with clipping, the inherited custom property and the animation timing); the shipped suites are 92 (`css-context.test.ts`) and 70 (`github.test.ts`) tests |
+| Eleventh-review closure matrix | PASS — 1 file, 46/46 assertions: the 13 new reproductions are blocked in the unsafe direction (0 fixes, 0 writes, non-null destination harm), the benign twins stay allowed, and the route refuses the inline-handler and the zoom case with `400` and no branch, no write and no pull request. The file was deleted after the run |
+| Prior payload matrices | PASS — the tenth-review closure matrix 19/19, the ninth-review closure matrix 42/42 and the prior / legitimate matrix 118/118 (recovered from the reviewer's own harnesses). The files were deleted after the run |
+| Harness correction (not a product change) | The first run failed on one benign twin that made the rule **activated** by the fix; the twin was corrected to the shape that tests the resource check. No shipped source changed for it |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 799/799 tests (was 53/770) |
+| Coverage | PASS — statements 66.59% (threshold 55) · branches 59.2% (50) · functions 69.02% (58) · lines 68.3% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+| Twelfth independent security review | PENDING — the release gate opens only on READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, eleventh independent security review)
 
@@ -20,7 +38,7 @@
 | Reviewer's own re-runs | PASS — the tenth-review closure matrix 19/19, the ninth-review closure matrix 42/42, the prior / legitimate matrix 118/118 (one harness-only confidence expectation corrected — not a product change), the new equivalent-path writer / verifier / Chromium harness 17/17, the remaining-equivalent probe 1/1, the real-route / audit harness 9/9 and the shipped create-PR route regressions 16/16 |
 | Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 770/770, coverage 65.35/57.52/67.96/67.05, build 0, Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
 | The six findings | **11-H1** (High) — the event-handler attributes of repository HTML are runtime carriers the scanner never read, and `getAttributeNames()` / `getAttributeNode()` / `attributes.getNamedItem()` are not state reads; **11-H2** (High) — the logical padding longhands, `zoom`, an unconstrained `scale`, `aspect-ratio` and `box-shadow` bypass the painted-surface model; **11-M1** — a zero `max-height` / `max-width` with a clipping overflow removes the painted control; **11-M2** — a `var(--pixel)` reference hides the `url(...)` from the resource check and the inherited `:root` definition is missing; **11-M3** — the animation delay, the negative delay of a paused timeline and the fill mode decide the frame the customer sees |
-| Closure scopes | IN PROGRESS — (1) destination CSS: the painted surface, the clipping, the custom-property resource resolution and the animation timing; (2) repository runtime: the inline event handlers and the generic attribute state reads |
+| Closure scopes | CLOSED — (1) destination CSS: the painted surface, the clipping, the custom-property resource resolution and the animation timing; (2) repository runtime: the inline event handlers and the generic attribute state reads |
 | Release gate | CLOSED — opens only when a **twelfth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, tenth-review closure)

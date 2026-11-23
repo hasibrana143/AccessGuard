@@ -27,10 +27,30 @@ Last run: 2026-11-23 (eleventh independent security review)
 | 11-M2 | Medium | the customer-side request hidden behind a `var(--pixel)` reference and the missing inherited `:root` definition | `src/lib/css-context.ts` |
 | 11-M3 | Medium | the animation delay, the negative delay of a paused timeline and the fill mode | `src/lib/css-context.ts` |
 
-### Closure evidence (the eleventh-review closure run)
+### Closure evidence (the eleventh-review closure run, 2026-11-23)
 
-Pending — the closure scopes are in progress. The gate suite and the reviewer-payload
-re-run are recorded here when the closure lands.
+| Check | Result |
+|---|---|
+| Eleventh-review closure matrix (temporary) | PASS — 1 file, 46/46 assertions: the 13 new reproductions are blocked in the unsafe direction (0 fixes, 0 writes, non-null destination harm), the benign twins stay allowed, and the **route** refuses the inline-handler and the zoom case with `400` and no branch, no write and no pull request. The file `src/lib/__tests__/tmp-review11-closure.test.ts` was deleted after the run |
+| Prior payload matrices (temporary, recovered from the reviewer's own harnesses) | PASS — the tenth-review closure matrix 19/19, the ninth-review closure matrix 42/42 (61 assertions across the two files) and the prior / legitimate matrix 118/118 (`tmp-prior-118-matrix.mts`). The files were deleted after the run |
+| Harness correction (not a product change) | The first run failed on **one** benign twin: `:root{--brand:#06c}[alt]{color:var(--brand)}` was written with an original element that carried no `alt`, which makes the rule **activated** by the fix — and the effective style must stay unprovable for a `var()` it cannot resolve. The twin was corrected to the shape that tests the resource check (an element that already carries the attribute) and the matrix then passed 46/46. No shipped source changed for it |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 799/799 tests, 0 failed (was 53/770) |
+| Coverage | PASS — statements 66.59% (threshold 55) · branches 59.2% (50) · functions 69.02% (58) · lines 68.3% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
+| `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev toolchain) |
+
+### Permanent regressions added for the eleventh review
+
+| Finding | Regression | File |
+|---|---|---|
+| 11-H1 — the runtime carriers and the generic state reads | the inline event handler, `getAttributeNames()`, `getAttributeNode()`, `attributes.getNamedItem()`, an iteration of `element.attributes` and an unreadable handler keep the fix out of the repository; a handler that does not react to the fix does not | `github.test.ts` |
+| 11-H2 — the effective painted surface | the logical padding and border longhands, `zoom`, an unconstrained scale, an `aspect-ratio` that fills an undeclared axis and a viewport-wide `box-shadow` are refused; the small growth twins stay harmless | `css-context.test.ts` |
+| 11-M1 — the clipping preservation | a zero `max-height` / `max-width` with a clipping overflow removes the painted control; a zero cap without clipping and a cap that is not zero do not | `css-context.test.ts` |
+| 11-M2 — the inherited custom property | the inherited `url(…)` behind a `var(…)` is caught, an inherited custom property without a resource is not, and an unresolved reference is unprovable | `css-context.test.ts` |
+| 11-M3 — the animation timing | the paused negative delay and the running backwards fill select the frame the customer sees, a positive delay without the fill does not, and an unreadable timing is unprovable | `css-context.test.ts` |
 
 ## Tenth-review closure evidence
 

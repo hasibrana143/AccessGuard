@@ -1,29 +1,37 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + tenth-review closure** · Date: 2026-11-23 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + eleventh-review closure** · Date: 2026-11-23 · Owner: CTO agent
 
 ## What shipped
 
 The four P0 "make the product true" gaps from `.ai/PRODUCT-CRITIQUE-DEEP.md` are closed.
-The first V23 cut was reviewed ten times: the first review found seven more defects
+The first V23 cut was reviewed eleven times: the first review found seven more defects
 (3 reproduced P0 defects, 3 High, 4 Medium, 1 Low), the **re-review of that hardening
 found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, the
 **fourth review found 3 High, 9 Medium**, the **fifth review of that closure found
 2 High, 4 Medium**, the **sixth review of that closure found 2 High, 6 Medium**, the
 **seventh review of that closure found 3 High, 4 Medium**, the **eighth review of
 that closure found 4 High, 2 Medium**, the **ninth review of that closure found
-3 High, 3 Medium**, and the **tenth review of that closure found 4 High, 4 Medium**.
+3 High, 3 Medium**, the **tenth review of that closure found 4 High, 4 Medium**, and
+the **eleventh review of that closure found 3 High, 3 Medium**.
 Every earlier round closed the literal reproductions while an equivalent path stayed
 open. The tenth review independently reproduced eight equivalent paths — an inline
 `<script>` carrier, a DOM property getter, an escaped attribute **name**, the painted
 box, the focus activation a fix causes, a paused animation, a customer-side request
 through the focus, a repository mutation after a refusal and a missing audit trail.
-**All eight are now fixed at their root cause, with a permanent regression each**
-(the reviewer-payload re-run: 19/19 assertions — the nine unsafe reproductions
-blocked in the unsafe direction, the ten legitimate behaviour groups still pass, and
-the legitimate fix still lands).
+**All eight are now fixed at their root cause, with a permanent regression each.**
+The eleventh review independently reproduced six more equivalent paths — the
+**event-handler carrier** and the **generic attribute state reads**, the **effective
+painted surface** (the logical padding and border longhands, `zoom`, an unconstrained
+scale, `aspect-ratio` and `box-shadow`), the **clipping preservation**, the
+**custom-property resource** and the **animation delay and fill mode**.
+**All six are now fixed at their root cause, with a permanent regression each**
+(the closure matrix: 46/46 assertions — the 13 new reproductions blocked in the
+unsafe direction, the benign twins still allowed, the route refusing both new cases
+with `400` and no branch, no write and no pull request; the recovered prior matrices
+19/19, 42/42 and 118/118).
 **The release verdict is still NOT READY** — the gate requires Critical 0 and High 0
-from an independent pass, and the **eleventh review is the next check**.
+from an independent pass, and the **twelfth review is the next check**.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -31,6 +39,22 @@ from an independent pass, and the **eleventh review is the next check**.
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Eleventh independent security review (2026-11-23)
+
+> The verdict was NOT READY — Critical 0, High 3, Medium 3, Low 0 — against tree
+> `7ec51ee`. **All six findings are closed** in `d429c6b` (the closure table and the
+> evidence are in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact is
+> `.ai/SECURITY-REVIEW-11.md`).
+> The release gate opens only when a **twelfth independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 11-H1 — the runtime scanner read script **files** and inline script **blocks**, never the **event-handler attributes** of the markup, and knew no **generic** attribute read | High | An inline `onload` handler and the script twins `getAttributeNames()`, `getAttributeNode()` and `attributes.getNamedItem()` each turned the target from a static `16×16` image into a fixed `1280×720` takeover; the real route answered `200 success:true` and opened a pull request | **Closed** — the handler attributes are analysed like inline scripts (an unreadable handler fails closed), and a generic attribute enumeration that can react to any attribute the fix adds is a state read |
+| 11-H2 — the painted box knew the content box, not the **effective** surface | High | The logical padding longhands, `zoom:3`, `scale:100` and `width:100%;aspect-ratio:1` each painted a viewport takeover, and a fixed `1×1` element with `box-shadow:0 0 0 10000px #f0f` covered 921,357 of 921,600 pixels | **Closed** — the logical padding and border longhands join the sides, `zoom` is a scale factor, a scale above one without a declared size is unprovable, an aspect ratio that fills an undeclared axis is unprovable, and a shadow grows the painted area by its blur and spread |
+| 11-M1 — a maximum size was read as a size, not as a **cap** | Medium | `max-height:0` with `overflow:hidden` removed the patched control from the customer's paint | **Closed** — a zero cap together with a clipping overflow removes the painted control; a zero cap without clipping and a cap that is not zero stay harmless |
+| 11-M2 — the resource check read the **raw** declaration value | Medium | `:root{--pixel:url(…)}` with `background-image:var(--pixel)` made the customer browser request `GET /pixel` after the fix | **Closed** — the resource check resolves the `var()` references against the definitions that can reach the element, the global ones included; an unresolved reference is unprovable, and the effective style stays unprovable for a `var()` it cannot resolve |
+| 11-M3 — the visible frame was chosen from the direction alone | Medium | A paused animation with `animation-delay:-0.4s` and the running `animation-fill-mode:backwards` twin both held the computed opacity at `0` | **Closed** — the play state, the delay, the duration and the fill mode decide the frame, and the keyframe offsets are kept so a paused timeline can be placed |
 
 ### Tenth independent security review (2026-11-23)
 
@@ -223,15 +247,21 @@ it had excluded.
 
 ## Verification
 
+The table below is the **eleventh-review closure** run (2026-11-23) — the current
+state of the tree. The earlier rounds are listed in `.ai/TEST-STATUS.md`.
+
 | Check | Result |
 |---|---|
 | `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
 | `npm run lint` | PASS — 0 errors |
-| `npx vitest run` | PASS — 53 files, 667 tests, 0 failed (was 53/634) |
-| `npx vitest run --coverage` | PASS — statements 64.80% / branches 56.21% / functions 66.80% / lines 66.34% (CI thresholds 55/50/58/57) |
+| `npx vitest run --coverage` | PASS — 53 files, 799 tests, 0 failed (was 53/770) |
+| `npx vitest run --coverage` | PASS — statements 66.59% / branches 59.2% / functions 69.02% / lines 68.3% (CI thresholds 55/50/58/57) |
 | `npm run build` | PASS — exit 0, Next standalone build |
-| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.1 min) |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
 | `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
+| Eleventh-review closure matrix (temporary, deleted afterwards) | PASS — 46/46: the 13 new reproductions blocked in the unsafe direction, the benign twins allowed, the route refusing both new cases with `400` and no branch, no write and no pull request |
+| Prior payload matrices (temporary, deleted afterwards) | PASS — the tenth-review matrix 19/19, the ninth-review matrix 42/42, the prior / legitimate matrix 118/118 |
+| Earlier rounds (the first, re-review, third, fourth, fifth and sixth reviews) | PASS — see `.ai/TEST-STATUS.md` |
 | Reviewer exploit reproductions (6) | PASS — every reproduction of the re-review is blocked |
 | Third-review reproductions (5 + 2) | PASS — the escaped overlay, the frame, the injected selector, the `aria-hidden` text deletion and the wrong duplicate occurrence are blocked; the CSS comment and the entity encoded overlay were found while fixing them and are blocked as well |
 | Fourth-review reproductions (12) | PASS — all twelve fourth-review payloads are blocked on the fixed tree (the temporary reproduction file was deleted afterwards) |
@@ -279,6 +309,9 @@ Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same co
 - `db1fc6d` / `11918c1` / `3b3eb0f` / `0650188` — the fifth-review closure (code, docs, state, volume entry)
 - `4cdefea` / `15300b9` — the sixth-review closure (code, docs); the state and volume entry follow in the same cycle
 - `5fb4473` / `0b7befc` — the seventh-review closure (code, docs); the state and volume entry follow in the same cycle
+- `7ec51ee` / `50fa70d` / `cd85358` / `94acf80` / `0df2299` — the tenth-review closure (code, docs, state, volume entry, pipeline evidence)
+- `2506792` — the eleventh independent security review (state)
+- `d429c6b` / `d53daf7` — the eleventh-review closure (code, docs); the state and volume entry follow in the same cycle
 
 ## What this does NOT prove (read before making a claim)
 
