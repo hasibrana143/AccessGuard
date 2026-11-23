@@ -1,5 +1,6 @@
 // GitHub integration for AccessGuard
 import { Octokit } from '@octokit/rest';
+import { decodeHtmlEntities, parseTagAttributes } from '@/lib/html-attributes';
 
 // Check if GitHub is configured
 export function isGitHubConfigured(): boolean {
@@ -214,8 +215,9 @@ const SCRIPT_FILE_PATTERN = /\.(js|jsx|mjs|cjs|ts|tsx|cts|mts)$/i;
  * Inline scripts are runtime code too; an unclosed block cannot be followed
  * safely.
  */
-function extractInlineScripts(content: string): { scripts: string[]; incomplete: boolean } {
+function extractInlineScripts(content: string): { scripts: string[]; incomplete: boolean; markup: string } {
   const scripts: string[] = [];
+  const bodyRanges: Array<{ start: number; end: number }> = [];
   let cursor = 0;
 
   while (cursor < content.length) {
@@ -228,13 +230,107 @@ function extractInlineScripts(content: string): { scripts: string[]; incomplete:
     const closing = /<\/script\s*>/gi;
     closing.lastIndex = bodyStart;
     const close = closing.exec(content);
-    if (!close) return { scripts, incomplete: true };
+    if (!close) {
+      bodyRanges.push({ start: bodyStart, end: content.length });
+      return { scripts, incomplete: true, markup: blankRanges(content, bodyRanges) };
+    }
 
     scripts.push(content.slice(bodyStart, close.index));
+    bodyRanges.push({ start: bodyStart, end: close.index });
     cursor = close.index + close[0].length;
   }
 
-  return { scripts, incomplete: false };
+  return { scripts, incomplete: false, markup: blankRanges(content, bodyRanges) };
+}
+
+/** Hide inline script bodies from the markup reader without joining tokens. */
+function blankRanges(content: string, ranges: Array<{ start: number; end: number }>): string {
+  let result = '';
+  let cursor = 0;
+  for (const range of ranges) {
+    result += content.slice(cursor, range.start);
+    result += content.slice(range.start, range.end).replace(/[^\r\n]/g, ' ');
+    cursor = range.end;
+  }
+  return result + content.slice(cursor);
+}
+
+/**
+ * Event-handler attributes are runtime code too; markup whose attribute value
+ * cannot be read cannot be followed safely.
+ */
+function extractEventHandlerAttributes(markup: string): { handlers: string[]; incomplete: boolean } {
+  const handlers: string[] = [];
+  let cursor = 0;
+
+  while (cursor < markup.length) {
+    const open = markup.indexOf('<', cursor);
+    if (open < 0) break;
+
+    if (markup.startsWith('<!--', open)) {
+      const close = markup.indexOf('-->', open + 4);
+      if (close < 0) return { handlers, incomplete: true };
+      cursor = close + 3;
+      continue;
+    }
+
+    if (markup.startsWith('<!', open) || markup.startsWith('<?', open)) {
+      const close = markup.indexOf('>', open + 2);
+      if (close < 0) return { handlers, incomplete: true };
+      cursor = close + 1;
+      continue;
+    }
+
+    const nameStart = open + 1;
+    if (!/[a-z]/i.test(markup[nameStart] ?? '')) {
+      cursor = open + 1;
+      continue;
+    }
+
+    let sectionStart = nameStart;
+    while (sectionStart < markup.length && !/[\s/>]/.test(markup[sectionStart])) sectionStart++;
+    const tagName = markup.slice(nameStart, sectionStart).toLowerCase();
+
+    let index = sectionStart;
+    let quote: string | null = null;
+    let end = -1;
+    while (index < markup.length) {
+      const character = markup[index];
+      if (quote) {
+        if (character === quote) quote = null;
+        index++;
+        continue;
+      }
+      if (character === '"' || character === "'") {
+        quote = character;
+        index++;
+        continue;
+      }
+      if (character === '>') {
+        end = index;
+        break;
+      }
+      index++;
+    }
+    if (end < 0 || quote) return { handlers, incomplete: true };
+
+    for (const attribute of parseTagAttributes(markup.slice(sectionStart, end))) {
+      if (/^on/i.test(attribute.name) && attribute.value) {
+        handlers.push(decodeHtmlEntities(attribute.value));
+      }
+    }
+    cursor = end + 1;
+
+    if (tagName === 'style' || tagName === 'textarea' || tagName === 'title') {
+      const closing = new RegExp(`</${tagName}\\s*>`, 'ig');
+      closing.lastIndex = cursor;
+      const close = closing.exec(markup);
+      if (!close) return { handlers, incomplete: true };
+      cursor = close.index + close[0].length;
+    }
+  }
+
+  return { handlers, incomplete: false };
 }
 
 /**
@@ -249,7 +345,11 @@ const RUNTIME_STYLE_PATTERN =
 
 /** Reads that can gate an element mutation at runtime. */
 const RUNTIME_STATE_READ_PATTERN =
-  /\b(?:hasAttribute|getAttribute|toggleAttribute)\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
+  /\b(?:hasAttribute|getAttribute|getAttributeNames|getAttributeNode|toggleAttribute)\s*\(|\bgetNamedItem\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
+
+/** Reads of every attribute, which can react to any attribute the fix adds. */
+const RUNTIME_GENERIC_STATE_READ_PATTERN =
+  /\bgetAttributeNames\s*\(|\.\s*attributes\b(?!\s*\.\s*getNamedItem\s*\()/i;
 
 /** Class, inline-style and attribute mutations the analyser cannot follow. */
 const RUNTIME_MUTATION_PATTERN =
@@ -557,6 +657,7 @@ export async function planRepositoryFixes(
   const styleProblems: string[] = [];
   const runtimeMutationScripts: string[] = [];
   const conditionalMutationScripts: string[] = [];
+  const genericStateReadMutationScripts: string[] = [];
 
   const addCssSource = (path: string, css: string): void => {
     if (cssPaths.has(path)) return;
@@ -588,6 +689,9 @@ export async function planRepositoryFixes(
       runtimeMutationScripts.push(content);
       if (RUNTIME_STATE_READ_PATTERN.test(content)) {
         conditionalMutationScripts.push(content);
+      }
+      if (RUNTIME_GENERIC_STATE_READ_PATTERN.test(content)) {
+        genericStateReadMutationScripts.push(content);
       }
     }
   };
@@ -624,6 +728,13 @@ export async function planRepositoryFixes(
       }
       inline.scripts.forEach((script, index) => {
         inspectRuntimeScript(`${path}#inline-script-${index + 1}`, script);
+      });
+      const handlers = extractEventHandlerAttributes(inline.markup);
+      if (handlers.incomplete) {
+        styleProblems.push(`an event handler in ${path} is incomplete, which the analyser cannot resolve`);
+      }
+      handlers.handlers.forEach((handler, index) => {
+        inspectRuntimeScript(`${path}#event-handler-${index + 1}`, handler);
       });
     }
   }
@@ -678,7 +789,8 @@ export async function planRepositoryFixes(
       if (
         added.size > 0 &&
         (conditionalMutationScripts.some(content => scriptNamesAttribute(content, added)) ||
-          runtimeMutationScripts.some(content => scriptReadsAttributeProperty(content, added)))
+          runtimeMutationScripts.some(content => scriptReadsAttributeProperty(content, added)) ||
+          genericStateReadMutationScripts.length > 0)
       ) {
         pendingFixIds.delete(violation.id);
         refusedFixIds.add(violation.id);

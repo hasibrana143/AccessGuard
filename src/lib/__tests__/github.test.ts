@@ -577,6 +577,145 @@ document.querySelectorAll("img").forEach(function(img){if(img.hasAttribute("alt"
     expect(result.appliedFixIds).toEqual([]);
   });
 
+  it('11-H1a: does not patch an element an inline event handler activates', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body onload="const t=document.querySelector('img');if(t&&t.hasAttribute('alt'))t.classList.add('overlay')"><img id="target" src="x"></body></html>`
+    );
+
+    const plan = await planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      },
+    ]);
+
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  });
+
+  it.each([
+    [
+      '11-H1b',
+      'getAttributeNames()',
+      "document.querySelectorAll('img').forEach(img=>{if(img.getAttributeNames().length>1)img.classList.add('overlay');});",
+    ],
+    [
+      '11-H1c',
+      'getAttributeNode()',
+      "document.querySelectorAll('img').forEach(img=>{if(img.getAttributeNode('alt'))img.classList.add('overlay');});",
+    ],
+    [
+      '11-H1d',
+      'attributes.getNamedItem()',
+      "document.querySelectorAll('img').forEach(img=>{if(img.attributes.getNamedItem('alt'))img.classList.add('overlay');});",
+    ],
+  ])('%s: does not patch an element a script activates through %s', async (_id, _api, script) => {
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent('app.js', script);
+
+    const plan = await planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      },
+    ]);
+
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  });
+
+  it('does not patch an element when a script iterates every attribute', async () => {
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      "let count=0;document.querySelectorAll('img').forEach(img=>{for(const attribute of img.attributes)count++;if(count>2)img.classList.add('overlay');});"
+    );
+
+    const plan = await planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      },
+    ]);
+
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  });
+
+  it('does not patch when an event handler has an unterminated quote', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><button onclick="if(t.hasAttribute('alt'))t.classList.add('overlay')><img id='target' src='x'></body></html>`
+    );
+
+    const plan = await planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: "<img id='target' src='x'>",
+        remediationCode: "<img id='target' src='x' alt='Photo'>",
+      },
+    ]);
+
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  });
+
+  it('writes a fix when inline event handlers do not mutate the page', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><button onclick="console.log('clicked')">One</button><button onclick="if(t.hasAttribute('alt'))console.log('x')">Two</button><img id="target" src="x"></body></html>`
+    );
+
+    const result = await applyFixesToRepository(
+      'token',
+      'owner',
+      'repo',
+      'accessguard/fix-x',
+      'main',
+      [
+        {
+          id: 'v1',
+          ruleId: 'image-alt',
+          elementHtml: '<img id="target" src="x">',
+          remediationCode: '<img id="target" src="x" alt="Photo">',
+        },
+      ]
+    );
+
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+    expect(result.filesModified).toEqual([{ path: 'index.html', fixesApplied: 1 }]);
+    expect(result.fixesAppliedTotal).toBe(1);
+  });
+
   it('does not patch an element when a script reads the attribute property the fix adds', async () => {
     // The DOM property reflects the attribute just like getAttribute does.
     tree(['index.html', 'app.js']);

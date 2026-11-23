@@ -28,6 +28,12 @@ export interface CssRule {
   declarations: string;
 }
 
+/** One frame of an animation and its position on the timeline. */
+export interface CssKeyframe {
+  offset: number;
+  body: string;
+}
+
 /** The rules of a stylesheet and the reasons the stylesheet cannot be judged. */
 export interface CssContext {
   rules: CssRule[];
@@ -42,7 +48,7 @@ export interface CssContext {
    * The frames of every animation of the stylesheet, by the name of the
    * animation. The frames matter only when an element animates with them.
    */
-  keyframes: Map<string, string[]>;
+  keyframes: Map<string, CssKeyframe[]>;
 }
 
 /** The parts of an element a CSS selector can name. */
@@ -404,9 +410,14 @@ function collectInto(css: string, parentSelector: string | null, context: CssCon
           context.unprovable.push('the stylesheet defines an animation without a name');
           continue;
         }
-        const frames: string[] = [];
+        const frames: CssKeyframe[] = [];
         for (const frame of parseBlocks(block.body)) {
-          frames.push(frame.body);
+          const offset = keyframeOffsetOf(frame.prelude);
+          if (offset === null) {
+            context.unprovable.push('the stylesheet defines an animation frame without a readable offset');
+            continue;
+          }
+          frames.push({ offset, body: frame.body });
         }
         context.keyframes.set(animationName, [
           ...(context.keyframes.get(animationName) ?? []),
@@ -974,6 +985,16 @@ function carriesResource(value: string): boolean {
   return /url\s*\(|\bimage-set\s*\(|\bsrc\s*\(/i.test(value);
 }
 
+/** Whether a declaration carries a resource after its custom properties resolve. */
+function resourceState(
+  value: string,
+  definitions: Map<string, string>
+): 'present' | 'absent' | 'unknown' {
+  const resolved = resolveCustomProperties(value, definitions);
+  if (resolved.includes('var(')) return 'unknown';
+  return carriesResource(resolved) ? 'present' : 'absent';
+}
+
 /**
  * The edges an `inset` shorthand sets.
  *
@@ -1086,6 +1107,22 @@ function customPropertyDefinitions(declarations: Declaration[]): Map<string, str
   return definitions;
 }
 
+/** The custom properties that a root rule can inherit into every element. */
+function globalCustomPropertyDefinitions(rules: CssRule[]): Map<string, string> {
+  const definitions = new Map<string, string>();
+  for (const rule of rules) {
+    const global = splitTopLevel(rule.selector, ',').some(part => {
+      const selector = decodeCssEscapes(part.trim()).toLowerCase();
+      return selector === ':root' || selector === 'html';
+    });
+    if (!global) continue;
+    for (const [name, value] of customPropertyDefinitions(parseDeclarations(rule.declarations))) {
+      definitions.set(name, value);
+    }
+  }
+  return definitions;
+}
+
 /**
  * Resolve the `var()` references of a value with the custom properties.
  *
@@ -1151,7 +1188,8 @@ const RELEVANT_PROPERTIES = new Set([
   'float', 'clear', 'flex', 'flex-basis', 'order', 'aspect-ratio', 'contain',
   'isolation', 'mix-blend-mode', 'filter', 'backdrop-filter', 'mask', '-webkit-mask',
   'content-visibility',
-  'z-index', 'animation', 'animation-name', 'box-sizing', 'gap', 'grid-area',
+  'z-index', 'animation', 'animation-name', 'animation-duration', 'animation-delay',
+  'animation-fill-mode', 'animation-play-state', 'animation-direction', 'box-sizing', 'gap', 'grid-area',
   'grid-template', 'grid-template-columns', 'grid-template-rows', 'columns', 'column-count',
 ]);
 
@@ -1243,8 +1281,9 @@ const JUDGEMENT_PROPERTIES = new Set([
   'inset-block-start', 'inset-block-end', 'inset-inline-start', 'inset-inline-end',
   'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height',
   'inline-size', 'block-size', 'min-inline-size', 'min-block-size',
-  'display', 'visibility', 'opacity', 'transform', 'scale', 'translate', 'filter',
-  'content-visibility', 'font-size', 'line-height', 'text-indent',
+  'display', 'visibility', 'opacity', 'transform', 'scale', 'zoom', 'translate', 'filter',
+  'animation-duration', 'animation-delay', 'animation-fill-mode', 'animation-play-state',
+  'animation-direction', 'content-visibility', 'font-size', 'line-height', 'text-indent',
   'color', '-webkit-text-fill-color',
 ]);
 
@@ -1327,6 +1366,17 @@ const HIDE_FRAME_PROPERTIES = new Set([
   'color', '-webkit-text-fill-color',
 ]);
 
+/** The position of a keyframe on its animation timeline. */
+function keyframeOffsetOf(prelude: string): number | null {
+  const normalized = prelude.trim().toLowerCase();
+  if (normalized === 'from') return 0;
+  if (normalized === 'to') return 100;
+  const match = /^(\d+(?:\.\d+)?|\.\d+)%$/.exec(normalized);
+  if (!match) return null;
+  const offset = Number(match[1]);
+  return offset >= 0 && offset <= 100 ? offset : null;
+}
+
 /** The keywords of the `animation` shorthand that are not the name. */
 const ANIMATION_KEYWORDS = new Set([
   'infinite', 'alternate', 'alternate-reverse', 'reverse', 'both', 'forwards', 'backwards',
@@ -1384,21 +1434,22 @@ function orderedAnimationNamesOf(state: ElementState): string[] {
  * after it runs is the `from` frame, not the `to` frame.
  */
 function animationDirectionOf(state: ElementState, name: string): string {
-  // The longhand decides the direction on its own.
-  for (const value of state.values.get('animation-direction') ?? []) {
-    const direction = value.trim().toLowerCase();
-    if (direction === 'reverse' || direction === 'alternate' || direction === 'alternate-reverse') {
-      return direction;
-    }
+  // The longhand decides the direction on its own, including `normal`.
+  const longhand = animationLonghandValue(state, 'animation-direction', name);
+  if (
+    longhand === 'normal' ||
+    longhand === 'reverse' ||
+    longhand === 'alternate' ||
+    longhand === 'alternate-reverse'
+  ) {
+    return longhand;
   }
 
-  for (const value of state.values.get('animation') ?? []) {
-    for (const part of splitTopLevel(value, ',')) {
-      if (animationNameOf(part) !== name) continue;
-      for (const token of part.split(/\s+/)) {
-        if (token === 'reverse' || token === 'alternate' || token === 'alternate-reverse') {
-          return token;
-        }
+  const shorthand = animationShorthandPart(state, name);
+  if (shorthand) {
+    for (const token of shorthand.split(/\s+/)) {
+      if (token === 'reverse' || token === 'alternate' || token === 'alternate-reverse') {
+        return token;
       }
     }
   }
@@ -1413,23 +1464,193 @@ function animationDirectionOf(state: ElementState, name: string): string {
  * is not the endpoint the direction would otherwise select.
  */
 function animationPlayStateOf(state: ElementState, name: string): 'running' | 'paused' {
-  const names = orderedAnimationNamesOf(state);
-  const index = names.indexOf(name);
+  const longhand = animationLonghandValue(state, 'animation-play-state', name);
+  if (longhand === 'running' || longhand === 'paused') return longhand;
 
-  for (const value of state.values.get('animation-play-state') ?? []) {
-    const states = splitTopLevel(value, ',').map(part => part.trim().toLowerCase());
-    const playState = states.length === 1 ? states[0] : states[index];
-    if (playState === 'paused') return 'paused';
-  }
-
-  for (const value of state.values.get('animation') ?? []) {
-    for (const part of splitTopLevel(value, ',')) {
-      if (animationNameOf(part) !== name) continue;
-      if (part.split(/\s+/).some(token => token.toLowerCase() === 'paused')) return 'paused';
-    }
+  const shorthand = animationShorthandPart(state, name);
+  if (shorthand?.split(/\s+/).some(token => token.toLowerCase() === 'paused')) {
+    return 'paused';
   }
 
   return 'running';
+}
+
+/** The duration and delay of one animation, in milliseconds. */
+interface AnimationTiming {
+  duration: number;
+  delay: number;
+  unknown: boolean;
+}
+
+/** Parse a CSS animation time in milliseconds. */
+function parseAnimationTime(value: string): number | null {
+  const match = /^([+-]?(?:\d+|\d*\.\d+))(ms|s)$/.exec(value.trim());
+  if (!match) return null;
+  const amount = Number(match[1]);
+  return match[2] === 's' ? amount * 1000 : amount;
+}
+
+/** One longhand value aligned with an animation name. */
+function animationLonghandValue(
+  state: ElementState,
+  property: string,
+  name: string
+): string | undefined {
+  const index = orderedAnimationNamesOf(state).indexOf(name);
+  for (const value of state.values.get(property) ?? []) {
+    const values = splitTopLevel(value, ',').map(part => part.trim());
+    const selected = values.length === 1 ? values[0] : values[index];
+    if (selected !== undefined) return selected;
+  }
+  return undefined;
+}
+
+/** The `animation` shorthand that declares an animation name. */
+function animationShorthandPart(state: ElementState, name: string): string | undefined {
+  for (const value of state.values.get('animation') ?? []) {
+    for (const part of splitTopLevel(value, ',')) {
+      if (animationNameOf(part) === name) return part;
+    }
+  }
+  return undefined;
+}
+
+/** Read the timing values from one `animation` shorthand. */
+function animationShorthandTiming(value: string): AnimationTiming {
+  const times: number[] = [];
+  let unknown = false;
+
+  for (const token of value.split(/\s+/).filter(Boolean)) {
+    const time = parseAnimationTime(token);
+    if (time !== null) {
+      times.push(time);
+      continue;
+    }
+    if (/^[+-]?(?:\d|\.)/.test(token) || /^(?:calc|var)\(/i.test(token)) unknown = true;
+  }
+
+  if (times.length > 2) unknown = true;
+  const duration = times[0] ?? 0;
+  const delay = times[1] ?? 0;
+  if (duration < 0) unknown = true;
+  return { duration, delay, unknown };
+}
+
+/** True when an `animation` shorthand contains timing the analyser cannot read. */
+function animationShorthandIsUnprovable(value: string): boolean {
+  for (const part of splitTopLevel(value, ',')) {
+    if (animationNameOf(part) === null) continue;
+    if (animationShorthandTiming(part).unknown) return true;
+  }
+  return false;
+}
+
+/** The duration and delay that apply to one animation. */
+function animationTimingOf(state: ElementState, name: string): AnimationTiming {
+  const shorthand = animationShorthandPart(state, name);
+  const shorthandTiming = shorthand
+    ? animationShorthandTiming(shorthand)
+    : { duration: 0, delay: 0, unknown: false };
+  let duration = shorthandTiming.duration;
+  let delay = shorthandTiming.delay;
+  let unknown = shorthandTiming.unknown;
+
+  const durationValue = animationLonghandValue(state, 'animation-duration', name);
+  if (durationValue !== undefined) {
+    const parsed = parseAnimationTime(durationValue);
+    if (parsed === null || parsed < 0) unknown = true;
+    else duration = parsed;
+  }
+
+  const delayValue = animationLonghandValue(state, 'animation-delay', name);
+  if (delayValue !== undefined) {
+    const parsed = parseAnimationTime(delayValue);
+    if (parsed === null) unknown = true;
+    else delay = parsed;
+  }
+
+  return { duration, delay, unknown };
+}
+
+/** The fill mode that applies to one animation. */
+function animationFillModeOf(
+  state: ElementState,
+  name: string
+): 'none' | 'forwards' | 'backwards' | 'both' | 'unknown' {
+  const longhand = animationLonghandValue(state, 'animation-fill-mode', name);
+  if (longhand !== undefined) {
+    if (longhand === 'none' || longhand === 'forwards' || longhand === 'backwards' || longhand === 'both') {
+      return longhand;
+    }
+    return 'unknown';
+  }
+
+  const shorthand = animationShorthandPart(state, name);
+  if (!shorthand) return 'none';
+  for (const token of shorthand.split(/\s+/)) {
+    if (token === 'forwards' || token === 'backwards' || token === 'both' || token === 'none') {
+      return token;
+    }
+  }
+  return 'none';
+}
+
+/** The keyframe in effect at a position on the animation timeline. */
+function keyframeAtProgress(frames: CssKeyframe[], progress: number): CssKeyframe | null {
+  const sorted = [...frames].sort((left, right) => left.offset - right.offset);
+  let selected: CssKeyframe | null = null;
+  for (const frame of sorted) {
+    if (frame.offset > progress) break;
+    selected = frame;
+  }
+  return selected ?? sorted[0] ?? null;
+}
+
+/** The frames whose paint the customer sees for one animation. */
+function customerAnimationFrames(
+  state: ElementState,
+  name: string,
+  frames: CssKeyframe[],
+  timing: AnimationTiming
+): CssKeyframe[] | null {
+  const fillMode = animationFillModeOf(state, name);
+  if (fillMode === 'unknown') return null;
+
+  const sorted = [...frames].sort((left, right) => left.offset - right.offset);
+  if (sorted.length === 0) return [];
+
+  if (animationPlayStateOf(state, name) === 'paused') {
+    if (timing.delay >= 0) return [sorted[0] as CssKeyframe];
+
+    if (timing.duration <= 0) return null;
+    const activeTime = -timing.delay;
+    const iteration = Math.floor(activeTime / timing.duration);
+    const localProgress = (activeTime % timing.duration) / timing.duration;
+    const direction = animationDirectionOf(state, name);
+    const reverse =
+      direction === 'reverse' ||
+      (direction === 'alternate' && iteration % 2 === 1) ||
+      (direction === 'alternate-reverse' && iteration % 2 === 0);
+    const progress = reverse ? 1 - localProgress : localProgress;
+    const frame = keyframeAtProgress(sorted, progress * 100);
+    return frame ? [frame] : null;
+  }
+
+  const direction = animationDirectionOf(state, name);
+  const endpoints =
+    direction === 'reverse'
+      ? [sorted[0] as CssKeyframe]
+      : direction === 'normal'
+        ? [sorted[sorted.length - 1] as CssKeyframe]
+        : [sorted[0] as CssKeyframe, sorted[sorted.length - 1] as CssKeyframe];
+
+  if (timing.delay > 0 && (fillMode === 'backwards' || fillMode === 'both')) {
+    // The backwards fill shows the first frame during the delay; the endpoint
+    // still governs the state after the animation runs.
+    return [sorted[0] as CssKeyframe, ...endpoints];
+  }
+
+  return endpoints;
 }
 
 /** True when a value is a length or percentage the analyser can recognise. */
@@ -1483,6 +1704,7 @@ function isUnprovableValue(property: string, value: string): boolean {
   if (!value) return true;
   if (value.includes('var(')) return true;
   if (/\b(inherit|initial|unset|revert|revert-layer)\b/.test(value)) return true;
+  if (property === 'animation') return animationShorthandIsUnprovable(value);
 
   if (JUDGEMENT_PROPERTIES.has(property)) {
     if (property === 'position') return !POSITION_VALUES.has(value);
@@ -1510,7 +1732,23 @@ function isUnprovableValue(property: string, value: string): boolean {
       return value !== 'none' && !hasZeroScaleFunction(value) && !isLargeNegativeOffset(value);
     }
     if (property === 'scale') return !isScaleValue(value);
+    if (property === 'zoom') return zoomFactorOf(value) === null;
     if (property === 'translate') return !isTranslateValue(value);
+    if (property === 'animation-duration') {
+      return !splitTopLevel(value, ',').every(part => parseAnimationTime(part) !== null);
+    }
+    if (property === 'animation-delay') {
+      return !splitTopLevel(value, ',').every(part => parseAnimationTime(part) !== null);
+    }
+    if (property === 'animation-fill-mode') {
+      return !splitTopLevel(value, ',').every(part => ['none', 'forwards', 'backwards', 'both'].includes(part.trim()));
+    }
+    if (property === 'animation-play-state') {
+      return !splitTopLevel(value, ',').every(part => ['running', 'paused'].includes(part.trim()));
+    }
+    if (property === 'animation-direction') {
+      return !splitTopLevel(value, ',').every(part => ['normal', 'reverse', 'alternate', 'alternate-reverse'].includes(part.trim()));
+    }
     if (property === 'filter') return value !== 'none' && !hasZeroOpacity(value);
     if (property === 'content-visibility') return !CONTENT_VISIBILITY_VALUES.has(value);
     if (property === 'font-size') {
@@ -1590,6 +1828,30 @@ function hasZeroOpacity(value: string): boolean {
   });
 }
 
+/** The axes on which the element clips overflow. */
+function clippingOverflowOf(state: ElementState): { x: boolean; y: boolean } {
+  const clipping = { x: false, y: false };
+  const clips = (value: string): boolean => value === 'hidden' || value === 'clip';
+
+  for (const value of state.values.get('overflow') ?? []) {
+    const values = splitBoxShorthand(value);
+    if (!values) continue;
+    const x = values[0] ?? '';
+    const y = values.length > 1 ? (values[1] ?? '') : x;
+    clipping.x ||= clips(x);
+    clipping.y ||= clips(y);
+  }
+
+  for (const value of state.values.get('overflow-x') ?? []) {
+    if (clips(value.trim())) clipping.x = true;
+  }
+  for (const value of state.values.get('overflow-y') ?? []) {
+    if (clips(value.trim())) clipping.y = true;
+  }
+
+  return clipping;
+}
+
 /** The painted bounds of an element on one axis. */
 interface PaintedBox {
   coversX: boolean;
@@ -1611,11 +1873,19 @@ interface AxisGrowth {
   unknown: boolean;
 }
 
+/** The outside growth painted by the box shadows of an element. */
+interface ShadowGrowth {
+  x: number;
+  y: number;
+  unknown: boolean;
+}
+
 /** A declared size on one axis of a painted box. */
 interface AxisSize {
   ratio: number;
   fixedPx: number;
   known: boolean;
+  declared: boolean;
   unknown: boolean;
 }
 
@@ -1698,6 +1968,63 @@ function mergeGrowth(left: AxisGrowth, right: AxisGrowth): AxisGrowth {
   };
 }
 
+/** The outside growth of the box shadows declared on an element. */
+function boxShadowGrowthOf(state: ElementState): ShadowGrowth {
+  const growth: ShadowGrowth = { x: 0, y: 0, unknown: false };
+
+  for (const value of state.values.get('box-shadow') ?? []) {
+    if (value.trim() === 'none') continue;
+
+    for (const shadow of splitTopLevel(value, ',')) {
+      const trimmed = shadow.trim();
+      if (!trimmed || trimmed === 'none') continue;
+      // An inset shadow paints inside the border box.
+      if (trimmed.split(/\s+/)[0] === 'inset') continue;
+
+      const withoutColors = trimmed.replace(
+        /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\([^)]*\)/gi,
+        ' '
+      );
+      const lengths: CssLength[] = [];
+      let unknown = false;
+
+      for (const token of withoutColors.split(/\s+/).filter(Boolean)) {
+        const length = parseCssLength(token);
+        if (length && length.unit !== '%') {
+          lengths.push(length);
+          continue;
+        }
+        // Colours are not lengths; an unknown function or token is not readable.
+        if (!/^#[0-9a-f]+$/i.test(token) && !/^[a-z-]+$/i.test(token)) unknown = true;
+      }
+
+      if (lengths.length < 2 || lengths.length > 4) {
+        growth.unknown = true;
+        continue;
+      }
+
+      const fixed = lengths.map(length => fixedPixelsOf(length));
+      if (fixed.some(value => value === null)) {
+        growth.unknown = true;
+        continue;
+      }
+
+      const [offsetX, offsetY, blur = 0, spread = 0] = fixed as number[];
+      if (blur < 0) {
+        growth.unknown = true;
+        continue;
+      }
+
+      const outside = Math.max(0, blur + spread);
+      growth.x = Math.max(growth.x, Math.abs(offsetX) + outside);
+      growth.y = Math.max(growth.y, Math.abs(offsetY) + outside);
+      growth.unknown ||= unknown;
+    }
+  }
+
+  return growth;
+}
+
 /** Split a one-to-four-value shorthand. */
 function splitBoxShorthand(value: string): string[] | null {
   if (value.includes('(')) return null;
@@ -1768,6 +2095,17 @@ function sideInputsOf(state: ElementState): SideInputs {
     ['padding-right', 'right'],
     ['padding-bottom', 'bottom'],
     ['padding-left', 'left'],
+  ] as Array<[string, keyof SideInputs]>) {
+    for (const value of state.values.get(property) ?? []) {
+      add(side, parseCssLength(value));
+    }
+  }
+
+  for (const [property, side] of [
+    ['padding-block-start', 'top'],
+    ['padding-block-end', 'bottom'],
+    ['padding-inline-start', 'left'],
+    ['padding-inline-end', 'right'],
   ] as Array<[string, keyof SideInputs]>) {
     for (const value of state.values.get(property) ?? []) {
       add(side, parseCssLength(value));
@@ -1847,6 +2185,41 @@ function sideInputsOf(state: ElementState): SideInputs {
     }
   }
 
+  for (const [property, side] of [
+    ['border-block-start-width', 'top'],
+    ['border-block-end-width', 'bottom'],
+    ['border-inline-start-width', 'left'],
+    ['border-inline-end-width', 'right'],
+  ] as Array<[string, keyof SideInputs]>) {
+    for (const value of state.values.get(property) ?? []) {
+      add(side, borderWidthToken(value));
+    }
+  }
+
+  for (const [property, sides] of [
+    ['border-block-start', ['top']],
+    ['border-block-end', ['bottom']],
+    ['border-inline-start', ['left']],
+    ['border-inline-end', ['right']],
+  ] as Array<[string, Array<keyof SideInputs>]>) {
+    for (const value of state.values.get(property) ?? []) {
+      const width = borderWidthOf(value);
+      if (width === 'none') continue;
+      for (const side of sides) add(side, width);
+    }
+  }
+
+  for (const [property, sides] of [
+    ['border-block', ['top', 'bottom']],
+    ['border-inline', ['left', 'right']],
+  ] as Array<[string, Array<keyof SideInputs>]>) {
+    for (const value of state.values.get(property) ?? []) {
+      const width = borderWidthOf(value);
+      if (width === 'none') continue;
+      for (const side of sides) add(side, width);
+    }
+  }
+
   return sides;
 }
 
@@ -1869,13 +2242,27 @@ function axisGrowthOf(sides: SideInputs, axis: 'x' | 'y'): AxisGrowth {
   };
 }
 
+/** True when the element declares a usable aspect ratio. */
+function hasAspectRatio(state: ElementState): boolean {
+  for (const value of state.values.get('aspect-ratio') ?? []) {
+    const normalized = value.trim().replace(/\s+/g, ' ').replace(/\s*\/\s*/g, '/');
+    if (normalized === 'auto') continue;
+    const ratio = normalized.startsWith('auto ') ? normalized.slice(5) : normalized;
+    const match = /^(\d+(?:\.\d+)?|\.\d+)(?:\/(\d+(?:\.\d+)?|\.\d+))?$/.exec(ratio);
+    if (!match) return false;
+    if (Number(match[1]) <= 0 || (match[2] !== undefined && Number(match[2]) <= 0)) return false;
+    return true;
+  }
+  return false;
+}
+
 /** The declared size on one axis of the painted box. */
 function axisSizeOf(state: ElementState, axis: 'x' | 'y'): AxisSize {
   const properties =
     axis === 'x'
       ? ['width', 'inline-size', 'min-width', 'min-inline-size']
       : ['height', 'block-size', 'min-height', 'min-block-size'];
-  const size: AxisSize = { ratio: 0, fixedPx: 0, known: false, unknown: false };
+  const size: AxisSize = { ratio: 0, fixedPx: 0, known: false, declared: false, unknown: false };
 
   for (const property of properties) {
     for (const value of state.values.get(property) ?? []) {
@@ -1884,6 +2271,9 @@ function axisSizeOf(state: ElementState, axis: 'x' | 'y'): AxisSize {
       if (!length) {
         size.unknown = true;
         continue;
+      }
+      if (property === 'width' || property === 'inline-size' || property === 'height' || property === 'block-size') {
+        size.declared = true;
       }
       const growth = growthForLength(length, axis);
       size.ratio = Math.max(size.ratio, growth.ratio);
@@ -1897,6 +2287,13 @@ function axisSizeOf(state: ElementState, axis: 'x' | 'y'): AxisSize {
   }
 
   return size;
+}
+
+/** The factor of a readable numeric `zoom` value. */
+function zoomFactorOf(value: string): number | null {
+  if (!isNumber(value)) return null;
+  const factor = Number(value);
+  return factor >= 0 ? factor : null;
 }
 
 /** The scale factors of the independent `scale` property. */
@@ -1968,6 +2365,14 @@ function scaleFactorsOf(state: ElementState): ScaleFactors {
     property.y = largerScaleFactor(property.y, factors.y);
   }
 
+  let zoom: ScaleFactors = { x: 1, y: 1 };
+  for (const value of state.values.get('zoom') ?? []) {
+    const factor = zoomFactorOf(value);
+    if (factor === null) continue;
+    zoom.x = largerScaleFactor(zoom.x, factor);
+    zoom.y = largerScaleFactor(zoom.y, factor);
+  }
+
   let transform: ScaleFactors = { x: 1, y: 1 };
   for (const value of state.values.get('transform') ?? []) {
     const factors = transformScaleFactors(value);
@@ -1976,7 +2381,7 @@ function scaleFactorsOf(state: ElementState): ScaleFactors {
     transform.y = largerScaleFactor(transform.y, factors.y);
   }
 
-  return { x: property.x * transform.x, y: property.y * transform.y };
+  return { x: property.x * zoom.x * transform.x, y: property.y * zoom.y * transform.y };
 }
 
 /** The box-sizing rule that decides whether padding and borders grow the box. */
@@ -1999,6 +2404,9 @@ function paintedBoxOf(state: ElementState): PaintedBox {
     unprovableX: false,
     unprovableY: false,
   };
+  const shadow = boxShadowGrowthOf(state);
+  box.unprovableX = shadow.unknown || shadow.x >= VIEWPORT_LENGTH;
+  box.unprovableY = shadow.unknown || shadow.y >= VIEWPORT_LENGTH;
   if (!state.positioned) return box;
 
   const sides = sideInputsOf(state);
@@ -2006,6 +2414,11 @@ function paintedBoxOf(state: ElementState): PaintedBox {
   const growthY = axisGrowthOf(sides, 'y');
   const sizeX = axisSizeOf(state, 'x');
   const sizeY = axisSizeOf(state, 'y');
+  if (hasAspectRatio(state)) {
+    // The missing axis depends on the shape of the customer's screen.
+    if (sizeX.declared && !sizeY.declared) sizeY.unknown = true;
+    else if (sizeY.declared && !sizeX.declared) sizeX.unknown = true;
+  }
   const factors = scaleFactorsOf(state);
   const borderBox = boxSizingOf(state) === 'border-box';
 
@@ -2021,11 +2434,16 @@ function paintedBoxOf(state: ElementState): PaintedBox {
   const paintAxis = (
     size: AxisSize,
     growth: AxisGrowth,
-    factor: number
+    factor: number,
+    shadowGrowth: number
   ): { covers: boolean; unprovable: boolean } => {
     let ratio = size.ratio;
-    let fixedPx = size.fixedPx;
-    let unknown = size.unknown;
+    let fixedPx = size.fixedPx + shadowGrowth * 2;
+    let unknown = size.unknown || shadow.unknown || shadowGrowth >= VIEWPORT_LENGTH;
+
+    // Scaling an intrinsic size cannot be computed: the element's own size is
+    // unknown, so a scale above one may carry it across the viewport.
+    if (factor > 1 && !size.declared) unknown = true;
 
     if (!borderBox) {
       ratio += growth.ratio;
@@ -2056,8 +2474,8 @@ function paintedBoxOf(state: ElementState): PaintedBox {
     };
   };
 
-  const x = paintAxis(sizeX, growthX, factors.x);
-  const y = paintAxis(sizeY, growthY, factors.y);
+  const x = paintAxis(sizeX, growthX, factors.x, shadow.x);
+  const y = paintAxis(sizeY, growthY, factors.y, shadow.y);
   box.coversX = x.covers;
   box.coversY = y.covers;
   box.unprovableX = x.unprovable;
@@ -2084,7 +2502,7 @@ interface ElementState {
 function stateOf(
   rules: CssRule[],
   element: ElementDescriptor,
-  keyframes: Map<string, string[]>,
+  keyframes: Map<string, CssKeyframe[]>,
   inline: Declaration[] = [],
   definitions: Map<string, string> = new Map()
 ): ElementState {
@@ -2182,6 +2600,8 @@ function stateOf(
       if (hasZeroScaleFunction(value) || isLargeNegativeOffset(value)) state.hidden = true;
     } else if (property === 'scale') {
       if (hasZeroScaleValue(value)) state.hidden = true;
+    } else if (property === 'zoom') {
+      if (zoomFactorOf(value) === 0) state.hidden = true;
     } else if (property === 'translate') {
       if (isLargeNegativeOffset(value)) state.hidden = true;
     } else if (property === 'filter') {
@@ -2213,33 +2633,43 @@ function stateOf(
     });
   }
 
+  // A zero maximum size with clipping removes the control from the customer's
+  // paint even though the repository never sets `display:none`.
+  const clipping = clippingOverflowOf(state);
+  const zeroMaxHeight = (state.values.get('max-height') ?? []).some(isZeroLength);
+  const zeroMaxWidth = (state.values.get('max-width') ?? []).some(isZeroLength);
+  if ((zeroMaxHeight && clipping.y) || (zeroMaxWidth && clipping.x)) state.hidden = true;
+
   // The frames of an animation that runs on the element may move it over the
   // page. Only the geometry of a frame can cover the screen, so a frame that
   // fades the element does not cover it.
   for (const name of animationNamesOf(state)) {
     const frames = keyframes.get(name);
     if (!frames) continue;
-    for (const declaration of parseDeclarations(frames.join(';'))) {
-      if (!GEOMETRY_PROPERTIES.has(declaration.property)) continue;
-      apply(declaration);
-    }
-    // The end state of the animation is what the user sees after it runs: a
-    // frame that leaves the element invisible hides it, whatever the base
-    // style says. A reversed animation ends at its first frame, and an
-    // alternating one ends at either of them.
-    const direction = animationDirectionOf(state, name);
-    const endpoints =
-      animationPlayStateOf(state, name) === 'paused'
-        ? [frames[0]]
-        : direction === 'reverse'
-          ? [frames[0]]
-          : direction === 'normal'
-            ? [frames[frames.length - 1]]
-            : [frames[0], frames[frames.length - 1]];
 
-    for (const frame of endpoints) {
-      if (!frame) continue;
-      for (const declaration of parseDeclarations(frame)) {
+    for (const frame of frames) {
+      for (const declaration of parseDeclarations(frame.body)) {
+        if (!GEOMETRY_PROPERTIES.has(declaration.property)) continue;
+        apply(declaration);
+      }
+    }
+
+    const timing = animationTimingOf(state, name);
+    if (timing.unknown) {
+      state.unprovable.add('animation-duration');
+      continue;
+    }
+
+    // The frame the customer sees depends on the play state, delay, duration,
+    // fill mode and direction, not on the endpoint alone.
+    const customerFrames = customerAnimationFrames(state, name, frames, timing);
+    if (!customerFrames) {
+      state.unprovable.add('animation-duration');
+      continue;
+    }
+
+    for (const frame of customerFrames) {
+      for (const declaration of parseDeclarations(frame.body)) {
         if (!HIDE_FRAME_PROPERTIES.has(declaration.property)) continue;
         apply(declaration);
       }
@@ -2326,6 +2756,11 @@ export function destinationCssHarm(
       ...inline.declarations,
     ]);
 
+    // The resource check may use inherited root definitions, but the effective
+    // style above must not: a root value can be conditional or overridden.
+    const resourceDefinitions = globalCustomPropertyDefinitions(context.rules);
+    for (const [name, value] of definitions) resourceDefinitions.set(name, value);
+
     const after = stateOf(afterRules, element, context.keyframes, inline.declarations, definitions);
     const earlier = before ? stateOf(beforeRules, before, context.keyframes) : null;
 
@@ -2369,11 +2804,19 @@ export function destinationCssHarm(
             return 'the repository stylesheet can activate a rule on another element';
           }
 
-          const carries = parseDeclarations(rule.declarations).some(declaration =>
-            carriesResource(declaration.value)
-          );
-          if (carries) {
-            return 'the repository stylesheet can activate a customer-side request';
+          const declarations = parseDeclarations(rule.declarations);
+          const ruleDefinitions = new Map(resourceDefinitions);
+          for (const [name, value] of customPropertyDefinitions(declarations)) {
+            ruleDefinitions.set(name, value);
+          }
+          for (const declaration of declarations) {
+            const resource = resourceState(declaration.value, ruleDefinitions);
+            if (resource === 'present') {
+              return 'the repository stylesheet can activate a customer-side request';
+            }
+            if (resource === 'unknown') {
+              return 'the repository stylesheet cannot be judged: an activated resource depends on a custom property the analyser cannot resolve';
+            }
           }
         }
       }

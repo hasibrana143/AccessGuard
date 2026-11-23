@@ -595,3 +595,189 @@ describe('destination CSS: the tenth review regressions', () => {
     ).toContain('customer-side request');
   });
 });
+
+describe('destination CSS: the eleventh review regressions', () => {
+  const ORIGINAL = '<img id="target" src="x">';
+  const PATCHED = '<img id="target" src="x" alt="Photo">';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  function labelHarm(css: string): string | null {
+    return harm(
+      css,
+      '<button id="target">Text</button>',
+      '<button id="target" aria-label="Label">Text</button>'
+    );
+  }
+
+  it('reads the frame of a paused animation with a negative delay', () => {
+    const keyframes =
+      '@keyframes hide{0%{opacity:1}40%{opacity:0}60%{opacity:1}100%{opacity:1}}';
+    expect(
+      labelHarm(
+        `[aria-label]{animation-name:hide;animation-duration:1s;animation-delay:-0.4s;animation-play-state:paused}${keyframes}`
+      )
+    ).toContain('hide');
+    expect(
+      labelHarm(`[aria-label]{animation:hide 1s -0.4s paused}${keyframes}`)
+    ).toContain('hide');
+  });
+
+  it('reads the backwards fill of a running animation with a positive delay', () => {
+    const keyframes = '@keyframes hide{0%{opacity:0}100%{opacity:1}}';
+    expect(
+      labelHarm(
+        `[aria-label]{animation-name:hide;animation-duration:1s;animation-delay:1s;animation-fill-mode:backwards}${keyframes}`
+      )
+    ).toContain('hide');
+    expect(
+      labelHarm(`[aria-label]{animation:hide 1s 1s backwards}${keyframes}`)
+    ).toContain('hide');
+  });
+
+  it('does not flag a positive delay without the backwards fill', () => {
+    expect(
+      labelHarm(
+        '[aria-label]{animation-name:hide;animation-duration:1s;animation-delay:1s;animation-fill-mode:none}@keyframes hide{0%{opacity:0}100%{opacity:1}}'
+      )
+    ).toBeNull();
+  });
+
+  it('does not flag a running animation that ends visible', () => {
+    expect(
+      labelHarm(
+        '[aria-label]{animation:hide 1s running}@keyframes hide{from{opacity:0}to{opacity:1}}'
+      )
+    ).toBeNull();
+  });
+
+  it('refuses an animation whose timing it cannot read', () => {
+    expect(
+      labelHarm(
+        '[aria-label]{animation-name:hide;animation-duration:unknown;animation-delay:-0.4s;animation-play-state:paused}@keyframes hide{0%{opacity:1}40%{opacity:0}}'
+      )
+    ).toContain('cannot be judged');
+    expect(
+      labelHarm(
+        '[aria-label]{animation-name:hide;animation-duration:1s;animation-delay:unknown;animation-play-state:paused}@keyframes hide{0%{opacity:1}40%{opacity:0}}'
+      )
+    ).toContain('cannot be judged');
+  });
+
+  it('resolves an inherited custom property before the resource check', () => {
+    const result = labelHarm(
+      ':root{--pixel:url(http://127.0.0.1:9/pixel)}[aria-label]{background-image:var(--pixel)}'
+    );
+    expect(result).toContain('customer-side request');
+  });
+
+  it('does not flag an inherited custom property without a resource', () => {
+    expect(
+      harm(
+        ':root{--brand:#06c}[alt]{color:var(--brand)}',
+        '<img id="target" src="x" alt="">',
+        '<img id="target" src="x" alt="Photo">'
+      )
+    ).toBeNull();
+  });
+
+  it('refuses an activated resource with an unresolved custom property', () => {
+    expect(
+      labelHarm('[aria-label]{background-image:var(--missing)}')
+    ).toContain('cannot be judged');
+  });
+
+  it('treats a zero maximum size with clipping as hidden', () => {
+    expect(labelHarm('[aria-label]{max-height:0;overflow:hidden}')).toContain('hide');
+    expect(labelHarm('[aria-label]{max-width:0;overflow:clip}')).toContain('hide');
+    expect(labelHarm('[aria-label]{max-height:0;overflow-y:hidden}')).toContain('hide');
+    expect(labelHarm('[aria-label]{max-width:0;overflow-x:clip}')).toContain('hide');
+  });
+
+  it('does not flag a maximum size that does not remove the control', () => {
+    expect(labelHarm('[aria-label]{max-height:100px;overflow:hidden}')).toBeNull();
+    expect(labelHarm('[aria-label]{max-height:0;overflow:visible}')).toBeNull();
+    expect(labelHarm('[aria-label]{max-height:none;overflow:hidden}')).toBeNull();
+  });
+
+  it('composes box-shadow into the painted surface', () => {
+    expect(
+      harm('[alt]{position:fixed;width:1px;height:1px;box-shadow:0 0 0 10000px #f0f}')
+    ).not.toBeNull();
+    expect(
+      harm('[alt]{width:1px;height:1px;box-shadow:0 0 0 10000px #f0f}')
+    ).not.toBeNull();
+  });
+
+  it('does not flag a small box shadow', () => {
+    expect(
+      harm('[alt]{width:50px;height:20px;box-shadow:0 1px 2px rgba(0,0,0,.2)}')
+    ).toBeNull();
+  });
+
+  it('does not flag a box shadow of none', () => {
+    expect(
+      harm('[alt]{position:fixed;width:1px;height:1px;box-shadow:none}')
+    ).toBeNull();
+  });
+
+  it('does not count an inset box shadow as outside growth', () => {
+    expect(
+      harm('[alt]{position:fixed;width:1px;height:1px;box-shadow:inset 0 0 0 10000px #f0f}')
+    ).toBeNull();
+  });
+
+  it('refuses an aspect ratio that fills an undeclared axis', () => {
+    expect(harm('[alt]{position:fixed;width:100%;aspect-ratio:1}')).not.toBeNull();
+  });
+
+  it('does not flag an aspect ratio with both axes declared', () => {
+    expect(
+      harm('[alt]{position:fixed;width:100px;height:50px;aspect-ratio:16/9}')
+    ).toBeNull();
+    expect(harm('[alt]{position:fixed;width:100px;height:50px;aspect-ratio:auto}')).toBeNull();
+  });
+
+  it('refuses an unconstrained scale', () => {
+    expect(harm('[alt]{position:fixed;scale:100}')).not.toBeNull();
+  });
+
+  it('does not flag a scale of one', () => {
+    expect(harm('[alt]{position:fixed;width:50vw;height:50vh;scale:1}')).toBeNull();
+    expect(harm('[alt]{padding:4px;border:1px solid #ccc;scale:1}')).toBeNull();
+  });
+
+  it('composes zoom into the painted box', () => {
+    expect(harm('[alt]{position:fixed;zoom:3}')).not.toBeNull();
+    expect(
+      harm('[alt]{position:fixed;left:0;top:0;width:50vw;height:50vh;zoom:3}')
+    ).not.toBeNull();
+    expect(harm('[alt]{position:fixed;zoom:normal}')).not.toBeNull();
+  });
+
+  it('does not flag a zoom of one', () => {
+    expect(harm('[alt]{position:fixed;zoom:1}')).toBeNull();
+  });
+
+  it('reads the logical padding and border longhands', () => {
+    expect(
+      harm(
+        '[alt]{position:fixed;left:0;top:0;padding-inline-start:10000px;padding-block-start:10000px}'
+      )
+    ).not.toBeNull();
+    expect(
+      harm('[alt]{position:fixed;border-inline-start-width:10000px}')
+    ).not.toBeNull();
+    expect(harm('[alt]{position:fixed;border-inline:10000px solid #f0f}')).not.toBeNull();
+  });
+
+  it('does not flag a logical box that grows a little', () => {
+    expect(
+      harm(
+        '[alt]{position:fixed;padding-inline-start:4px;padding-block-start:4px;border-inline-start-width:1px}'
+      )
+    ).toBeNull();
+  });
+});
