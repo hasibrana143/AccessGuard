@@ -333,12 +333,11 @@ The commits, in the order the volume definition of done asks for:
 | `7858a1f` | state | the twelfth independent review recorded — the reviewer's own artifact `.ai/SECURITY-REVIEW-12.md` and the dispositions |
 | `11065e4` | security | the nine twelfth-review findings closed at their root cause, with 30 permanent regressions (the resolved attribute-name reads, the script-carrier discovery, the remediation-introduced elements, the functional pseudo-classes, the removal semantics, the focusability transition, the painted surface of a non-positioned element, the direction-free offsets, the URI preservation and the nested hiding) |
 | `9cee793` | ai | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
-| the state commit | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
+| `3803897` | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
 | the releases commit | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
 
-The hash of the state commit and of this releases commit is written into this
-table by the releases commit itself — the chain in `docs/VOLUMES.md` is the
-authoritative one.
+The hash of the releases commit itself is written into this table by that
+commit — the chain in `docs/VOLUMES.md` is the authoritative one.
 
 The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
 0, `npm run lint` 0, `npx vitest run --coverage` 53 files / 829 tests, coverage
