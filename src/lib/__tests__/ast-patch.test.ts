@@ -374,6 +374,23 @@ describe('hidesOwnTarget', () => {
     expect(hidesOwnTarget('<img src="x" alt="Photo">')).toBe(false);
     expect(hidesOwnTarget('<img src="x" alt="Photo" style="color:red">')).toBe(false);
   });
+
+  it('detects a nested element that hides itself', () => {
+    // The patched element may sit inside another element: a hidden element
+    // around it removes it from the rendering just the same.
+    expect(
+      hidesOwnTarget('<span style="display:block"><img src="x" alt="Photo" hidden></span>')
+    ).toBe(true);
+    expect(
+      hidesOwnTarget('<span><img src="x" alt="Photo" style="display:none"></span>')
+    ).toBe(true);
+  });
+
+  it('leaves a nested visible element alone', () => {
+    expect(
+      hidesOwnTarget('<span style="display:block"><img src="x" alt="Photo"></span>')
+    ).toBe(false);
+  });
 });
 
 describe('isPatchableFile', () => {  it('patches only the files whose context can be proven', () => {

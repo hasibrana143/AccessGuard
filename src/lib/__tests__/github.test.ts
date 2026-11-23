@@ -1408,6 +1408,148 @@ document.querySelectorAll("img").forEach(function(img){if(img.hasAttribute("alt"
   });
 });
 
+describe('the twelfth review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix() {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  it('12-H1a: does not patch an element a script activates through a name it builds at runtime', async () => {
+    // The script builds the attribute name at runtime, so the literal search
+    // for `alt` never finds it.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      'document.querySelectorAll(\'img[id="target"]\').forEach(function(img){if(img.hasAttribute(\'a\'+\'lt\'))img.classList.add(\'overlay\')});'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('12-H1b: does not patch an element a script activates through hasAttributes()', async () => {
+    // The standard generic presence API reads every attribute.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      'document.querySelectorAll(\'img\').forEach(function(img){if(img.hasAttributes())img.classList.add(\'overlay\')});'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('12-H1c: does not patch an element a script activates through a name it cannot resolve', async () => {
+    // The name comes from a variable: the read may be the attribute the fix
+    // adds.
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent(
+      'app.js',
+      'const name="alt";document.querySelectorAll(\'img\').forEach(function(img){if(img.hasAttribute(name))img.classList.add(\'overlay\')});'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('12-H5a: does not patch an element a linked script of a nonstandard name activates', async () => {
+    // A browser executes the response of a script source by its MIME type, not
+    // by its suffix.
+    tree(['index.html', 'runtime.php']);
+    fileContent(
+      'index.html',
+      '<html><head><script src="/runtime.php"></script></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent(
+      'runtime.php',
+      'document.addEventListener("DOMContentLoaded",function(){document.querySelectorAll(\'img[id="target"]\').forEach(function(img){if(img.hasAttribute(\'alt\'))img.classList.add(\'overlay\')})});'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('12-H5b: does not patch an element when a script source is not part of the repository', async () => {
+    // The destination of the script cannot be judged.
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><head><script src="https://cdn.example/app.js"></script></head><body><img id="target" src="x"></body></html>'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('12-H6: does not patch an element when a script mutates an element the remediation adds', async () => {
+    // The script finds the added element only after the fix.
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><body><img id="target" src="x"><script>document.getElementById("overlay").classList.add("overlay");</script></body></html>'
+    );
+
+    const plan = await planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo"><div id="overlay"></div>',
+      },
+    ]);
+
+    await expectRefused(plan);
+  });
+
+  it('writes a fix when a linked script does not react to it', async () => {
+    tree(['index.html', 'app.js']);
+    fileContent(
+      'index.html',
+      '<html><head><script src="/app.js"></script></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('app.js', "console.log('loaded');");
+
+    const plan = await planAltFix();
+
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes a fix when a script mutates an unrelated element', async () => {
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+    fileContent('app.js', "document.getElementById('other').classList.add('active');");
+
+    const plan = await planAltFix();
+
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.fileWrites).toHaveLength(1);
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();

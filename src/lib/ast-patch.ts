@@ -560,11 +560,18 @@ export function buildReplacement(filePath: string, remediationCode: string): str
  * invisible one: the rule check passes while the user loses the element. The
  * `hidden` attribute and the styles that remove the element from the rendering
  * (`display:none`, `visibility:hidden`, `opacity:0`) are all ways to do that.
+ *
+ * Every live element of the replacement counts: the element the fix patches may
+ * be nested inside another element, and a hidden element around it removes the
+ * patched element from the rendering just the same.
  */
 export function hidesOwnTarget(element: string): boolean {
-  const open = element.match(/^<([a-zA-Z][a-zA-Z0-9:._-]*)\b([^>]*)>/);
-  if (!open) return false;
-  return hidesContent(open[2] ?? '');
+  for (const start of liveTagStarts(element)) {
+    const open = /^<([a-zA-Z][a-zA-Z0-9:._-]*)\b([^>]*)>/.exec(element.slice(start));
+    if (!open) continue;
+    if (hidesContent(open[2] ?? '')) return true;
+  }
+  return false;
 }
 
 /**

@@ -781,3 +781,152 @@ describe('destination CSS: the eleventh review regressions', () => {
     ).toBeNull();
   });
 });
+
+describe('destination CSS: the twelfth review regressions', () => {
+  function harm(css: string, original: string, patched: string): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('judges a sibling rule activated through an :is() argument', () => {
+    const result = harm(
+      'input:is([aria-label]) ~ .overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647;background:#f0f}',
+      '<input id="target" type="text">',
+      '<input id="target" type="text" aria-label="Name">'
+    );
+    expect(result).toContain('another element');
+  });
+
+  it('judges a sibling rule activated by removing a class from a :not() argument', () => {
+    const result = harm(
+      '#target:not(.card) ~ .overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647;background:#f0f}',
+      '<img id="target" class="card" src="x">',
+      '<img id="target" src="x" alt="Photo">'
+    );
+    expect(result).toContain('another element');
+  });
+
+  it('judges a sibling rule activated by removing an attribute from a :not() argument', () => {
+    const result = harm(
+      '#target:not([data-state]) ~ .overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647;background:#f0f}',
+      '<img id="target" data-state="ready" src="x">',
+      '<img id="target" src="x" alt="Photo">'
+    );
+    expect(result).toContain('another element');
+  });
+
+  it('does not activate a :not() argument while its attribute remains', () => {
+    const result = harm(
+      '#target:not([data-state]) ~ .overlay{position:fixed;inset:0;width:100%;height:100%}',
+      '<img id="target" data-state="ready" src="x">',
+      '<img id="target" data-state="ready" src="x" alt="Photo">'
+    );
+    expect(result).toBeNull();
+  });
+
+  it('judges a sibling rule activated through a :where() argument', () => {
+    const result = harm(
+      'input:where([aria-label]) ~ .overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647;background:#f0f}',
+      '<input id="target" type="text">',
+      '<input id="target" type="text" aria-label="Name">'
+    );
+    expect(result).toContain('another element');
+  });
+
+  it('does not activate an :is() argument for a different attribute value', () => {
+    const result = harm(
+      'input:is([aria-label="Other"]) ~ .overlay{position:fixed;inset:0;width:100%;height:100%}',
+      '<input id="target" type="text">',
+      '<input id="target" type="text" aria-label="Name">'
+    );
+    expect(result).toBeNull();
+  });
+
+  it('does not activate a :not() argument while its class remains', () => {
+    const result = harm(
+      '#target:not(.card) ~ .overlay{position:fixed;inset:0;width:100%;height:100%}',
+      '<img id="target" class="card" src="x">',
+      '<img id="target" class="card" src="x" alt="Photo">'
+    );
+    expect(result).toBeNull();
+  });
+
+  it('judges a sibling rule activated when the fix adds tabindex', () => {
+    const result = harm(
+      'div[role="button"]:focus ~ .overlay{position:fixed;inset:0;width:100%;height:100%;z-index:2147483647;background:#f0f}',
+      '<div id="target" role="button"><span aria-hidden="true">x</span></div>',
+      '<div id="target" role="button" aria-label="Name" tabindex="0"><span aria-hidden="true">x</span></div>'
+    );
+    expect(result).toContain('another element');
+  });
+
+  it('does not flag a focus rule that only draws an outline after tabindex is added', () => {
+    const result = harm(
+      'div[role="button"]:focus{outline:2px solid #06c}',
+      '<div id="target" role="button"><span aria-hidden="true">x</span></div>',
+      '<div id="target" role="button" aria-label="Name" tabindex="0"><span aria-hidden="true">x</span></div>'
+    );
+    expect(result).toBeNull();
+  });
+
+  it('refuses a non-positioned element whose scale may cover the viewport', () => {
+    const result = harm(
+      '[alt]{scale:100;background:#f0f}',
+      '<img id="target" src="x" width="64" height="64">',
+      '<img id="target" src="x" width="64" height="64" alt="Photo">'
+    );
+    expect(result).toContain('cannot be judged');
+  });
+
+  it('refuses a non-positioned element whose painted box covers the viewport', () => {
+    const result = harm(
+      '[alt]{width:100%;height:100%;background:#f0f}',
+      '<img id="target" src="x" width="64" height="64">',
+      '<img id="target" src="x" width="64" height="64" alt="Photo">'
+    );
+    expect(result).toContain('overlay');
+  });
+
+  it('does not flag benign non-positioned paint changes', () => {
+    const original = '<img id="target" src="x" width="64" height="64">';
+    const patched = '<img id="target" src="x" width="64" height="64" alt="Photo">';
+
+    for (const css of [
+      '[alt]{scale:1}',
+      '[alt]{padding:4px}',
+      '[alt]{border:1px solid #ccc}',
+      '[alt]{width:50px;height:20px;box-shadow:0 1px 2px rgba(0,0,0,.2)}',
+      '[alt]{width:50px;height:20px;box-shadow:none}',
+      '[alt]{width:50px;height:20px;box-shadow:inset 0 0 0 10000px #f0f}',
+      '[alt]{zoom:1}',
+    ]) {
+      expect(harm(css, original, patched)).toBeNull();
+    }
+  });
+
+  it('treats a large positive relative offset as off-screen', () => {
+    const result = harm(
+      '[alt]{position:relative;left:9999px;background:#f0f}',
+      '<img id="target" src="x" width="64" height="64">',
+      '<img id="target" src="x" width="64" height="64" alt="Photo">'
+    );
+    expect(result).toContain('hide');
+  });
+
+  it('treats a large positive margin as off-screen', () => {
+    const result = harm(
+      '[alt]{margin-left:9999px;background:#f0f}',
+      '<img id="target" src="x" width="64" height="64">',
+      '<img id="target" src="x" width="64" height="64" alt="Photo">'
+    );
+    expect(result).toContain('hide');
+  });
+
+  it('does not flag a small margin', () => {
+    const result = harm(
+      '[alt]{margin:4px;background:#f0f}',
+      '<img id="target" src="x" width="64" height="64">',
+      '<img id="target" src="x" width="64" height="64" alt="Photo">'
+    );
+    expect(result).toBeNull();
+  });
+});

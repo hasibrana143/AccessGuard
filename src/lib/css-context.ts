@@ -583,8 +583,12 @@ interface SelectorRequirements {
   classes: string[];
   id: string | null;
   attributes: Array<{ name: string; operator: string | null; value: string | null }>;
-  /** The selector contains a pseudo-class or a pseudo-element. */
-  conditional: boolean;
+  /** The arguments of an `:is()` or `:where()` selector. */
+  alternatives: SelectorRequirements[];
+  /** The arguments of a `:not()` selector. */
+  negated: SelectorRequirements[];
+  /** The selector contains a conditional whose state the analyser cannot read. */
+  opaqueConditional: boolean;
   /** The compound contains a focus pseudo-class. */
   focusPseudo: boolean;
   /** The selector could not be read. */
@@ -601,7 +605,9 @@ function parseSubject(selector: string): SelectorRequirements {
     classes: [],
     id: null,
     attributes: [],
-    conditional: false,
+    alternatives: [],
+    negated: [],
+    opaqueConditional: false,
     focusPseudo: false,
     malformed: false,
   };
@@ -662,7 +668,6 @@ function parseSubject(selector: string): SelectorRequirements {
         operator: parsed[2] ?? null,
         value: value === null ? null : decodeCssEscapes(decodeHtmlEntities(value)),
       });
-      if (parsed[6]) requirements.conditional = true;
       i = end + 1;
       expectTag = false;
       continue;
@@ -670,14 +675,15 @@ function parseSubject(selector: string): SelectorRequirements {
 
     if (char === ':') {
       // A pseudo-class or a pseudo-element: the rule may or may not apply.
-      requirements.conditional = true;
-      i += selector[i + 1] === ':' ? 2 : 1;
+      const pseudoElement = selector[i + 1] === ':';
+      i += pseudoElement ? 2 : 1;
       const identifier = readIdentifier(selector, i);
       if (!identifier) {
         requirements.malformed = true;
         return requirements;
       }
-      if (FOCUS_PSEUDO_CLASSES.has(identifier.value.toLowerCase())) {
+      const name = identifier.value.toLowerCase();
+      if (FOCUS_PSEUDO_CLASSES.has(name)) {
         requirements.focusPseudo = true;
       }
       i = identifier.end;
@@ -687,7 +693,30 @@ function parseSubject(selector: string): SelectorRequirements {
           requirements.malformed = true;
           return requirements;
         }
+
+        if (!pseudoElement && (name === 'is' || name === 'where' || name === 'not')) {
+          const argumentsList = splitTopLevel(selector.slice(i + 1, end - 1), ',');
+          if (argumentsList.length === 0 || argumentsList.every(part => !part.trim())) {
+            requirements.malformed = true;
+            return requirements;
+          }
+
+          const parsed = argumentsList
+            .map(part => part.trim())
+            .filter(Boolean)
+            .map(part => {
+              const argument = parseSubject(part);
+              if (splitCompounds(part).length !== 1) argument.malformed = true;
+              return argument;
+            });
+          if (name === 'not') requirements.negated.push(...parsed);
+          else requirements.alternatives.push(...parsed);
+        } else {
+          requirements.opaqueConditional = true;
+        }
         i = end;
+      } else {
+        requirements.opaqueConditional = true;
       }
       expectTag = false;
       continue;
@@ -844,13 +873,34 @@ function matchSubject(requirements: SelectorRequirements, element: ElementDescri
 
   if (requirements.id !== null && element.id !== requirements.id) return 'no';
 
-  let maybe = requirements.conditional;
+  let maybe = requirements.opaqueConditional;
 
   for (const requirement of requirements.attributes) {
     const value = element.attributes.get(requirement.name);
     if (value === undefined) return 'no';
     const result = attributeMatches(value, requirement.operator, requirement.value);
     if (result === 'no') return 'no';
+    if (result === 'maybe') maybe = true;
+  }
+
+  if (requirements.alternatives.length > 0) {
+    let matched = false;
+    let uncertain = false;
+    for (const alternative of requirements.alternatives) {
+      if (alternative.malformed) return 'maybe';
+      const result = matchSubject(alternative, element);
+      if (result === 'yes') {
+        matched = true;
+        break;
+      }
+      if (result === 'maybe') uncertain = true;
+    }
+    if (!matched) return uncertain ? 'maybe' : 'no';
+  }
+
+  for (const negated of requirements.negated) {
+    const result = matchSubject(negated, element);
+    if (result === 'yes') return 'no';
     if (result === 'maybe') maybe = true;
   }
 
@@ -882,8 +932,12 @@ function matchSelector(selector: string, element: ElementDescriptor): Match {
 interface ElementChanges {
   attributes: Map<string, string>;
   classes: Set<string>;
+  removedAttributes: Map<string, string>;
+  removedClasses: Set<string>;
   /** The fix gives the patched element focus without user interaction. */
   focus: boolean;
+  /** The fix makes the patched element focusable. */
+  focusable: boolean;
 }
 
 /**
@@ -898,6 +952,8 @@ function changesBetween(
 ): ElementChanges {
   const attributes = new Map<string, string>();
   const classes = new Set<string>();
+  const removedAttributes = new Map<string, string>();
+  const removedClasses = new Set<string>();
 
   for (const [name, value] of after.attributes) {
     if (before?.attributes.get(name) !== value) attributes.set(name, value);
@@ -905,10 +961,19 @@ function changesBetween(
   for (const token of after.classes) {
     if (!before?.classes.has(token)) classes.add(token);
   }
+  if (before) {
+    for (const [name, value] of before.attributes) {
+      if (!after.attributes.has(name)) removedAttributes.set(name, value);
+    }
+    for (const token of before.classes) {
+      if (!after.classes.has(token)) removedClasses.add(token);
+    }
+  }
 
   const focus = after.attributes.has('autofocus') && !before?.attributes.has('autofocus');
+  const focusable = after.attributes.has('tabindex') && !before?.attributes.has('tabindex');
 
-  return { attributes, classes, focus };
+  return { attributes, classes, removedAttributes, removedClasses, focus, focusable };
 }
 
 /**
@@ -920,17 +985,36 @@ function changesBetween(
 function compoundActivatedByFix(compound: string, changes: ElementChanges): boolean {
   const requirements = parseSubject(compound);
 
-  for (const requirement of requirements.attributes) {
-    const value = changes.attributes.get(requirement.name);
-    if (value === undefined) continue;
-    if (attributeMatches(value, requirement.operator, requirement.value) !== 'no') return true;
-  }
+  const positiveRequirementActivated = (candidate: SelectorRequirements): boolean => {
+    for (const requirement of candidate.attributes) {
+      const value = changes.attributes.get(requirement.name);
+      if (value === undefined) continue;
+      if (attributeMatches(value, requirement.operator, requirement.value) !== 'no') return true;
+    }
 
-  for (const className of requirements.classes) {
-    if (changes.classes.has(className)) return true;
-  }
+    for (const className of candidate.classes) {
+      if (changes.classes.has(className)) return true;
+    }
 
-  return false;
+    return candidate.alternatives.some(positiveRequirementActivated);
+  };
+
+  const positiveRequirementRemoved = (candidate: SelectorRequirements): boolean => {
+    for (const requirement of candidate.attributes) {
+      const value = changes.removedAttributes.get(requirement.name);
+      if (value === undefined) continue;
+      if (attributeMatches(value, requirement.operator, requirement.value) !== 'no') return true;
+    }
+
+    for (const className of candidate.classes) {
+      if (changes.removedClasses.has(className)) return true;
+    }
+
+    return candidate.alternatives.some(positiveRequirementRemoved);
+  };
+
+  if (positiveRequirementActivated(requirements)) return true;
+  return requirements.negated.some(positiveRequirementRemoved);
 }
 
 /**
@@ -1729,7 +1813,7 @@ function isUnprovableValue(property: string, value: string): boolean {
     if (property === 'visibility') return !VISIBILITY_VALUES.has(value);
     if (property === 'opacity') return !isNonNegativeNumberOrPercentage(value);
     if (property === 'transform') {
-      return value !== 'none' && !hasZeroScaleFunction(value) && !isLargeNegativeOffset(value);
+      return value !== 'none' && !hasZeroScaleFunction(value) && !isLargeOffset(value);
     }
     if (property === 'scale') return !isScaleValue(value);
     if (property === 'zoom') return zoomFactorOf(value) === null;
@@ -1779,17 +1863,17 @@ function isZeroLength(value: string): boolean {
 }
 
 /** True when a length moves content far enough off-screen to hide it. */
-function isLargeNegativeOffset(value: string): boolean {
-  const matches = [...value.matchAll(/(-?(?:\d+|\d*\.\d+))([a-z]+)/gi)];
+function isLargeOffset(value: string): boolean {
+  const matches = [...value.matchAll(/(-?(?:\d+|\d*\.\d+))([a-z%]+)/gi)];
   return matches.some(match => {
-    const amount = Number(match[1]);
+    const amount = Math.abs(Number(match[1]));
     const unit = match[2] ?? '';
     // A viewport unit is the size of the screen: moving an element by a whole
     // viewport puts it off-screen even though the number is small.
-    if (VIEWPORT_UNITS.has(unit)) return amount <= -100;
-    // A percentage of the element itself: -100% moves it out of the view.
-    if (unit === '%') return amount <= -100;
-    return LENGTH_UNITS.has(unit) && amount <= -999;
+    if (VIEWPORT_UNITS.has(unit)) return amount >= 100;
+    // A percentage of the element itself: 100% moves it out of the view.
+    if (unit === '%') return amount >= 100;
+    return LENGTH_UNITS.has(unit) && amount >= 999;
   });
 }
 
@@ -2407,7 +2491,6 @@ function paintedBoxOf(state: ElementState): PaintedBox {
   const shadow = boxShadowGrowthOf(state);
   box.unprovableX = shadow.unknown || shadow.x >= VIEWPORT_LENGTH;
   box.unprovableY = shadow.unknown || shadow.y >= VIEWPORT_LENGTH;
-  if (!state.positioned) return box;
 
   const sides = sideInputsOf(state);
   const growthX = axisGrowthOf(sides, 'x');
@@ -2550,8 +2633,8 @@ function stateOf(
       edges.right = edges.right || assigned.right;
     } else if (property === 'top' || property === 'bottom' || property === 'right' || property === 'left') {
       if (isZeroLength(value)) edges[property] = true;
-      // A large negative offset moves the element out of the view.
-      if (isLargeNegativeOffset(value)) state.hidden = true;
+      // A large offset moves the element out of the view.
+      if (isLargeOffset(value)) state.hidden = true;
     } else if (
       property === 'inset-block-start' ||
       property === 'inset-block-end' ||
@@ -2561,7 +2644,7 @@ function stateOf(
       // The logical edges are the physical edges in a horizontal writing mode.
       const edge = LOGICAL_INSET_EDGES[property] as 'top' | 'bottom' | 'left' | 'right';
       if (isZeroLength(value)) edges[edge] = true;
-      if (isLargeNegativeOffset(value)) state.hidden = true;
+      if (isLargeOffset(value)) state.hidden = true;
     } else if (
       property === 'width' ||
       property === 'min-width' ||
@@ -2597,22 +2680,22 @@ function stateOf(
     } else if (property === 'content-visibility') {
       if (value === 'hidden') state.hidden = true;
     } else if (property === 'transform') {
-      if (hasZeroScaleFunction(value) || isLargeNegativeOffset(value)) state.hidden = true;
+      if (hasZeroScaleFunction(value) || isLargeOffset(value)) state.hidden = true;
     } else if (property === 'scale') {
       if (hasZeroScaleValue(value)) state.hidden = true;
     } else if (property === 'zoom') {
       if (zoomFactorOf(value) === 0) state.hidden = true;
     } else if (property === 'translate') {
-      if (isLargeNegativeOffset(value)) state.hidden = true;
+      if (isLargeOffset(value)) state.hidden = true;
     } else if (property === 'filter') {
       if (hasZeroOpacity(value)) state.hidden = true;
     } else if (property === 'font-size' || property === 'line-height') {
       if (textRulesApply(element) && isZeroLength(value)) state.hidden = true;
     } else if (property === 'text-indent') {
-      if (textRulesApply(element) && isLargeNegativeOffset(value)) state.hidden = true;
+      if (textRulesApply(element) && isLargeOffset(value)) state.hidden = true;
     } else if (property === 'margin' || property.startsWith('margin-')) {
-      // A large negative margin moves the element out of the view.
-      if (isLargeNegativeOffset(value)) state.hidden = true;
+      // A large margin moves the element out of the view.
+      if (isLargeOffset(value)) state.hidden = true;
     }
   };
 
@@ -2768,6 +2851,14 @@ export function destinationCssHarm(
       return 'the repository stylesheet can turn the patched element into a full-viewport overlay';
     }
 
+    if (
+      after.painted.coversX &&
+      after.painted.coversY &&
+      !(earlier?.painted.coversX && earlier.painted.coversY)
+    ) {
+      return 'the repository stylesheet can turn the patched element into a full-viewport overlay';
+    }
+
     if (after.hidden) {
       return 'the repository stylesheet can hide the patched element';
     }
@@ -2785,7 +2876,14 @@ export function destinationCssHarm(
     // destination is unprovable.
     const changes = changesBetween(before, element);
 
-    if (changes.attributes.size > 0 || changes.classes.size > 0 || changes.focus) {
+    if (
+      changes.attributes.size > 0 ||
+      changes.classes.size > 0 ||
+      changes.removedAttributes.size > 0 ||
+      changes.removedClasses.size > 0 ||
+      changes.focus ||
+      changes.focusable
+    ) {
       for (const rule of context.rules) {
         for (const part of splitTopLevel(rule.selector, ',')) {
           const trimmed = part.trim();
@@ -2796,7 +2894,7 @@ export function destinationCssHarm(
           const activated = compounds.some(
             compound =>
               compoundActivatedByFix(compound, changes) ||
-              (changes.focus && compoundActivatedByFocus(compound, element))
+              ((changes.focus || changes.focusable) && compoundActivatedByFocus(compound, element))
           );
           if (!activated) continue;
 

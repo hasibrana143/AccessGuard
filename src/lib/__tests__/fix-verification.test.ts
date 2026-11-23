@@ -307,7 +307,9 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     expect(results.get('v7')?.reason).toContain('rejected before verification');
   }, BROWSER_TEST_TIMEOUT);
 
-  it('fails a fix that hides the visible text of the element', async () => {
+  it('rejects a fix that hides the visible text of the element', async () => {
+    // The validator now sees the hidden nested element before the browser
+    // does, so the fix is refused instead of being verified and failing later.
     const results = await verifyFixes([
       {
         id: 'v8',
@@ -316,14 +318,15 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
         remediationCode: '<a href="/about" aria-label="Read more"><span hidden>Read more</span></a>',
       },
     ]);
-    expect(results.get('v8')?.status).toBe('failed');
-    expect(results.get('v8')?.confidence).toBe(0);
-    expect(results.get('v8')?.reason).toContain('visible text');
+    expect(results.get('v8')?.status).toBe('unverified');
+    expect(results.get('v8')?.confidence).toBeNull();
+    expect(results.get('v8')?.reason).toContain('rejected before verification');
   }, BROWSER_TEST_TIMEOUT);
 
-  it('fails a fix whose text the user cannot see', async () => {
+  it('rejects a fix whose text the user cannot see', async () => {
     // The text is read from the computed style, not from `innerText`: text that
-    // is transparent or not rendered is still part of `innerText`.
+    // is transparent or not rendered is still part of `innerText`. The nested
+    // element that hides it is refused by the validator.
     const results = await verifyFixes([
       {
         id: 'v9',
@@ -332,9 +335,9 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
         remediationCode: '<a href="/about" aria-label="Read more"><span style="visibility:hidden">Read more</span></a>',
       },
     ]);
-    expect(results.get('v9')?.status).toBe('failed');
-    expect(results.get('v9')?.confidence).toBe(0);
-    expect(results.get('v9')?.reason).toContain('visible text');
+    expect(results.get('v9')?.status).toBe('unverified');
+    expect(results.get('v9')?.confidence).toBeNull();
+    expect(results.get('v9')?.reason).toContain('rejected before verification');
   }, BROWSER_TEST_TIMEOUT);
 
   it('catches a patched element that the browser hides', async () => {

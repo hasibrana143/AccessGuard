@@ -584,12 +584,16 @@ describe('validateRemediation', () => {
     expect(result.valid).toBe(true);
   });
 
-  it('keeps a relative attributionsrc destination the remediation adds', () => {
+  it('rejects a relative attributionsrc destination the remediation adds', () => {
+    // The twelfth review reproduced this: a relative destination is a request
+    // from the customer browser, so a destination the original element does
+    // not have may not be introduced at all.
     const result = validateRemediation(
       '<img id="target" src="x" alt="Photo" attributionsrc="/pixel">',
       '<img id="target" src="x">'
     );
-    expect(result.valid).toBe(true);
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('new attributionsrc destination');
   });
 
   it('rejects a remote destination hidden behind a duplicate attributionsrc attribute', () => {
@@ -656,6 +660,55 @@ describe('validateRemediation', () => {
       );
       expect(result.valid).toBe(false);
     }
+  });
+
+  it('rejects a same-origin destination the remediation introduces', () => {
+    // The twelfth review reproduced this: a relative destination is a request
+    // from the customer browser, so the destination of the customer's element
+    // is preserved, not created.
+    const result = validateRemediation(
+      '<a id="target" href="/destination">Text</a>',
+      '<a id="target">Text</a>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('new href destination');
+  });
+
+  it('keeps a relative destination the original element already had', () => {
+    const result = validateRemediation(
+      '<a id="target" href="/account" aria-label="Account">Account</a>',
+      '<a id="target" href="/account">Account</a>'
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects a remediation that hides a nested element', () => {
+    // The patched element may sit inside another element: a hidden element
+    // around it removes it from the rendering just the same.
+    const result = validateRemediation(
+      '<span style="display:block;width:64px;height:64px"><img id="target" src="x" width="64" height="64" alt="Photo" hidden></span>',
+      '<img id="target" src="x" width="64" height="64">'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('hidden attribute');
+  });
+
+  it('rejects a remediation that hides a nested element with a style', () => {
+    for (const style of ['display:none', 'visibility:hidden', 'opacity:0']) {
+      const result = validateRemediation(
+        `<span><img id="target" src="x" alt="Photo" style="${style}"></span>`,
+        '<img id="target" src="x">'
+      );
+      expect(result.valid).toBe(false);
+    }
+  });
+
+  it('keeps a remediation that nests the patched element in a visible element', () => {
+    const result = validateRemediation(
+      '<span style="display:block;width:64px;height:64px"><img id="target" src="x" width="64" height="64" alt="Photo"></span>',
+      '<img id="target" src="x" width="64" height="64">'
+    );
+    expect(result.valid).toBe(true);
   });
 });
 

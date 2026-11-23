@@ -10,6 +10,7 @@ import {
   hasSyntaxErrors,
   hidesOwnTarget,
   isPatchableFile,
+  liveTagStarts,
   locateElement,
   preservesVisibleContent,
 } from '@/lib/ast-patch';
@@ -303,9 +304,11 @@ function isZeroLength(value: string): boolean {
 /**
  * Check a style attribute for declarations that can take over the screen.
  *
- * `isTarget` marks the style of the element the fix patches: that element may
- * not be hidden, while a nested element may (a fix that moves the text into a
- * hidden element is caught by the rendered-text check).
+ * `isLive` marks the style of an element the browser really creates: no live
+ * element of the remediation may hide itself, because the element the fix
+ * patches may be nested inside another element and a hidden element — the
+ * patched one or one around it — passes the rule check while the user loses
+ * the element.
  */
 function checkStyleAttribute(value: string, isTarget: boolean): string | null {
   // A browser decodes the entities of the attribute value, treats a CSS comment
@@ -466,21 +469,29 @@ function isRemoteUri(canonical: string): boolean {
   }
 }
 
-/**
- * True when a canonical URL is a destination the original element did not have.
- *
- * A relative URL stays on the customer's own site, and an inert data URI does
- * not call home: both are allowed. Every other destination — another host, a
- * mail address, a phone number — is a new navigation the fix introduces.
- */
-function isForeignDestination(canonical: string): boolean {
-  try {
-    const url = new URL(canonical);
-    if (url.protocol === 'data:') return false;
-    return url.origin !== new URL(URI_BASE).origin;
-  } catch {
-    return false;
+/** The raw destinations of every URI attribute of a snippet. */
+function rawUriMap(html: string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+
+  for (const attribute of parseHtmlAttributes(html)) {
+    if (!URI_ATTRIBUTES.has(attribute.name)) continue;
+    const values = uriCandidates(attribute.name, attribute.value).filter(candidate => candidate !== '');
+    map.set(attribute.name, [...(map.get(attribute.name) ?? []), ...values]);
   }
+
+  return map;
+}
+
+/**
+ * True when a destination is a pure in-page fragment.
+ *
+ * A fragment (`#main`) neither requests a resource nor leaves the page, so a
+ * skip link stays safe. Every other destination — a relative path, an absolute
+ * URL, another host, a mail address — is a navigation the fix introduces.
+ */
+function isInPageFragment(value: string): boolean {
+  const normalized = normalizeUriValue(value).trim();
+  return normalized.startsWith('#') && !/\s/.test(normalized);
 }
 
 /**
@@ -600,6 +611,7 @@ export function validateRemediation(
   if (originalElementHtml) {
     const originalUris = canonicalUriMap(originalElementHtml);
     const newUris = canonicalUriMap(code);
+    const newRawUris = rawUriMap(code);
 
     for (const [name, originalValues] of originalUris) {
       const newValues = newUris.get(name);
@@ -625,18 +637,22 @@ export function validateRemediation(
 
     for (const [name, newValues] of newUris) {
       if (originalUris.has(name)) continue;
+      // A destination the original element does not have is a new navigation
+      // the customer never asked for: a same-origin path is a request from the
+      // customer browser just like a remote URL is. Only an inert in-page
+      // fragment stays allowed.
+      const rawValues = newRawUris.get(name) ?? [];
+      if (rawValues.every(isInPageFragment)) continue;
       if (newValues.some(isRemoteUri)) {
         return {
           valid: false,
           reason: 'remediation code introduces a remote URL the original element does not have',
         };
       }
-      if (newValues.some(isForeignDestination)) {
-        return {
-          valid: false,
-          reason: `remediation code introduces a new ${name} destination the original element does not have`,
-        };
-      }
+      return {
+        valid: false,
+        reason: `remediation code introduces a new ${name} destination the original element does not have`,
+      };
     }
   }
 
@@ -650,11 +666,14 @@ export function validateRemediation(
   // handler's code is attacker controlled either way. Every URI attribute is
   // checked against a scheme allowlist after entity decoding.
   //
-  // The first tag of the remediation is the element the fix patches: it may
-  // not hide itself.
+  // No live element of the remediation may hide itself. The element the fix
+  // patches may be nested inside another element, and a hidden element — the
+  // patched one or one around it — passes the rule check while the user loses
+  // the very element the fix was supposed to repair.
   const tags = parseHtmlTags(code);
-  for (const [index, tag] of tags.entries()) {
-    const isTarget = index === 0;
+  const liveTags = liveTagStarts(code);
+  for (const tag of tags) {
+    const isLive = liveTags.has(tag.start);
 
     for (const attribute of tag.attributes) {
       if (isEventHandlerAttribute(attribute.name)) {
@@ -663,15 +682,15 @@ export function validateRemediation(
 
       // A fix may not hide the element it patches: the rule check passes while
       // the user loses the element.
-      if (isTarget && attribute.name === 'hidden') {
-        return { valid: false, reason: 'remediation code hides the patched element with the hidden attribute' };
+      if (isLive && attribute.name === 'hidden') {
+        return { valid: false, reason: 'remediation code hides an element with the hidden attribute' };
       }
 
       const uriProblem = checkUriAttribute(attribute.name, attribute.value);
       if (uriProblem) return { valid: false, reason: uriProblem };
 
       if (attribute.name === 'style') {
-        const styleProblem = checkStyleAttribute(attribute.value, isTarget);
+        const styleProblem = checkStyleAttribute(attribute.value, isLive);
         if (styleProblem) return { valid: false, reason: styleProblem };
       }
     }

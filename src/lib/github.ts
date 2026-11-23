@@ -256,6 +256,29 @@ function blankRanges(content: string, ranges: Array<{ start: number; end: number
 }
 
 /**
+ * The script sources of a file.
+ *
+ * A browser executes the response of a `<script src>` by its MIME type, not by
+ * its name, so the target of a script source is runtime code whatever its
+ * suffix is.
+ */
+function extractScriptSources(content: string): string[] {
+  const sources: string[] = [];
+  const pattern = /<script\b((?:[^>"']|"[^"]*"|'[^']*')*)/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(content)) !== null) {
+    for (const attribute of parseTagAttributes(match[1] ?? '')) {
+      if (attribute.name === 'src' && attribute.value) {
+        sources.push(decodeHtmlEntities(attribute.value));
+      }
+    }
+  }
+
+  return sources;
+}
+
+/**
  * Event-handler attributes are runtime code too; markup whose attribute value
  * cannot be read cannot be followed safely.
  */
@@ -349,7 +372,58 @@ const RUNTIME_STATE_READ_PATTERN =
 
 /** Reads of every attribute, which can react to any attribute the fix adds. */
 const RUNTIME_GENERIC_STATE_READ_PATTERN =
-  /\bgetAttributeNames\s*\(|\.\s*attributes\b(?!\s*\.\s*getNamedItem\s*\()/i;
+  /\bgetAttributeNames\s*\(|\bhasAttributes\s*\(|\.\s*attributes\b(?!\s*\.\s*getNamedItem\s*\()/i;
+
+/**
+ * The attribute-name reads of a script.
+ *
+ * The name of the attribute a script reads is the first argument of the call.
+ * A name that the script builds at runtime may be the attribute the fix adds.
+ */
+const ATTRIBUTE_NAME_READ_PATTERN =
+  /\b(?:hasAttribute|getAttribute|getAttributeNode|toggleAttribute)\s*\(\s*([^)]*)\)|\.getNamedItem\s*\(\s*([^)]*)\)/gi;
+
+/**
+ * The string a concatenation of string literals evaluates to, or null.
+ *
+ * Only a literal is resolved: a variable, a call or an interpolated template
+ * is a name the analyser cannot read.
+ */
+function resolveStringExpression(expression: string): string | null {
+  let out = '';
+
+  for (const part of expression.split(/\s*\+\s*/)) {
+    const literal = /^(['"`])((?:\\.|(?!\1)[^\\])*)\1$/.exec(part);
+    if (!literal) return null;
+    // An interpolated template is not a constant.
+    if (literal[1] === '`' && literal[2]?.includes('${')) return null;
+    out += literal[2] ?? '';
+  }
+
+  return out || null;
+}
+
+/** The attribute names a script reads, and the ones it cannot resolve. */
+function attributeNameReads(content: string): { name: string | null }[] {
+  const reads: { name: string | null }[] = [];
+
+  for (const match of content.matchAll(ATTRIBUTE_NAME_READ_PATTERN)) {
+    const argument = (match[1] ?? match[2] ?? '').trim();
+    reads.push({ name: resolveStringExpression(argument) });
+  }
+
+  return reads;
+}
+
+/**
+ * True when a script reads an attribute whose name it cannot resolve.
+ *
+ * The read may be the attribute the fix adds, so the script reacts to the fix
+ * in a way the analyser cannot follow: it is a generic state read.
+ */
+function scriptReadsDynamicAttribute(content: string): boolean {
+  return attributeNameReads(content).some(read => read.name === null);
+}
 
 /** Class, inline-style and attribute mutations the analyser cannot follow. */
 const RUNTIME_MUTATION_PATTERN =
@@ -377,14 +451,38 @@ function scriptRefersToElementId(content: string, id: string): boolean {
  *
  * A script that reads an attribute the fix adds and then mutates an element
  * reacts to the fix: the mutation it performs is invisible to the isolated
- * verification browser.
+ * verification browser. A name the script builds at runtime counts as well:
+ * `'a' + 'lt'` is the name of the attribute the fix adds.
  */
 function scriptNamesAttribute(content: string, names: Set<string>): boolean {
   for (const name of names) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (new RegExp(`\\b${escaped}\\b`, 'i').test(content)) return true;
   }
+
+  const wanted = new Set([...names].map(name => name.toLowerCase()));
+  for (const read of attributeNameReads(content)) {
+    if (read.name !== null && wanted.has(read.name.toLowerCase())) return true;
+  }
+
   return false;
+}
+
+/**
+ * True when a script reads one of the attributes by its DOM API.
+ *
+ * The crude word search of `scriptNamesAttribute()` is not used for the
+ * attributes an added element carries: a name like `for` is a word in almost
+ * every script, and the word says nothing about the attribute.
+ */
+function scriptReadsIntroducedAttribute(content: string, names: Set<string>): boolean {
+  const wanted = new Set([...names].map(name => name.toLowerCase()));
+
+  for (const read of attributeNameReads(content)) {
+    if (read.name !== null && wanted.has(read.name.toLowerCase())) return true;
+  }
+
+  return scriptReadsAttributeProperty(content, names);
 }
 
 /**
@@ -693,11 +791,31 @@ export async function planRepositoryFixes(
       if (RUNTIME_GENERIC_STATE_READ_PATTERN.test(content)) {
         genericStateReadMutationScripts.push(content);
       }
+      if (scriptReadsDynamicAttribute(content)) {
+        // The script reads an attribute whose name it builds at runtime: the
+        // read may be the attribute the fix adds.
+        genericStateReadMutationScripts.push(content);
+      }
     }
   };
 
   for (const [path, content] of contentCache) {
     if (CSS_FILE_PATTERN.test(path)) addCssSource(path, content);
+  }
+
+  // The script targets of the repository. A browser executes the response of a
+  // `<script src>` by its MIME type, so the name of the file says nothing:
+  // every target is runtime code and is inspected as such.
+  const scriptTargets = new Set<string>();
+  for (const [path, content] of contentCache) {
+    for (const source of extractScriptSources(content)) {
+      const target = resolveRepositoryPath(path, source);
+      if (!target || !contentCache.has(target)) {
+        styleProblems.push(`the script ${source} is not part of the repository`);
+        continue;
+      }
+      scriptTargets.add(target);
+    }
   }
 
   for (const [path, content] of contentCache) {
@@ -718,7 +836,7 @@ export async function planRepositoryFixes(
       }
       addCssSource(target, contentCache.get(target) as string);
     }
-    if (SCRIPT_FILE_PATTERN.test(path)) {
+    if (SCRIPT_FILE_PATTERN.test(path) || scriptTargets.has(path)) {
       inspectRuntimeScript(path, content);
     } else {
       // Inline script blocks carry the same runtime code as a linked script.
@@ -768,11 +886,38 @@ export async function planRepositoryFixes(
     // A script that names the patched element can take it over at runtime even
     // without a state read, so this destination cannot be proved safe.
     const originalElement = describeElements(violation.elementHtml ?? '')[0];
-    const patchedElement = describeElements(violation.remediationCode ?? '')[0];
+    const patchedElements = describeElements(violation.remediationCode ?? '');
+    const patchedElement = patchedElements[0];
     if (originalElement && patchedElement) {
       if (
         originalElement.id &&
         runtimeMutationScripts.some(content => scriptRefersToElementId(content, originalElement.id as string))
+      ) {
+        pendingFixIds.delete(violation.id);
+        refusedFixIds.add(violation.id);
+        continue;
+      }
+
+      // The remediation may add elements of its own. A script that finds one
+      // of them by its id, or reads one of its attributes, reaches it only
+      // after the fix: what it does to the page is invisible to the isolated
+      // verification browser.
+      const introducedIds = new Set<string>();
+      const introducedAttributes = new Set<string>();
+      for (const element of patchedElements.slice(1)) {
+        if (element.id && element.id !== originalElement.id) introducedIds.add(element.id);
+        for (const name of element.attributes.keys()) {
+          // The id is judged by the id check above, which needs the literal
+          // id in a selector and not a property read.
+          if (name !== 'id') introducedAttributes.add(name);
+        }
+      }
+
+      if (
+        introducedIds.size > 0 &&
+        runtimeMutationScripts.some(content =>
+          [...introducedIds].some(id => scriptRefersToElementId(content, id))
+        )
       ) {
         pendingFixIds.delete(violation.id);
         refusedFixIds.add(violation.id);
@@ -790,6 +935,18 @@ export async function planRepositoryFixes(
         added.size > 0 &&
         (conditionalMutationScripts.some(content => scriptNamesAttribute(content, added)) ||
           runtimeMutationScripts.some(content => scriptReadsAttributeProperty(content, added)) ||
+          genericStateReadMutationScripts.length > 0)
+      ) {
+        pendingFixIds.delete(violation.id);
+        refusedFixIds.add(violation.id);
+        continue;
+      }
+
+      if (
+        introducedAttributes.size > 0 &&
+        (runtimeMutationScripts.some(content =>
+          scriptReadsIntroducedAttribute(content, introducedAttributes)
+        ) ||
           genericStateReadMutationScripts.length > 0)
       ) {
         pendingFixIds.delete(violation.id);
