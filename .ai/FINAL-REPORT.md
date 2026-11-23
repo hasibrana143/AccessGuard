@@ -1,6 +1,6 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + thirteenth-review closure** · Date: 2026-11-23 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + fourteenth-review closure** · Date: 2026-11-24 · Owner: CTO agent
 
 ## What shipped
 
@@ -14,8 +14,9 @@ found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, th
 that closure found 4 High, 2 Medium**, the **ninth review of that closure found
 3 High, 3 Medium**, the **tenth review of that closure found 4 High, 4 Medium**, the
 **eleventh review of that closure found 3 High, 3 Medium**, the **twelfth review
-of that closure found 6 High, 3 Medium** and the **thirteenth review of that
-closure found 5 High, 2 Medium**.
+of that closure found 6 High, 3 Medium**, the **thirteenth review of that
+closure found 5 High, 2 Medium** and the **fourteenth review of that closure
+found 4 High, 6 Medium**.
 Every earlier round closed the literal reproductions while an equivalent path stayed
 open. The tenth review independently reproduced eight equivalent paths — an inline
 `<script>` carrier, a DOM property getter, an escaped attribute **name**, the painted
@@ -57,6 +58,14 @@ document-base reader parsed every file of a repository as markup, so an ordinary
 script file made the whole repository unprovable.
 **The release verdict is still NOT READY** — the gate requires Critical 0 and High 0
 from an independent pass, and the **fourteenth review is the next check**.
+The fourteenth review independently reproduced ten more equivalent paths — the
+**`Reflect.get` computed read**, the **stylesheet-link discovery**, the
+**runtime-mutated document base**, the **remediation-introduced structural
+change**, the **native semantics and keyboard focus**, the **remediation-introduced
+CSS resource**, the **escaped `]` in an attribute selector**, the **`:link`
+transition**, the **viewport-unit offset** and the **`aria-hidden` suppression**.
+The closure of those ten findings is in progress; the gate opens only when a
+**fifteenth independent review** returns READY (Critical 0, High 0).
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -64,6 +73,27 @@ from an independent pass, and the **fourteenth review is the next check**.
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Fourteenth independent security review (2026-11-24)
+
+> The verdict was NOT READY — Critical 0, High 4, Medium 6, Low 0 — against tree
+> `be81d02`. The closure of the ten findings is **in progress** (the dispositions are
+> in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact is
+> `.ai/SECURITY-REVIEW-14.md`).
+> The release gate opens only when a **fifteenth independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 14-H1 — a `Reflect.get(object, propertyName)` computed property read bypassed the runtime state-read gate | High | `Reflect.get(img,'al'+'t')` changed the target to class `overlay` and a fixed `1280×720` takeover at the viewport centre; verified with confidence `1`, applied 1 fix, wrote 1 file and the real route opened a pull request | **In progress** |
+| 14-H2 — the stylesheet-link discovery was not browser-equivalent | High | an entity-encoded `rel` and a quoted `>` in another attribute each hid the stylesheet from the writer while Chromium loaded it; the patched target became a fixed `1280×720` takeover | **In progress** |
+| 14-H3 — a runtime-mutated `<base href>` bypassed the resource resolution | High | the script set `base.href="/sub/"` before the `<link>` was parsed: the writer analysed the benign root stylesheet while Chromium loaded the unreviewed `sub/theme.bin` | **In progress** |
+| 14-H4 — a remediation-introduced element changed the structural CSS and the verifier judged the wrong element | High | an introduced `<span aria-hidden="true">` made the image the second child, so `img:nth-child(2) ~ #overlay` turned the sibling into a fixed `1280×720` takeover | **In progress** |
+| 14-M1 — native semantics and keyboard focus could be removed | Medium | a native `<button>` replaced by a `<div>` and a `tabindex="0"` changed to `"-1"`: Tab focused the original button and focused neither repaired element | **In progress** |
+| 14-M2 — the remediation could introduce a CSS resource request | Medium | `style="background-image:var(--pixel)"` with `:root{--pixel:url(/pixel)}` and `style="background-image:image-set('/pixel')"`: the after-fix listener observed `GET /pixel` in both cases | **In progress** |
+| 14-M3 — a quoted escaped `]` defeated the CSS attribute-selector analysis | Medium | `img[alt="\]"] ~ #overlay{background-image:url(/pixel)}`: the after-fix listener observed `GET /pixel` | **In progress** |
+| 14-M4 — adding `href` activated `:link` | Medium | `a:link{background-image:url(/pixel)}` with an added `href="#main"`: the after-fix listener observed `GET /pixel` | **In progress** |
+| 14-M5 — a `99vw` offset moved the patched content off-screen | Medium | the left edge of the `64×64` target moved from `8` to `-1259.1875` (computed `left: -1267.2px`) | **In progress** |
+| 14-M6 — `aria-hidden="true"` could suppress the repaired image | Medium | Chromium's accessibility tree changed the target from role `image` to role `none` (`ignored: true`), so axe stopped reporting `image-alt` | **In progress** |
 
 ### Thirteenth independent security review (2026-11-23)
 
@@ -408,7 +438,7 @@ Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same co
   (High 3, Medium 3)**, **the twelfth (High 6, Medium 3)** and **the thirteenth
   (High 5, Medium 2)**. Every set of equivalent paths was reproduced in
   local, mocked conditions and is now fixed at its root cause, but the release gate
-  stays closed until a **fourteenth independent pass returns READY**; see
+  stays closed until a **fifteenth independent pass returns READY**; see
   `.ai/SECURITY-STATUS.md`.
 - The destination CSS judgement is **static**: CSS-in-JS, CDN stylesheets, a style
   written by a script at runtime and a custom property the analyser cannot resolve

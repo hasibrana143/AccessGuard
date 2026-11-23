@@ -1,6 +1,26 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-23 (thirteenth-review closure)
+Last run: 2026-11-24 (fourteenth independent security review)
+
+## Fourteenth independent security review evidence
+
+| Check | Result |
+|---|---|
+| Fourteenth independent security review | **NOT READY — Critical 0, High 4, Medium 6, Low 0** against the closure tree `be81d02` (checkout `f6db8f7`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-14.md` |
+| Recovered fourth- through thirteenth-review payloads | PASS — 280/280 recovered assertions (the prior/legitimate matrix 118/118, the ninth 42/42, the tenth 19/19, the eleventh 37/37 + 9/9, the twelfth 26/26 + 8/8, the thirteenth 21/21) |
+| Pre-closure eleventh-review harnesses (recovered) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
+| New equivalent-path writer / verifier / Chromium harness | every final unsafe variant was observed with validation true, no destination refusal, verification confidence `1`, one fix and one mocked source write |
+| New equivalent-path real-route harness | 13/13 passed across two temporary harnesses — every variant wrote `index.html`, created a branch and a pull request, and wrote both audit events |
+| New legitimate-behaviour harness | 18/18 passed |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0, no diagnostics |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npx vitest run --coverage` | PASS — 53 files, 853/853 tests |
+| Coverage | PASS — statements 68.02% (threshold 55) · branches 60.67% (50) · functions 71.05% (58) · lines 69.81% (57) |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS — 79/79 |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
+| Tracked-file secret scan | PASS — 780 tracked files, 779 scanned; only `.env.example` is tracked in the `.env*` name family; one AWS-key-shaped **documentation example** (path and category only, value never printed) and no live credential |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
 
 ## Thirteenth-review closure evidence
 

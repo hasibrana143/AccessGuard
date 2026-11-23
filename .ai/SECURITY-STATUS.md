@@ -1,6 +1,65 @@
 # AccessGuard — Security Status
 
-Last verification: 2026-11-23
+Last verification: 2026-11-24
+
+## Fourteenth independent security review (2026-11-24) — closure in progress
+
+**Verdict: NOT READY — Critical 0, High 4, Medium 6, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree is **not releasable** until every High
+reproduction is blocked in the unsafe direction, permanent regressions cover the
+root causes, and a fresh independent review returns READY.
+
+The reviewed closure tree was `be81d02` (`vol: security — V23: close the
+thirteenth review's runtime, geometry and budget findings`), against the
+requested baseline `08ab9ef`; the checkout at report time was `f6db8f7`
+(`git diff --quiet be81d02..HEAD -- src` is exit 0, so the reviewed source is the
+closure tree itself). The reviewer's own artifact is `.ai/SECURITY-REVIEW-14.md`
+(report only — no shipped source, test, dependency, CI, environment or existing
+`.ai/` file was changed by the reviewer). Every reproduction used local synthetic
+repositories, a mocked GitHub transport, local Chromium and listeners bound to
+`127.0.0.1`. No production, third-party or public target was scanned, no live
+repository was mutated, no external GitHub Markdown service was called, and **no
+Strix result is claimed**.
+
+The literal fourth- through thirteenth-review payloads stay closed: the reviewer
+re-ran them in the unsafe direction and got **280/280** recovered assertions
+passing plus the two pre-closure harnesses failing exactly as expected. The ten
+findings below are **newly found equivalent paths**.
+
+### Reproduced findings
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 14-H1 | **High** | Computed runtime state read | `Reflect.get(img,'al'+'t')` changed the target to class `overlay` and a fixed `1280×720` takeover at the viewport centre; verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route answered `200 success:true`, created a branch and opened a pull request | `COMPUTED_PROPERTY_READ_PATTERN` recognises the **bracket** notation only; `RUNTIME_STATE_READ_PATTERN` does not include `Reflect.get`, and `scriptReadsAttributeProperty()` recognises a dot property and a bracket property but not the `Reflect.get(object, propertyName)` API — so the runtime mutation is recorded but the conditional-mutation decision never sees a state read | **In progress** — `Reflect.get(object, propertyName)` is a computed property read whose property-name argument is resolved with the existing string-expression resolver; a name that cannot be resolved is a generic dynamic state read |
+| 14-H2 | **High** | Stylesheet-link discovery | `<link rel="styles&#x68;eet" href="theme.bin">` and `<link title=">" rel="stylesheet" href="theme.bin">` each loaded the unreviewed `theme.bin` and turned the patched target into a fixed `1280×720` takeover; both verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | `extractStylesheetLinks()` uses `/<link\b([^>]*)>/gi`: it stops at the first `>` even inside a quoted attribute, and it compares the raw `rel` value without HTML-entity decoding — the browser uses the quoted-attribute and entity semantics of `html-attributes.ts` | **In progress** — the `<link>` tags are parsed with the browser-like quoted-attribute semantics, the entities of `rel` and `href` are decoded, and a stylesheet link whose attributes cannot be read makes the destination unprovable |
+| 14-H3 | **High** | Runtime-mutated document base | `<base id="base">` whose `href` the repository script sets to `/sub/` before the `<link>` is parsed: the writer analysed the benign root `theme.bin` while Chromium loaded the unreviewed `sub/theme.bin`; verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | `resolveDocumentBase()` reads a **static** `href` attribute; the runtime scanner does not treat a base-element property assignment as a runtime mutation, so it keeps the document URL as the base | **In progress** — a repository runtime that assigns a `<base>` element's `href` makes the effective base unprovable; the destination is refused instead of falling back to the document URL |
+| 14-H4 | **High** | Remediation-introduced structural change | A remediation that introduces `<span aria-hidden="true">x</span>` before the patched image made the image the second child, so `img:nth-child(2) ~ #overlay` turned the sibling into a fixed `1280×720` takeover; verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | the destination model compares the attributes and classes of the patched element but not the **DOM position** or the sibling relationships an introduced element creates, and `checkRenderedElement()` declares the **first** rendered element to be the patched target | **In progress** — a remediation that introduces an element makes a structural selector (`:nth-child()`, `:nth-last-child()`, sibling combinators) unprovable, and the verifier judges the patched target instead of the first rendered element |
+| 14-M1 | Medium | Native semantics and keyboard focus | a native `<button>` replaced by a `<div>` and a `tabindex="0"` changed to `"-1"`: Tab focused the original button in both cases and focused neither repaired element; both verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | `validateFixForRule()` has no `button-name` branch, so the default branch accepts the replacement of a native button, and the focusability transition is only modelled in the **gain** direction | **In progress** — a remediation preserves the native interactive semantics of the element it patches and never removes its keyboard focusability |
+| 14-M2 | Medium | Remediation-introduced CSS resource | `style="background-image:var(--pixel)"` with `:root{--pixel:url(/pixel)}` and `style="background-image:image-set('/pixel')"`: the after-fix `127.0.0.1` listener observed `GET /pixel` in both cases; both verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | `checkStyleAttribute()` rejects a literal `url(` but does not resolve `var()` references and does not recognise `image-set()`; the repository CSS analyser knows both, but its resource check is not applied to the remediation's own inline style | **In progress** — the remediation's own inline style is checked for a resource with the custom properties of the repository resolved, and a reference the analyser cannot resolve is unprovable |
+| 14-M3 | Medium | CSS attribute-selector decoding | `img[alt="\]"] ~ #overlay{background-image:url(/pixel)}`: the after-fix `127.0.0.1` listener observed `GET /pixel`; verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | the attribute-selector branch of `parseSubject()` finds the end of a selector with `selector.indexOf(']', i)`, so a quoted CSS escape `\]` ends the selector early and the activated rule's resource is not analysed | **In progress** — the closing bracket of an attribute selector is read with browser-equivalent quote and escape handling, and a selector whose attribute syntax cannot be read is unprovable |
+| 14-M4 | Medium | Link-state transition | `a:link{background-image:url(/pixel)}` with an added `href="#main"`: the after-fix `127.0.0.1` listener observed `GET /pixel`; verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | `parseSubject()` records `:link` as an opaque conditional state and `compoundActivatedByFix()` models no link-state transition, while the remediation changes the match state of `:link` | **In progress** — an added `href` activates the `:link` / `:any-link` rules through the same destination decision as the other fix-created states; `:hover` and `:focus-within` stay harmless |
+| 14-M5 | Medium | Viewport-unit off-screen offset | `[alt]{position:relative;left:-99vw}` on a `64×64` image: the left edge moved from `8` to `-1259.1875` (computed `left: -1267.2px`), so the repaired image left the viewport | `isLargeOffset()` treats a viewport unit as off-screen only at `100` units or more and does not compose the offset with the element's declared size | **In progress** — a viewport-unit offset is composed with the element's declared size, so `99vw` on the exact `64×64` target is not harmless |
+| 14-M6 | Medium | Accessibility-tree visibility | `aria-hidden="true"` added to the repaired image: Chromium's accessibility tree changed the target from role `image` to role `none` (`ignored: true`), so axe stopped reporting `image-alt` while the image left the accessibility tree | the `image-alt` branch of `validateFixForRule()` accepts `aria-hidden="true"` independently of the `alt` value because of the boolean structure of its decorative-image condition | **In progress** — the decorative exception requires an actually decorative original and replacement, so a remediation cannot hide the element it claims to repair |
+
+### Re-run evidence of the fourteenth review
+
+| Harness | Result |
+|---|---|
+| Recovered fourth- through thirteenth-review assertions | 280/280 passed (the prior/legitimate matrix 118/118, the ninth 42/42, the tenth 19/19, the eleventh 37/37 + 9/9, the twelfth 26/26 + 8/8, the thirteenth 21/21) |
+| Pre-closure eleventh-review evidence and route harnesses | 12 failed + 5 passed and 2 failed + 7 passed — exactly as expected; the failures assert that the eleventh-review vulnerabilities still exist |
+| New equivalent-path writer / verifier / Chromium harness | every final unsafe variant was observed with validation true, no destination refusal, verification confidence `1`, one fix and one mocked source write |
+| New equivalent-path route harness | 13/13 passed across two temporary harnesses — every variant wrote `index.html`, created a branch and a pull request, and wrote the intent and the closing audit event |
+| New legitimate-behaviour harness | 18/18 passed |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 853/853, coverage 68.02/60.67/71.05/69.81, build 0, Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
+| Tracked-file secret scan | PASS — 780 tracked files, 779 scanned; only `.env.example` is tracked in the `.env*` name family; one AWS-key-shaped **documentation example** (path and category only, value never printed) and no live credential |
+
+### Gate status
+
+The sixth through thirteenth review closures are shipped (`be81d02`); the
+fourteenth review returned **NOT READY** (High 4, Medium 6) and all ten of its
+findings are in closure. The **release gate is still closed**: it opens only when
+a **fifteenth independent review** returns READY (Critical 0, High 0) against the
+fourteenth-review closure tree.
 
 ## Thirteenth independent security review (2026-11-23) — closure in progress
 

@@ -2,15 +2,25 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 thirteenth-review closure shipped, fourteenth review pending** 🟡 |
-| Current task | Run the fourteenth independent security review against the thirteenth-review closure tree `be81d02`; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 fourteenth-review closure in progress** 🟡 |
+| Current task | Close the ten findings of the fourteenth independent security review (Critical 0, **High 4**, Medium 6) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) from a **fifteenth** independent review |
 | Owner | CTO agent |
-| Status | AMBER — all seven thirteenth-review findings (High 5, Medium 2) are closed at their root cause with a permanent regression each, the gate suite is green and the closure is pushed; the gate stays closed until a fresh independent review returns READY |
+| Status | AMBER — the fourteenth review reproduced ten working paths (the `Reflect.get` computed read, the stylesheet-link discovery, the runtime-mutated document base, the remediation-introduced structural change, the native semantics and keyboard focus, the remediation-introduced CSS resource, the escaped `]` in an attribute selector, the `:link` transition, the viewport-unit offset and the `aria-hidden` suppression); the closure is in progress, the gate stays closed until a fresh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Verify the four workflows on the pushed closure head, record the runs in `.ai/DEPLOYMENT.md`, then run the fourteenth independent security review (baseline `08ab9ef`, reviewed tree = the closure commit `be81d02`) |
+| Next action | Close the ten fourteenth-review findings in three disjoint scopes (the repository runtime, the destination CSS and the remediation validation), run the closure matrix and the full gate suite, commit in the volume DoD order, push to `origin/main` and then run the fifteenth independent security review |
 | Last verification | 2026-11-23 — thirteenth-review closure: tsc 0, lint 0, vitest 53 files/853 tests, coverage 68.02/60.67/71.05/69.81, build 0, Playwright 79/79, npm audit High 0, closure matrix 21/21, recovered prior matrices 26/26 + 37/37 + 42/42 + 19/19 + 9/9 + 118/118, the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-24, fourteenth independent security review)
+
+| Check | Result |
+|---|---|
+| Fourteenth independent security review | **NOT READY — Critical 0, High 4, Medium 6, Low 0** against the thirteenth-review closure tree `be81d02` (checkout `f6db8f7`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-14.md` and the findings are in `.ai/SECURITY-STATUS.md` |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 853/853, build 0, Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
+| Recovered fourth- through thirteenth-review payloads | PASS — 280/280 recovered assertions (the prior/legitimate matrix 118/118, the ninth 42/42, the tenth 19/19, the eleventh 37/37 + 9/9, the twelfth 26/26 + 8/8, the thirteenth 21/21) plus the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
+| New equivalent-path harnesses | 13/13 route assertions and 18/18 legitimate-behaviour assertions — the ten findings below are newly found equivalent paths, not re-openings of the literal prior payloads |
+| Release gate | CLOSED — opens only when a **fifteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, thirteenth-review closure)
 
