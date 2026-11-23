@@ -1,6 +1,32 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-23 (twelfth-review closure)
+Last run: 2026-11-23 (thirteenth independent security review)
+
+## Thirteenth independent review evidence
+
+| Check | Result |
+|---|---|
+| Thirteenth independent security review | **NOT READY — Critical 0, High 5, Medium 2, Low 0** against the closure tree `11065e4` (checkout `d2a7cda`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-13.md` |
+| Recovered fourth- through twelfth-review assertions re-run | PASS — 259/259 (118 prior / legitimate + 124 writer closure + 17 route closure) |
+| Pre-closure eleventh-review evidence and route harnesses | PASS as expected-direction failures — 12 failed + 5 passed and 2 failed + 7 passed; the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure |
+| New equivalent-path writer / verifier / Chromium harness | PASS — 17/17 tests: all nine unsafe candidates reached one fix and one write, with every Chromium geometry, paint and local-request result observed |
+| New equivalent-path route harness | PASS — 7/7: five representative High cases opened a pull request; the unsafe eleventh candidate produced no source fix but did produce review artifacts (13-M2) |
+| Legitimate behaviours re-checked | PASS — 26/26 (the ordinary image-alt and button-name fixes, the `https:` / `mailto:` hrefs, the preserved relative destination, the preserved class and inline style, 3-of-3 and 2-of-3 identical copies, the twelve server-template spellings, the ordinary repository script, the linked script that does not react, the unrelated runtime mutation, the event handler that does not react, the small box growth, the harmless focus rule, the custom property without a resource, the scale of one, the small box shadow, the non-zero maximum size, the zero maximum size without clipping, the aspect ratio with both axes, the running animation, the positive delay, the pure in-page fragment `#main`) |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 829/829, coverage 67.15/59.74/69.83/68.81, build 0 (116 static pages), Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
+| Tracked-file secret scan | PASS — 779 tracked files; only `.env.example` is tracked in the `.env*` name family; one AWS-key-shaped **documentation example** (path and category only, value never printed) and no live credential |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
+
+### Findings to close
+
+| Finding | Severity | Surface | Closure scope |
+|---|---|---|---|
+| 13-H1 | **High** | the document base URL (`<base href>`) for the repository stylesheet and script references | `src/lib/github.ts` |
+| 13-H2 | **High** | the computed property and computed selector runtime state reads | `src/lib/github.ts` |
+| 13-H3 | **High** | the attribute value change under a negated requirement, `:nth-child(... of ...)` and the nested negation | `src/lib/css-context.ts` |
+| 13-H4 | **High** | the actual focusability before and after the fix | `src/lib/css-context.ts` |
+| 13-H5 | **High** | the outline paint geometry | `src/lib/css-context.ts` |
+| 13-M1 | Medium | the `inset` shorthand offsets | `src/lib/css-context.ts` |
+| 13-M2 | Medium | the safety analysis against the ten-source-write budget | `src/lib/github.ts`, `src/app/api/github/create-pr/route.ts` |
 
 ## Twelfth-review closure evidence
 

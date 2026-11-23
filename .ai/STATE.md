@@ -2,15 +2,26 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 twelfth-review closure shipped, thirteenth review pending** 🟡 |
-| Current task | Run the thirteenth independent security review against the twelfth-review closure tree `11065e4`; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 thirteenth-review closure in progress** 🟡 |
+| Current task | Close the seven findings of the thirteenth independent security review (Critical 0, **High 5**, Medium 2) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) from a **fourteenth** independent review |
 | Owner | CTO agent |
-| Status | AMBER — all nine twelfth-review findings (High 6, Medium 3) are closed at their root cause with a permanent regression each, the gate suite is green and the closure is pushed; the gate stays closed until a fresh independent review returns READY |
+| Status | AMBER — the thirteenth review reproduced seven working paths (the document base URL, the computed runtime state reads, the CSS transition semantics, the focusability transition, the outline paint geometry, the inset shorthand offsets and the safety order against the source budget); the closure is in progress, the gate stays closed until a fresh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Verify the four workflows on the pushed closure head, record the runs in `.ai/DEPLOYMENT.md`, then run the thirteenth independent security review (baseline `08ab9ef`, reviewed tree = the closure commit `11065e4`) |
-| Last verification | 2026-11-23 — twelfth-review closure: tsc 0, lint 0, vitest 53 files/829 tests, coverage 67.15/59.74/69.83/68.81, build 0, Playwright 79/79, npm audit High 0, closure matrix 26/26, route closure harness 8/8, recovered prior matrices 37/37 + 42/42 + 19/19 + 9/9 + 118/118 |
+| Next action | Finish the thirteenth-review closure (the CSS scope and the repository-runtime scope), run the closure matrix and the full gate suite, commit in the volume DoD order, push to `origin/main` and then run the fourteenth independent security review |
+| Last verification | 2026-11-23 — thirteenth review: **NOT READY (High 5, Medium 2)**; the reviewer's own gate suite was green (tsc 0, lint 0, 829/829 vitest, build 0, Playwright 79/79, audit High 0), the recovered fourth- through twelfth-review assertions were 259/259 and the new equivalent-path harnesses were 24/24 |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-23, thirteenth independent security review)
+
+| Check | Result |
+|---|---|
+| Thirteenth independent security review | **NOT READY — Critical 0, High 5, Medium 2, Low 0** against the closure tree `11065e4` (checkout `d2a7cda`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-13.md` and the findings are in `.ai/SECURITY-STATUS.md` |
+| Reviewer's own re-runs | PASS — the recovered fourth- through twelfth-review assertions 259/259, the pre-closure eleventh-review harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed), the new equivalent-path writer / verifier / Chromium harness 17/17 and the new equivalent-path route harness 7/7 — the five High root causes each reached the writer and opened a pull request |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 829/829, coverage 67.15/59.74/69.83/68.81, build 0 (116 static pages), Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
+| The seven findings | **13-H1** (High) — a `<base href>` changes the document base URL, so the writer analysed the wrong stylesheet; **13-H2** (High) — a computed property read (`img["al"+"t"]`) and a computed selector read (`img.matches("["+"al"+"t"+"]")`) bypass the mutation gate; **13-H3** (High) — a negated attribute value change, `:nth-child(... of ...)` and a nested negation are not modelled transitions; **13-H4** (High) — an added `href` makes an anchor focusable and the `:focus` rule takes the page over; **13-H5** (High) — `outline` is absent from the painted surface; **13-M1** — the `inset` shorthand moves the target off-screen; **13-M2** — a candidate beyond the ten-source-write budget skips the safety analysis and receives review artifacts |
+| Closure scopes | IN PROGRESS — (1) destination CSS: the transition semantics, the focusability comparison, the outline paint geometry and the inset shorthands; (2) repository runtime: the document base URL, the computed state reads and the safety order against the source budget |
+| Release gate | CLOSED — opens only when a **fourteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, twelfth-review closure)
 

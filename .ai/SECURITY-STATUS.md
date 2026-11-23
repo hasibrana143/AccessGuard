@@ -2,6 +2,62 @@
 
 Last verification: 2026-11-23
 
+## Thirteenth independent security review (2026-11-23) — closure in progress
+
+**Verdict: NOT READY — Critical 0, High 5, Medium 2, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree is **not releasable** until every High
+reproduction is blocked in the unsafe direction, permanent regressions cover the
+root causes, and a fresh independent review returns READY.
+
+The reviewed closure tree was `11065e4` (`vol: security — V23: close the twelfth
+review's runtime, geometry and validator findings`), against the requested
+baseline `08ab9ef`; the checkout at report time was `d2a7cda` (`git diff --quiet
+11065e4..HEAD -- src` is exit 0, so the reviewed source is the closure tree
+itself). The reviewer's own artifact is `.ai/SECURITY-REVIEW-13.md` (report only —
+no shipped source, test, dependency, CI, environment or existing `.ai/` file was
+changed by the reviewer). Every reproduction used local synthetic repositories, a
+mocked GitHub transport, local Chromium and listeners bound to `127.0.0.1`. No
+production, third-party or public target was scanned, no live repository was
+mutated, no external GitHub Markdown service was called, and **no Strix result is
+claimed**.
+
+The literal fourth- through twelfth-review payloads stay closed: the reviewer
+re-ran them in the unsafe direction and got **259/259** recovered assertions
+passing plus the two pre-closure harnesses failing exactly as expected. The seven
+findings below are **newly found equivalent paths**.
+
+### Reproduced findings
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 13-H1 | **High** | Repository resource base URL | `<base href="/sub/">` with `<link rel="stylesheet" href="theme.bin">`: the writer analysed the benign root `theme.bin`, Chromium loaded the unreviewed `sub/theme.bin` (`[alt]{position:fixed;inset:0;width:100vw;height:100vh;…}`); the candidate verified with confidence `1`, applied 1 fix, wrote 1 file and the real route opened a pull request | `resolveRepositoryPath()` resolves a reference against the **containing file's directory**; a browser resolves a document-relative URL against the document's **effective base URL**, which `<base href>` changes. The same mismatch exists on the `<script src>` target path | **In progress** — the references are resolved with the document's effective base, and a base that cannot be resolved from repository source or that points outside the repository makes the destination unprovable |
+| 13-H2 | **High** | Computed runtime state reads | `img["al"+"t"]` and `img.matches("["+"al"+"t"+"]")` each changed the target to class `overlay`, fixed `1280×720`, at the viewport centre; both verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | `scriptReadsAttributeProperty()` recognises a **dot** property, not a **computed bracket** property; `scriptNamesAttribute()` searches for a literal attribute word and does not resolve the argument of `matches()` / `closest()` | **In progress** — a computed property or selector read is resolved when it is a concatenation of string literals, and a name the reader cannot resolve is a **generic dynamic state read** (fail closed) |
+| 13-H3 | **High** | CSS transition semantics | Three transitions the analyser did not model — a negated attribute **value** change (`:not([data-state="active"])` with `data-state` changed), `:nth-child(1 of [alt])` and the nested negation `:not(:not([alt]))` — each turned the sibling into a fixed `1280×720` takeover at the viewport centre; verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | `parseSubject()` reads only the arguments of `:is()`, `:where()` and `:not()`; the transition model records added and removed attributes but not a **changed value**, and a nested negation is not reduced | **In progress** — the value change, the `:nth-child(... of ...)` selector list and the nested negation are modelled, and a functional pseudo-class whose transition semantics cannot be read fails closed |
+| 13-H4 | **High** | Focusability transition | An added `href="#main"` on an anchor made it keyboard-focusable; the `a:focus ~ .overlay` rule turned the sibling into a fixed `1280×720` takeover at the viewport centre; verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | `changesBetween()` marks a focusability transition only for an **added** `tabindex`; it does not compare the element's actual focusability before and after the fix | **In progress** — the actual focusability is compared before and after the fix (an added `href`, an added `contenteditable`, a `tabindex` value change to a focusable value) |
+| 13-H5 | **High** | Outline paint geometry | `[alt]{outline:100000px solid #f0f}` computed `outline-width:100000px` and painted the outline over the viewport (the screenshot origin and midpoint changed from white to the opaque outline colour); verified with confidence `1`, applied 1 fix, wrote 1 file, and the real route opened a pull request | `paintedBoxOf()` composes box-shadow growth but not the outline, and `outline` / `outline-width` are absent from the relevant-property set | **In progress** — the outline width and offset are composed into the painted surface, and an outline the analyser cannot compute is unprovable |
+| 13-M1 | Medium | Inset shorthand offsets | `[alt]{position:relative;inset:-9999px}` computed `left: -9999px` and `top: -9999px`; the image left the viewport | the inset **longhands** call `isLargeOffset()`, but the `inset`, `inset-block` and `inset-inline` **shorthands** only compute zero-valued edges in `stateOf()` | **In progress** — the shorthands are expanded into their physical edges and use the same direction-free large-offset rule |
+| 13-M2 | Medium | Safety order against the source budget | Eleven candidates: the eleventh (`#target11:nth-child(11 of [alt]){position:fixed;inset:0;…}`) skipped the safety analysis and received the review artifacts `accessguard-fixes/image-alt-v11.md` and `summary.md`; the real route answered `200 success:true`, created a branch and opened a pull request | `planRepositoryFixes()` slices the candidates to ten **before** the safety decision, so every candidate at index ten or later goes straight into `reviewFixIds` | **In progress** — validation, runtime analysis and destination analysis run for **every** candidate; the budget may limit source writes, never the safety decision |
+
+### Re-run evidence of the thirteenth review
+
+| Harness | Result |
+|---|---|
+| Recovered fourth- through twelfth-review assertions | 259/259 passed (118 prior/legitimate + 124 writer closure + 17 route closure) |
+| Pre-closure eleventh-review evidence and route harnesses | 12 failed + 5 passed and 2 failed + 7 passed — exactly as expected; the failures assert that the eleventh-review vulnerabilities still exist |
+| New equivalent-path writer / verifier / Chromium harness | 17/17 passed — all nine unsafe candidates reached one fix and one write, with every Chromium and local-request result observed |
+| New equivalent-path route harness | 7/7 passed — five representative High cases opened a pull request; the unsafe eleventh candidate produced no source fix but did produce review artifacts |
+| Legitimate behaviours | 26/26 passed — the ordinary fixes, the `https:` / `mailto:` hrefs, the preserved relative destination, the preserved class and inline style, 3-of-3 and 2-of-3 identical copies, the twelve server-template spellings, the ordinary repository script, the linked script that does not react, the unrelated runtime mutation, the harmless focus rule, the custom property without a resource, the scale of one, the small box shadow, the non-zero and the unclipped zero maximum size, the aspect ratio with both axes, the running animation, the positive delay, and the pure in-page fragment `#main` |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 829/829, coverage 67.15/59.74/69.83/68.81, build 0, Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
+| Tracked-file secret scan | PASS — 779 tracked files; only `.env.example` is tracked in the `.env*` name family; one AWS-key-shaped **documentation example** (path and category only, value never printed) and no live credential |
+
+### Gate status
+
+The sixth through twelfth review closures are shipped; the thirteenth review
+returned **NOT READY** (High 5, Medium 2) and its closure is in progress. The
+**release gate is still closed**: it opens only when a **fourteenth independent
+review** returns READY (Critical 0, High 0) against the thirteenth-review closure
+tree.
+
 ## Twelfth independent security review (2026-11-23) — closed 2026-11-23
 
 **Verdict: NOT READY — Critical 0, High 6, Medium 3, Low 0.** The READY gate
