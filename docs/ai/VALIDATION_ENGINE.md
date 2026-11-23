@@ -227,6 +227,29 @@ writes anything into a customer's repository:
    replacement may be hidden: the `hidden` attribute and the hiding styles are
    refused on every live tag, not only on the first one.
 
+   Seven more gaps of the same judgement are closed after that. The repository's
+   stylesheet and script references are resolved against the document's **effective
+   base URL** — a `<base href>` changes that base, so the reference is read where the
+   browser reads it, and a base that cannot be resolved from repository source or that
+   points outside the repository makes the destination unprovable. A **computed
+   property read** (`img["al"+"t"]`) and a **computed selector read**
+   (`img.matches("["+"al"+"t"+"]")`) are state reads: the name is resolved when it is a
+   concatenation of string literals and fails closed into the generic bucket
+   otherwise. The destination CSS models an attribute **value change** under a negated
+   requirement, reduces a **nested negation** the way the browser reduces it and reads
+   the selector list of **`:nth-child(… of …)`**; a functional pseudo-class whose
+   transition cannot be read fails closed. The **actual focusability** is compared
+   before and after the fix — an added `href`, an added `contenteditable` and a
+   `tabindex` value change are focusability transitions like an added `tabindex`. The
+   **outline** grows the painted surface on every side without changing the layout, so
+   a `100000px` outline covers the viewport although the element itself is `64×64`. The
+   `inset`, `inset-block` and `inset-inline` **shorthands** are expanded into their
+   physical edges, so a large offset written as a shorthand is off-screen like the
+   longhand. And the **safety analysis runs for every candidate**: the ten-source-write
+   budget limits the source writes, never the validation, the runtime analysis or the
+   destination analysis, so an unsafe candidate beyond the budget cannot become a
+   review artifact.
+
 An incomplete scan never patches a file; the fix stays a review suggestion. The
 review comment that is written into the file instead neutralizes the comment
 terminator (`*/`, `-->`, `--!>`), so untrusted text cannot close the comment and
