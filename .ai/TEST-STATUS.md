@@ -1,6 +1,33 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-23 (eleventh independent security review)
+Last run: 2026-11-23 (twelfth independent security review)
+
+## Twelfth independent review evidence
+
+| Check | Result |
+|---|---|
+| Twelfth independent security review | **NOT READY — Critical 0, High 6, Medium 3, Low 0** against the closure tree `d429c6b` (checkout `2dce09d`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-12.md` |
+| Eleventh-review closure matrix re-run | PASS — 37/37 |
+| Eleventh-review route matrix re-run | PASS — 9/9 |
+| Tenth-review and ninth-review closure matrices re-run | PASS — 61/61 |
+| Prior / legitimate assertion matrix re-run | PASS — 118/118 |
+| New equivalent-path writer / verifier / Chromium harness | PASS — 4/4 tests, twelve candidate rows: every candidate reached one fix and one write, and local Chromium reproduced the takeover |
+| Route / audit harness with the literal closure plus the new route probes | PASS — 12/12 (the dynamic state read, the functional pseudo-class and the nonstandard script extension each returned `200 success:true` and opened a pull request) |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 799/799, coverage 66.59/59.2/69.02/68.3, build 0 (116 static pages), Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
+
+### Findings to close
+
+| Finding | Severity | Surface | Closure scope |
+|---|---|---|---|
+| 12-H1 | **High** | the runtime attribute reads whose name the script builds or cannot resolve, and the standard `hasAttributes()` | `src/lib/github.ts` |
+| 12-H2 | **High** | the arguments of `:is()` / `:where()` / `:not()` and the **removed** classes and attributes | `src/lib/css-context.ts` |
+| 12-H3 | **High** | an added `tabindex` as a focusability transition | `src/lib/css-context.ts` |
+| 12-H4 | **High** | the painted surface of a **non-positioned** element | `src/lib/css-context.ts` |
+| 12-H5 | **High** | the discovery of a runtime carrier through a `<script src>` target | `src/lib/github.ts` |
+| 12-H6 | **High** | a runtime mutation of an element the **remediation introduces** | `src/lib/github.ts` |
+| 12-M1 | Medium | a large **positive** positional offset or margin | `src/lib/css-context.ts` |
+| 12-M2 | Medium | a remediation that introduces a URI attribute | `src/lib/github-pr.ts` |
+| 12-M3 | Medium | a replacement that hides a **nested** live element | `src/lib/github-pr.ts`, `src/lib/ast-patch.ts` |
 
 ## Eleventh independent review evidence
 

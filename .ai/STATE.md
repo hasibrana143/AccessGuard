@@ -2,15 +2,26 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 eleventh-review closure shipped, twelfth review pending** 🟡 |
-| Current task | Run the twelfth independent security review against the eleventh-review closure tree `d429c6b`; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 twelfth-review closure in progress** 🟡 |
+| Current task | Close the nine findings of the twelfth independent security review (Critical 0, **High 6**, Medium 3) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) from a **thirteenth** independent review |
 | Owner | CTO agent |
-| Status | AMBER — all six eleventh-review findings (High 2, Medium 3 — the review counted the two runtime paths and the five geometry paths as three High) are closed at their root cause with a permanent regression each, the gate suite is green and the closure is pushed; the gate stays closed until a fresh independent review returns READY |
+| Status | AMBER — the twelfth review reproduced nine working paths (the runtime state-read completeness, the functional pseudo-classes, the focusability transition, the painted surface of a non-positioned element, the script carrier, the remediation-introduced element, the positive off-screen offsets, the new destination and the nested hidden target); the closure is in progress, the gate stays closed until a fresh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Verify the four workflows on the pushed closure head, record the runs in `.ai/DEPLOYMENT.md`, then run the twelfth independent security review (baseline `08ab9ef`, reviewed tree = the closure commit `d429c6b`) |
-| Last verification | 2026-11-23 — eleventh-review closure: tsc 0, lint 0, vitest 53 files/799 tests, coverage 66.59/59.2/69.02/68.3, build 0, Playwright 79/79, npm audit High 0, closure matrix 46/46, prior matrices 19/19 + 42/42 + 118/118; the eleventh review's own gate suite was green (770/770, Playwright 79/79) and its verdict was NOT READY (High 3, Medium 3) |
+| Next action | Finish the twelfth-review closure (the three scopes), run the closure matrix and the full gate suite, commit in the volume DoD order, push to `origin/main` and then run the thirteenth independent security review |
+| Last verification | 2026-11-23 — twelfth review: **NOT READY (High 6, Medium 3)**; the reviewer's own gate suite was green (tsc 0, lint 0, 799/799 vitest, build 0, Playwright 79/79, audit High 0) and its own payload harnesses reproduced every finding (the new equivalent harness 4/4 and the route harness 12/12 reached the writer and opened a pull request) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-23, twelfth independent security review)
+
+| Check | Result |
+|---|---|
+| Twelfth independent security review | **NOT READY — Critical 0, High 6, Medium 3, Low 0** against the closure tree `d429c6b` (checkout `2dce09d`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-12.md` and the findings are in `.ai/SECURITY-STATUS.md` |
+| Reviewer's own re-runs | PASS — the eleventh-review closure matrix 37/37, the eleventh-review route matrix 9/9, the tenth-review and ninth-review closure matrices 61/61, the prior / legitimate matrix 118/118, the new equivalent-path writer / verifier / Chromium harness 4/4 (twelve candidate rows) and the route / audit harness 12/12 — the dynamic state read, the functional pseudo-class and the nonstandard script extension each returned `200 success:true` and opened a pull request |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 799/799, coverage 66.59/59.2/69.02/68.3, build 0 (116 pages), Playwright 79/79, `npm audit` Critical 0 / High 0 (15 moderate) |
+| The nine findings | **12-H1** (High) — a runtime attribute read whose name the script builds (`'a'+'lt'`) or cannot resolve, and the standard `hasAttributes()`, are not state reads; **12-H2** (High) — the arguments of `:is()` / `:where()` / `:not()` are opaque and a **removed** class does not activate a rule; **12-H3** (High) — an added `tabindex` is not a focusability transition; **12-H4** (High) — the painted surface is composed for positioned elements only, so a scaled non-positioned element may cover the viewport; **12-H5** (High) — a `<script src>` target is never followed into the tree, so a `.php` carrier is invisible; **12-H6** (High) — the runtime gate correlates only with the original target's id and the first element's attributes; **12-M1** — a large **positive** offset or margin is not off-screen; **12-M2** — a remediation may introduce a same-origin destination the original element does not have; **12-M3** — only the first tag of a replacement is judged, so a nested `hidden` element passes |
+| Closure scopes | IN PROGRESS — (1) destination CSS: the functional pseudo-classes, the removal semantics, the focusability transition and the painted surface; (2) repository runtime: the attribute-name resolution, the script-carrier discovery and the remediation-introduced elements; (3) validator: the URI preservation and the nested hiding |
+| Release gate | CLOSED — opens only when a **thirteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-23, eleventh-review closure)
 

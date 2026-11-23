@@ -2,6 +2,59 @@
 
 Last verification: 2026-11-23
 
+## Twelfth independent security review (2026-11-23) — closure in progress
+
+**Verdict: NOT READY — Critical 0, High 6, Medium 3, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree is **not releasable** until every High
+reproduction is blocked in the unsafe direction, permanent regressions cover the
+root causes, and a fresh independent review returns READY.
+
+The reviewed closure tree was `d429c6b` (`vol: security — V23: close the eleventh
+review's runtime and painted-surface findings`), against the requested baseline
+`08ab9ef`; the checkout at report time was `2dce09d` (the state commit that
+carries the pipeline evidence — `git diff --quiet d429c6b..HEAD -- src` is exit
+0, so the reviewed source is the closure tree itself). The reviewer's own
+artifact is `.ai/SECURITY-REVIEW-12.md` (report only — no shipped source, docs,
+CI, dependency or environment file was changed by the reviewer). Every
+reproduction used local synthetic repositories, a mocked GitHub transport, local
+Chromium and `127.0.0.1` listeners. No production, third-party or public target
+was scanned, no live repository was mutated, no external GitHub Markdown service
+was called, and **no Strix result is claimed**.
+
+### Reproduced findings
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 12-H1 | **High** | Repository runtime state reads | `hasAttribute('a'+'lt')` and the standard `hasAttributes()` twin each returned valid / harm-null / verified confidence `1` / 1 fix / 1 write while Chromium turned the target into a fixed `1280×720` takeover; the real route answered `200 success:true`, created a branch and opened a pull request | `scriptNamesAttribute()` searches for a literal attribute **word**, so a name built at runtime never matches; `RUNTIME_GENERIC_STATE_READ_PATTERN` does not know `Element.hasAttributes()` | **In progress** — `hasAttributes()` joins the generic attribute reads, and an attribute read whose name cannot be resolved (a variable, a call, an interpolation) is a generic state read; a name that is a concatenation of string literals is resolved |
+| 12-H2 | **High** | Destination selector activation | `input:is([aria-label]) ~ .overlay` and `#target:not(.card) ~ .overlay` each returned valid / harm-null / verified / 1 fix / 1 write; Chromium changed the sibling from `1264×18` to a fixed `1280×720` takeover | `parseSubject()` treats every functional pseudo-class as one opaque `conditional` marker and skips its argument, and `changesBetween()` records added attributes and classes but not removed classes | **In progress** — the arguments of `:is()`, `:where()` and `:not()` are read and matched, and the fix's **removed** classes and attributes are tracked |
+| 12-H3 | **High** | Destination focusability transition | A `div[role="button"]:focus ~ .overlay` rule with a remediation that adds `tabindex="0"` returned valid / harm-null / verified / 1 fix / 1 write; after the fix and focus the sibling was a fixed `1280×720` takeover | `changesBetween()` sets its `focus` transition only when the remediation adds `autofocus`, so a fix that makes the element focusable activates no focus rule | **In progress** — an added `tabindex` is a focusability transition and reaches the same focus-activation decision as `autofocus` |
+| 12-H4 | **High** | Destination painted surface | `[alt]{scale:100;background:#f0f}` returned valid / harm-null / verified / 1 fix / 1 write; Chromium scaled the image from `64×64` to `6400×6400` and it covered the viewport | `paintedBoxOf()` returns before composing padding, borders, scale, transform and zoom whenever the element is not positioned, and `coversViewport()` requires a positioned state | **In progress** — the painted surface is composed for every element, and a painted box that covers the viewport **because of the fix** is refused |
+| 12-H5 | **High** | Repository runtime carrier discovery | `<script src="/runtime.php">` whose body reacts to the added `alt` returned valid / harm-null / verified / 1 fix / 1 write; Chromium requested `/runtime.php` and the target became a fixed `1280×720` takeover; the real route opened a pull request | `SCRIPT_FILE_PATTERN` recognises a fixed list of JavaScript extensions, and the scanner never follows a `<script src>` target into the tree — a browser executes the response by its MIME type, not by its suffix | **In progress** — a `<script src>` target is followed into the tree and inspected whatever its name is; a target that is not part of the repository makes the destination unprovable |
+| 12-H6 | **High** | Runtime mutation of a remediation-introduced element | A remediation that adds `<div id="overlay">` next to the patched image, with an inline script that mutates `getElementById('overlay')`, returned valid / harm-null / verified / 1 fix / 1 write; Chromium measured the added element at a fixed `1280×720` | The runtime gate correlates the mutation scripts only with the **original** target's id and with the attributes added to the **first** element of the remediation | **In progress** — the whole remediation is judged: a script that names an id or reads an attribute the remediation introduces makes the destination unprovable |
+| 12-M1 | Medium | Destination off-screen offsets | `[alt]{position:relative;left:9999px}` and `[alt]{margin-left:9999px}` each returned valid / harm-null / verified / 1 fix / 1 write; Chromium moved the image from a left edge of `8` to `10007` | `isLargeNegativeOffset()` and the matching `stateOf()` branches recognise only negative offsets and margins | **In progress** — a large offset is a large offset in either direction |
+| 12-M2 | Medium | URI attribute preservation | `<a id="target">Text</a>` → `<a id="target" href="/destination">Text</a>` returned valid / verified / 1 write; the local listener received `GET /destination` after the patched link was clicked | `isForeignDestination()` deliberately treats a same-origin relative URL as safe, so the "new URI attribute" branch allows a remediation to introduce a destination the original element did not have | **In progress** — a remediation may not introduce a URI attribute the original element does not have; only a pure in-page fragment (`#main`) stays allowed |
+| 12-M3 | Medium | Remediation target shape | A remediation that wraps the patched image in a `<span>` and marks the image `hidden` returned valid / verified / 1 write; Chromium measured the image at `0×0` with a computed `display:none` | `validateRemediation()` marks only the **first** tag as the target, and `hidesOwnTarget()` inspects only the first opening tag of the replacement | **In progress** — no live element of the replacement may be hidden: the `hidden` attribute and the hiding styles are refused on every live tag |
+
+### Re-run evidence of the twelfth review
+
+| Harness | Result |
+|---|---|
+| Eleventh-review closure matrix | 37/37 |
+| Eleventh-review route / audit closure matrix | 9/9 |
+| Tenth-review and ninth-review closure matrices | 61/61 |
+| Prior / legitimate assertion matrix | 118/118 (one harness-only confidence expectation corrected — not a product change) |
+| New equivalent-path writer / verifier / Chromium harness | 4/4 tests, twelve candidate rows — every candidate reached one fix and one write |
+| Route / audit harness with the literal closure plus the new route probes | 12/12 (the dynamic state read, the functional pseudo-class and the nonstandard script extension each returned `200 success:true` and opened a pull request) |
+| Build, source-only typecheck, lint, vitest 799/799, coverage 66.59/59.2/69.02/68.3, Playwright 79/79, `npm audit` Critical 0 / High 0 | PASS |
+
+### Gate status
+
+The sixth through eleventh review closures are shipped; the twelfth review
+returned **NOT READY** (High 6, Medium 3) and its closure is in progress. The
+**release gate is still closed**: it opens only when a **thirteenth independent
+review** returns READY (Critical 0, High 0) against the twelfth-review closure
+tree.
+
 ## Eleventh independent security review (2026-11-23) — closed 2026-11-23
 
 **Verdict: NOT READY — Critical 0, High 3, Medium 3, Low 0.** The READY gate
