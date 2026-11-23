@@ -305,6 +305,34 @@ pipeline record stays bound to the reviewed tree: `git diff --quiet
 08ab9ef..d429c6b -- src` is the only source change set of the cycle, and
 `git diff --quiet d429c6b..HEAD -- src` is clean.
 
+## The twelfth-review closure run (2026-11-23)
+
+All four workflows are green on `d2a7cda` (the twelfth-review closure cycle):
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45167837692 | CI | ✅ success (5m53s) — lint, source-only typecheck, vitest + coverage, `next build`, `npm audit`, Playwright |
+| 45167837620 | Docker | ✅ success — `Trivy image scan (fail on HIGH/CRITICAL)` ✅, `Upload Trivy SARIF` ✅, `Syft SBOM attest` ✅ |
+| 45167837609 | Deploy | ✅ success — **skipped with a notice**: the Vercel secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) are not configured, so nothing was deployed |
+| 45167837842 | AccessGuard Scan | ✅ success — **skipped with a notice**: `ACCESSGUARD_API_KEY` / `ACCESSGUARD_PROJECT_ID` are not configured, so the self-scan did not run |
+
+The two skips are the documented secret-gated behaviour, not a coverage result:
+neither the deployment nor the self-scan is claimed as evidence for this cycle.
+
+## The thirteenth-review closure run (2026-11-23)
+
+All four workflows are green on `cd6b3ad` (the thirteenth-review closure cycle):
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45227830428 | CI | ✅ success (8m03s) — lint, source-only typecheck, vitest + coverage, `next build`, `npm audit`, Playwright |
+| 45227830850 | Docker | ✅ success (11m59s) — the multi-arch image builds, the Trivy step passes with the CRITICAL/HIGH filter, the SARIF upload and the Syft SBOM attest are green |
+| 45227830783 | Deploy | ✅ success (1m06s) — **skipped with a notice**: the Vercel secrets are not configured, so nothing was deployed |
+| 45227830812 | AccessGuard Scan | ✅ success (17s) — **skipped with a notice**: `ACCESSGUARD_API_KEY` / `ACCESSGUARD_PROJECT_ID` are not configured, so the self-scan did not run |
+
+The two skips are the documented secret-gated behaviour, not a coverage result:
+neither the deployment nor the self-scan is claimed as evidence for this cycle.
+
 ### How the eleventh-review cycle was shipped
 
 The commits, in the order the volume definition of done asks for:
