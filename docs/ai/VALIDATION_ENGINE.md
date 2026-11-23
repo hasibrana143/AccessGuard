@@ -174,6 +174,34 @@ writes anything into a customer's repository:
   resource. The **play state** of an animation decides the frame the customer sees: a
   **paused** animation stays on its first frame.
 
+  Six more gaps of the same judgement are closed after that. **Event-handler
+  attributes** are runtime carriers: `<body onload="…">` runs when the event fires, so
+  the handler body is analysed like an inline script, and a handler whose value cannot
+  be read fails closed. The DOM APIs that read an attribute's presence **generically**
+  — `getAttributeNames()`, `getAttributeNode()`, `attributes.getNamedItem()` and an
+  iteration of `element.attributes` — are state reads like `hasAttribute(…)`, so a
+  script that enumerates the attributes and then mutates reacts to any attribute the
+  fix adds. The **effective painted surface** is composed, not the content box: the
+  **logical** padding and border longhands set the same edges as the physical ones,
+  `zoom` is a scale factor like `scale` and `transform: scale(…)`, a scale above one
+  on an axis **without a declared size** cannot be computed (the intrinsic size is
+  unknown) and stays unprovable, an **`aspect-ratio`** that fills an axis the element
+  does not declare is unprovable (the derived size depends on the shape of the
+  customer's screen), and a **`box-shadow`** grows the painted area by its blur and
+  spread on every side — even for an element that is not positioned. A **maximum size
+  is a cap**, so it is composed with the overflow: a zero `max-height` / `max-width`
+  together with a clipping overflow removes the patched control from the paint. The
+  **resource check** of an activated rule resolves the `var()` references of the
+  declaration before it looks for a `url(…)`, against the definitions that can reach
+  the element — the global ones (`:root`, `html`) included — and a reference that
+  stays unresolved is unprovable; the effective style is deliberately *not* widened with
+  the global definitions, because a value that only `:root` defines may be conditional
+  or overridden. The **animation delay, duration and fill mode** decide the frame the
+  customer sees: a paused animation with a **negative delay** sits at that progress on
+  the timeline (the keyframe offsets are kept so the frame can be chosen), and a
+  running animation with a positive delay shows the **first** frame during the delay
+  when the fill mode is `backwards` or `both`.
+
 An incomplete scan never patches a file; the fix stays a review suggestion. The
 review comment that is written into the file instead neutralizes the comment
 terminator (`*/`, `-->`, `--!>`), so untrusted text cannot close the comment and
@@ -268,7 +296,12 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   repository colour**, a **logical margin**, a **negative positional offset**, a
   **single zero dimension**, `display:contents` and a **reversed animation**),
   the independence of the verdict from the order of the stylesheets and the
-  animation frames.
+  animation frames,
+  and the rules the eleventh review found and the analyser used to miss (the
+  **logical padding and border longhands**, **`zoom`**, an **unconstrained scale**,
+  **`aspect-ratio`**, a **viewport-wide `box-shadow`**, a **zero maximum size with a
+  clipping overflow**, an **inherited custom property** behind the resource check and
+  the **animation delay, negative delay and fill mode**).
 - `src/lib/__tests__/fix-verification.test.ts` — gate semantics, the
   check-before-render order, the browser isolation (no HTTP, no WebSocket), the
   visible-text verdict, the rendered-element verdict (a hidden element, transparent
@@ -281,7 +314,10 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   stylesheet guard (a preprocessor stylesheet, a linked stylesheet, a **style the
   repository script creates at runtime**), the **runtime behaviour of the repository
   script** (a conditional class or inline-style mutation, a mutation that names the
-  patched element, a service worker, a CSS-in-JS library), the blob whose extension
+  patched element, an **event-handler attribute** that reacts to the added
+  attribute, a **generic attribute read** (`getAttributeNames()`,
+  `getAttributeNode()`, `attributes.getNamedItem()`), a service worker, a CSS-in-JS
+  library), the blob whose extension
   does not say
   whether it is binary, the template destination, failed writes not reported as
   applied.
