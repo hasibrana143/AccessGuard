@@ -81,8 +81,15 @@ The **fifteenth review** then reproduced nine more equivalent paths — the
 the document base**, the **modern slash-alpha transparency**, the **class removal
 through nested negation**, the **`@font-face` resource**, the
 **accessibility-tree hiding through browser semantics** and the **removal of
-`autofocus`**. Their closure is in progress; the gate opens only when a
-**sixteenth independent review** returns READY (Critical 0, High 0).
+`autofocus`**. **All nine are now fixed at their root cause, with a permanent
+regression each** (37 regressions: the closure matrix 24/24 assertions — every
+finding blocked in the unsafe direction and every benign twin still allowed, with
+16 of the 24 failing on the pre-closure tree; the recovered prior matrices
+118/118 and 209/209 across nine files; the two pre-closure harnesses failing
+exactly as expected, 12 failed + 5 passed and 2 failed + 7 passed; the
+fails-before proof: 8 + 6 + 5 regressions fail on the pre-closure tree). The
+gate opens only when a **sixteenth independent review** returns READY (Critical 0,
+High 0).
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -94,22 +101,22 @@ through nested negation**, the **`@font-face` resource**, the
 ### Fifteenth independent security review (2026-11-24)
 
 > The verdict was NOT READY — Critical 0, High 4, Medium 5, Low 0 — against tree
-> `d16797c`. The closure of the nine findings is **in progress** (the dispositions
-> are in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact is
-> `.ai/SECURITY-REVIEW-15.md`).
+> `d16797c`. **All nine findings are closed** in the fifteenth-review closure tree
+> (the dispositions are in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact
+> is `.ai/SECURITY-REVIEW-15.md`).
 > The release gate opens only when a **sixteenth independent review** returns READY.
 
 | Finding | Severity | Reproduced unsafe result | Status |
 |---|---|---|---|
-| 15-H1 — alternate attribute-read call syntaxes bypassed the runtime state-read gate | High | `Element.prototype.getAttribute.call(img,'alt')`, `img.getAttribute?.('alt')` and `img['get'+'Attribute']('alt')` each changed the target to class `overlay` and a fixed `1280×720` takeover at the viewport centre; all three applied 1 fix, wrote 1 file and the real route opened a pull request | **In progress** |
-| 15-H2 — the reflected `data-*` attribute reads bypassed the reflected-attribute gate | High | `img.dataset['state']` and `Reflect.get(img.dataset,'state')` each changed the target to class `overlay` and a fixed `1280×720` takeover; both applied 1 fix, wrote 1 file and the real route opened a pull request | **In progress** |
-| 15-H3 — an id introduced on the patched target was not checked against the repository runtime | High | a remediation that added `id="activated"` let `document.getElementById('activated')` reach the target after the fix: a fixed `1280×720` takeover, one fix, one write and a pull request | **In progress** |
-| 15-H4 — indexed collection receivers bypassed the runtime document-base mutation analysis | High | `document.querySelectorAll('base')[0].href='/sub/'` and `document.getElementsByTagName('base')[0].href='/sub/'` each made the writer analyse a stylesheet the browser never loaded (`/sub/theme.bin` was requested) and left the repaired target fixed at `1280×720` | **In progress** |
-| 15-M1 — modern slash-alpha transparency was missed | Medium | `[aria-label]{color:rgba(0 0 0 / 0)}` made the repaired button's computed colour `rgba(0, 0, 0, 0)`: the visible text became transparent although axe still found the accessible name | **In progress** |
-| 15-M2 — class removal through nested negation was missed | Medium | `button:is(:not(.armed)){background-image:url(/pixel)}` issued `GET /pixel` after the fix removed `.armed` from the button | **In progress** |
-| 15-M3 — an `@font-face` resource was disconnected from the activated rule | Medium | `@font-face{font-family:Evil;src:url(/font)}` with an activated `font-family:Evil` issued `GET /font` in the customer browser | **In progress** |
-| 15-M4 — the repaired element could be hidden from the accessibility tree through browser semantics | Medium | `aria-hidden="&#116;rue"`, `role="&#112;resentation"`, an `aria-hidden="true"` **ancestor** and `inert` each removed the repaired image from the accessibility tree; all four applied 1 fix, wrote 1 file and the real route opened a pull request. The control `<div role="presentation">` ancestor is **not** harmful — Chromium keeps the image with role `image` | **In progress** |
-| 15-M5 — removing `autofocus` changed the initial focus | Medium | a remediation that dropped `autofocus` moved Chromium's `document.activeElement` from `BUTTON#target` to `BODY` | **In progress** |
+| 15-H1 — alternate attribute-read call syntaxes bypassed the runtime state-read gate | High | `Element.prototype.getAttribute.call(img,'alt')`, `img.getAttribute?.('alt')` and `img['get'+'Attribute']('alt')` each changed the target to class `overlay` and a fixed `1280×720` takeover at the viewport centre; all three applied 1 fix, wrote 1 file and the real route opened a pull request | **Closed** — `attributeReadCalls()` recognises the direct, optional, prototype `.call`/`.apply` and computed-method forms and resolves the attribute argument; an unresolvable method or attribute name fails closed as a generic state read |
+| 15-H2 — the reflected `data-*` attribute reads bypassed the reflected-attribute gate | High | `img.dataset['state']` and `Reflect.get(img.dataset,'state')` each changed the target to class `overlay` and a fixed `1280×720` takeover; both applied 1 fix, wrote 1 file and the real route opened a pull request | **Closed** — `attributeOfDatasetKey()` maps a dataset key to its `data-*` attribute for the bracket access and for the `Reflect.get` / `getOwnPropertyDescriptor` forms on a `dataset` receiver; an unresolved key fails closed |
+| 15-H3 — an id introduced on the patched target was not checked against the repository runtime | High | a remediation that added `id="activated"` let `document.getElementById('activated')` reach the target after the fix: a fixed `1280×720` takeover, one fix, one write and a pull request | **Closed** — the introduced ids are collected from every patched element, so a new id on the patched target is an introduced id that the runtime may reference; the source patch is then refused |
+| 15-H4 — indexed collection receivers bypassed the runtime document-base mutation analysis | High | `document.querySelectorAll('base')[0].href='/sub/'` and `document.getElementsByTagName('base')[0].href='/sub/'` each made the writer analyse a stylesheet the browser never loaded (`/sub/theme.bin` was requested) and left the repaired target fixed at `1280×720` | **Closed** — `indexedReceiver()` resolves an indexed collection receiver and `receiverMayBeBase()` recurses into the collection, so a receiver that may contain the base makes the document base unprovable |
+| 15-M1 — modern slash-alpha transparency was missed | Medium | `[aria-label]{color:rgba(0 0 0 / 0)}` made the repaired button's computed colour `rgba(0, 0, 0, 0)`: the visible text became transparent although axe still found the accessible name | **Closed** — `isTransparentColor()` reads the legacy comma alpha and the modern slash alpha in one browser-equivalent grammar for `rgb`, `rgba`, `hsl`, `hsla`, `hwb`, `oklch`, `oklab`, `lab`, `lch` and `color()` |
+| 15-M2 — class removal through nested negation was missed | Medium | `button:is(:not(.armed)){background-image:url(/pixel)}` issued `GET /pixel` after the fix removed `.armed` from the button | **Closed** — `compoundActivatedByFix()` propagates a removed class and a changed attribute value through nested negation and through the `:is()` / `:where()` alternatives |
+| 15-M3 — an `@font-face` resource was disconnected from the activated rule | Medium | `@font-face{font-family:Evil;src:url(/font)}` with an activated `font-family:Evil` issued `GET /font` in the customer browser | **Closed** — `collectFontFace()` collects the family and its `src` descriptors, and `fontFamilyResourceState()` resolves an activated `font-family` to its resource; an unreadable or unresolved family or resource fails closed |
+| 15-M4 — the repaired element could be hidden from the accessibility tree through browser semantics | Medium | `aria-hidden="&#116;rue"`, `role="&#112;resentation"`, an `aria-hidden="true"` **ancestor** and `inert` each removed the repaired image from the accessibility tree; all four applied 1 fix, wrote 1 file and the real route opened a pull request. The control `<div role="presentation">` ancestor is **not** harmful — Chromium keeps the image with role `image` | **Closed** — the values are browser-decoded, the repaired element and its remediation ancestors are inspected with browser-equivalent semantics and `inert` is a hiding form; the harmless `role="presentation"` ancestor is not blanket-refused |
+| 15-M5 — removing `autofocus` changed the initial focus | Medium | a remediation that dropped `autofocus` moved Chromium's `document.activeElement` from `BUTTON#target` to `BODY` | **Closed** — `validateRemediation()` compares the presence of `autofocus` on the original and the patched target and refuses its removal |
 
 ### Fourteenth independent security review (2026-11-24)
 

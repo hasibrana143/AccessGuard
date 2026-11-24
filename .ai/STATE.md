@@ -2,15 +2,35 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 fifteenth-review closure in progress** 🟡 |
-| Current task | Close the nine findings of the fifteenth independent security review (Critical 0, **High 4**, Medium 5) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) from a **sixteenth** independent review |
+| Current phase | **SECURITY FIX LOOP — V23 fifteenth-review closure shipped, sixteenth review pending** 🟡 |
+| Current task | Run the **sixteenth** independent security review against the fifteenth-review closure tree; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the fourteenth-review closure shipped in `d16797c` and is green on every gate and on all four CI workflows; the fifteenth review then reproduced nine **new** equivalent paths (the alternate attribute-read call syntaxes, the reflected `data-*` reads, the id introduced on the patched target, the indexed collection receivers for the document base, the modern slash-alpha transparency, the class removal through nested negation, the `@font-face` resource, the accessibility-tree hiding through browser semantics and the removal of `autofocus`); the closure is in progress, the gate stays closed until a fresh independent review returns READY |
+| Status | AMBER — the fourteenth-review closure shipped in `d16797c` and is green on every gate and on all four CI workflows; the fifteenth review then reproduced nine **new** equivalent paths, and **all nine are now closed at their root cause** with 37 permanent regressions, the 24/24 closure matrix, the 118/118 prior matrix and the 209/209 combined closure run; the gate stays closed until a fresh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Close the nine fifteenth-review findings in three disjoint scopes (the repository runtime, the destination CSS and the remediation validation), run the closure matrix and the full gate suite, commit in the volume DoD order, push to `origin/main` and then run the sixteenth independent security review |
-| Last verification | 2026-11-24 — fourteenth-review closure: tsc 0, lint 0, vitest 53 files/902 tests, coverage 68.88/61.78/72.06/70.74, build 0, Playwright 78 passed + 1 flaky, npm audit High 0, closure matrix 23/23, recovered prior matrices 118/118 + 145/145 + 17/17, the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed), fails-before proof 21 + 7 + 2 failures; the four CI workflows green on `2da3e00` |
+| Next action | Commit the fifteenth-review closure in the volume DoD order, push to `origin/main`, verify the four CI workflows on the pushed head and then run the sixteenth independent security review |
+| Last verification | 2026-11-24 — fifteenth-review closure: tsc 0, lint 0, vitest 53 files/939 tests, coverage 69.89/62.75/72.93/71.78, build 0, Playwright 79 tests 0 failed, npm audit High 0, closure matrix 24/24 (16 failures before the closure), recovered prior matrices 118/118 + 209/209 across nine files, the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed), fails-before proof 8 + 6 + 5 failures |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-24, fifteenth-review closure)
+
+| Check | Result |
+|---|---|
+| Fifteenth-review closure | PASS — all nine findings (15-H1…15-H4, 15-M1…15-M5) closed at their root cause in `src/lib/github.ts`, `src/lib/css-context.ts`, `src/lib/fix-validation.ts` and `src/lib/github-pr.ts`; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-15.md` |
+| Permanent regressions | PASS — 37 new tests (17 in `github.test.ts`, 12 in `css-context.test.ts`, 7 in `fix-validation.test.ts`, 3 in `github-pr.test.ts`); every reproduction fails on the pre-closure tree (8 + 6 + 5 failures proved by reverting each scope) |
+| Fifteenth-review closure matrix (temporary) | PASS — 24/24 with the closure (16 failures and 8 passed on the pre-closure tree): every finding is blocked in the unsafe direction (0 fixes, 0 writes) and every benign twin stays writable. The file was deleted after the run |
+| Prior payload matrices (recovered) | PASS — the prior / legitimate matrix 118/118 (run with `tsx`) and the combined closure run 209/209 across nine files (the ninth 42, the tenth 19, the eleventh 37 + 9, the twelfth 26 + 8, the thirteenth 21, the fourteenth 23 and the fifteenth 24) |
+| Pre-closure eleventh-review harnesses (recovered) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
+| `npx vitest run --coverage` | PASS — 53 files, 939/939 tests (was 53/902) |
+| Coverage | PASS — statements 69.89% (threshold 55) · branches 62.75% (50) · functions 72.93% (58) · lines 71.78% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 tests, 0 failed |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
+| Tracked-file secret scan | PASS — 787 tracked files; one AWS-key-shaped **documentation placeholder** in `.openclaw/skills/document-generate/SKILL.md` (path and category only, value never printed) and no live credential |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
+| Release gate | CLOSED — opens only when a **sixteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-24, fifteenth independent security review)
 

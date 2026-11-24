@@ -407,6 +407,47 @@ vulnerabilities still exist, so they confirm the closure.
 Strix was **not** run for this cycle: every configured provider refuses the run
 (quota / EOL model / no credits), so no Strix result is claimed.
 
+## The fourteenth-review closure run (2026-11-24)
+
+All four workflows are green on `2da3e00` (the fourteenth-review closure cycle):
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45296672365 | CI | ✅ success (7m) — lint, source-only typecheck, vitest + coverage, `next build`, `npm audit`, Playwright |
+| 45296672346 | Docker | ✅ success (16.4m) — the multi-arch image builds, the Trivy step passes with the CRITICAL/HIGH filter, the SARIF upload and the Syft SBOM attest are green |
+| 45296672321 | Deploy | ✅ success (1.2m) — **skipped with a notice**: the Vercel secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) are not configured, so nothing was deployed |
+| 45296672737 | AccessGuard Scan | ✅ success (0.2m) — **skipped with a notice**: `ACCESSGUARD_API_KEY` / `ACCESSGUARD_PROJECT_ID` are not configured, so the VPAT report and the self-scan did not run |
+
+The two skips are the documented secret-gated behaviour, not a coverage result:
+neither the deployment nor the self-scan is claimed as evidence for this cycle.
+
+### How the fourteenth-review cycle was shipped
+
+The commits, in the order the volume definition of done asks for:
+
+| Commit | Layer | Content |
+|---|---|---|
+| `9ec1a3c` | state | the fourteenth independent review recorded — the reviewer's own artifact `.ai/SECURITY-REVIEW-14.md` and the dispositions |
+| `d16797c` | security | the ten fourteenth-review findings closed at their root cause, with 49 permanent regressions (the `Reflect.get` computed reads, the browser-equivalent stylesheet-link discovery, the runtime-mutated document base, the structural selector and the patched-target identification, the native semantics and the keyboard focusability, the remediation's own inline style as a resource carrier, the escaped `]` in an attribute selector, the `:link` transition, the viewport-unit offset and the accessibility-tree suppression) and the two false positives the closure introduced |
+| `1803d50` | ai | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
+| `0994fae` | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
+| `2da3e00` | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
+
+The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
+0, `npm run lint` 0, `npx vitest run --coverage` 53 files / 902 tests, coverage
+68.88 / 61.78 / 72.06 / 70.74 (thresholds 55 / 50 / 58 / 57), `npm run build` 0,
+`npx playwright test --project=chromium` 78 passed with 1 flaky (the
+accessibility spec failed its first attempt and passed on the retry),
+`npm audit --audit-level=high` Critical 0 / High 0, plus the temporary closure
+matrix at 23/23, the fails-before proof at 21 + 7 + 2 failures, and the recovered
+prior matrices at 118/118, 145/145 and 17/17 (all deleted after the run). The
+two pre-closure eleventh-review harnesses failed exactly as expected (12 failed +
+5 passed and 2 failed + 7 passed) — the failures assert that the eleventh-review
+vulnerabilities still exist, so they confirm the closure.
+
+Strix was **not** run for this cycle: every configured provider refuses the run
+(quota / EOL model / no credits), so no Strix result is claimed.
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the

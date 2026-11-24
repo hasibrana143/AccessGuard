@@ -1,6 +1,6 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-24 (fifteenth independent security review)
+Last run: 2026-11-24 (fifteenth-review closure)
 
 ## Fifteenth independent security review evidence
 
@@ -21,6 +21,26 @@ Last run: 2026-11-24 (fifteenth independent security review)
 | `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
 | `npm audit --omit=dev --audit-level=high` | PASS — exit 0, 5 moderate transitive advisories, 0 high / 0 critical |
 | Tracked-file secret scan | PASS — 781 tracked files; one AWS-key-shaped **documentation placeholder** in `.openclaw/skills/document-generate/SKILL.md` (path and category only, value never printed) and no live credential |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
+
+## Fifteenth-review closure evidence
+
+| Check | Result |
+|---|---|
+| Fifteenth-review closure | PASS — all nine findings (15-H1…15-H4, 15-M1…15-M5) closed at their root cause in `src/lib/github.ts`, `src/lib/css-context.ts`, `src/lib/fix-validation.ts` and `src/lib/github-pr.ts`; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-15.md` |
+| Permanent regressions | PASS — 37 new tests: 17 in `github.test.ts` (the prototype `.call` read, the optional call, the computed method name, the unrelated attribute read, the unresolved method name, the dataset bracket read, the `Reflect.get` dataset read, the unrelated `Reflect.get`, the introduced id on the patched target, the unreferenced introduced id, the unchanged id, the indexed `querySelectorAll` base receiver, the indexed `getElementsByTagName` base receiver, the unrelated indexed receiver and the document without a base), 12 in `css-context.test.ts` (the zero-alpha grammars, the opaque colour, the non-zero alpha, the unactivated transparent colour, the nested negation, the unrelated class removal, the changed attribute value and the `:where()` alternatives, the font-face resource, the family without a resource, the resource-free custom property and the unresolved font), 7 in `fix-validation.test.ts` (the encoded `aria-hidden`, the encoded `presentation` role, the `aria-hidden` ancestor, `inert`, the presentational ancestor, the decorative image and the hidden sibling) and 3 in `github-pr.test.ts` (the removed `autofocus`, the kept `autofocus` and the added `autofocus`) |
+| Fails-before proof | PASS — the regressions fail on the pre-closure tree: 8 failures with `src/lib/github.ts` reverted, 6 with `src/lib/css-context.ts` reverted and 5 with `src/lib/fix-validation.ts` and `src/lib/github-pr.ts` reverted (19 failures in total). Every benign twin passes before and after |
+| Fifteenth-review closure matrix (temporary) | PASS — 24/24 with the closure (16 failures and 8 passed on the pre-closure tree): every finding is blocked in the unsafe direction (0 fixes, 0 writes) and every benign twin stays writable. The file was deleted after the run |
+| Prior payload matrices (recovered) | PASS — the prior / legitimate matrix 118/118 (run with `tsx`) and the combined closure run 209/209 across nine files (the ninth 42, the tenth 19, the eleventh 37 + 9, the twelfth 26 + 8, the thirteenth 21, the fourteenth 23 and the fifteenth 24) |
+| Pre-closure eleventh-review harnesses (recovered) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
+| `npx vitest run --coverage` | PASS — 53 files, 939/939 tests (was 53/902) |
+| Coverage | PASS — statements 69.89% (threshold 55) · branches 62.75% (50) · functions 72.93% (58) · lines 71.78% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0, no diagnostics |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 tests, 0 failed |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
+| Tracked-file secret scan | PASS — 787 tracked files; one AWS-key-shaped **documentation placeholder** in `.openclaw/skills/document-generate/SKILL.md` (path and category only, value never printed) and no live credential |
 | Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
 
 ## Fourteenth-review closure evidence
