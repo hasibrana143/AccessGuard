@@ -355,3 +355,69 @@ element selector is written as an inline code span that the value cannot break o
 starts or ends with a backtick is padded). The review comment that is written into a
 customer file neutralizes the comment terminator (`*/`, `-->` and the alternate
 HTML terminator `--!>`), so untrusted text cannot close the comment and become code.
+
+## 9. The sixteenth-review closure (V23)
+
+The sixteenth independent security review found **eleven equivalent paths** that the
+writer did not model. The rule-level axe run never sees them: they are all reached
+**after** the fix lands, in the customer's own browser. The writer therefore refuses
+the source patch (it becomes a review document, or nothing at all) instead of
+claiming that the fix is safe.
+
+### 9.1 The member chain is read as a chain
+
+A repository script reads the customer's state in many spellings, and all of them are
+the same read:
+
+| Spelling | Read |
+|---|---|
+| `img.dataset.state`, `img.dataset['state']`, `img['dataset']['state']` | the `data-state` attribute |
+| `img.dataset?.state`, `img['dataset']?.['state']` | the same attribute (optional access) |
+| `Reflect.get(img,'alt')`, `Reflect['get'](img,'alt')`, `Reflect?.get(img,'alt')`, `Reflect.get?.(img,'alt')` | the `alt` property |
+| `Element.prototype.getAttribute?.call(img,'alt')`, `Element.prototype['getAttribute']?.call(img,'alt')` | the `alt` attribute |
+
+`calleeMembers()` in `src/lib/github.ts` parses one chain — dot, optional dot,
+computed and optional computed members — and a call contributes **no** member, so
+`querySelectorAll('img')` is not a member of its callee while `Reflect['get']` ends in
+`get`. The attribute-read calls, the `Reflect` reads and the dataset reads all use
+that parser. A chain, a method or a key the reader cannot resolve **fails closed**
+as a generic state read: the fix is refused rather than assumed safe.
+
+### 9.2 What the runtime may reach after the fix
+
+- An **id the fix introduces** is compared after the id argument and the selector are
+  resolved (`document.getElementById('act'+'ivated')` names `activated`). An id
+  expression the reader cannot resolve fails closed for this check only.
+- An **element the fix introduces** is compared with a literal runtime selector by
+  its tag, id, class and attribute names — `document.querySelector('span')` reaches
+  a `<span data-state="active">` the remediation added. A selector that names
+  another element stays writable.
+- The **document base** is read in every statically resolvable mutation form: the
+  `href` property, `setAttribute('href', …)`, `setAttributeNS(…, 'href', …)` (the
+  attribute name is the **second** argument) and an `Attr.value` write. A base the
+  runtime **creates** (`document.createElement('base')`) counts too — the base of a
+  document without a static `<base>` is unknowable, so the destination is unprovable.
+
+### 9.3 The destination stylesheet reads
+
+- A **colour** is read by its **alpha**, and a `color-mix()` carries the weighted
+  alpha of the two colours it mixes (both weights omitted → 50/50, one omitted → the
+  rest, two given weights must add up to 100 %). A colour function whose alpha cannot
+  be read fails closed. The remediation validator and the destination reader share
+  the helper, so they cannot drift apart.
+- An activated **`font` shorthand** selects a family after its size component; the
+  family is resolved through the same resource path the `font-family` longhand uses.
+- The effective **`@font-face src`** is the **last** declaration of the face — the
+  one the browser uses.
+- `:enabled` and `:disabled` are a **control-state transition** a fix can create
+  (removing `disabled` activates `:enabled`). `:hover` and `:focus-within` stay
+  harmless: they are user-interaction states, not fix-activated ones.
+
+### 9.4 The evidence
+
+32 permanent regressions (21 in `github.test.ts`, 10 in `css-context.test.ts`, 1 in
+`github-pr.test.ts`), a temporary closure matrix of 42 assertions (deleted after the
+run), the recovered prior matrices 118/118 and 192/192, the route run 24 passed with
+the two intentional pre-closure failures, and the fails-before proof: 14 harmful
+Scope A cases and 7 harmful Scope B cases fail on the pre-closure tree while every
+benign twin passes before and after.

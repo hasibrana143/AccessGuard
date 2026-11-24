@@ -377,7 +377,8 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   (protocol-relative, single-slash and backslash spelling, a changed `href`, a
   dropped source, a remote destination behind a **duplicate** attribute and a
   remote URL inside a **ping list**), the hiding styles, the modern colour alpha
-  syntaxes, a zero-size patched element, a large negative margin, the JSX
+  syntaxes and the **alpha of a mixed colour** (`color-mix()`, read through the
+  shared colour helper), a zero-size patched element, a large negative margin, the JSX
   `className` hook, the FreeMarker directive, Markdown escaping and the inline
   code span.
 - `src/lib/__tests__/fix-validation.test.ts` — injection and per-rule checks, the
@@ -410,7 +411,13 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   **logical padding and border longhands**, **`zoom`**, an **unconstrained scale**,
   **`aspect-ratio`**, a **viewport-wide `box-shadow`**, a **zero maximum size with a
   clipping overflow**, an **inherited custom property** behind the resource check and
-  the **animation delay, negative delay and fill mode**).
+  the **animation delay, negative delay and fill mode**),
+  and the rules the sixteenth review found and the analyser used to miss (the
+  **alpha of a mixed colour** (`color-mix()`, with the weights read from the mix),
+  the **family of an activated `font` shorthand**, the **effective `src` of a
+  duplicated `@font-face`** — the last declaration wins, as in the browser — and the
+  **control-state transition** a fix creates (`:enabled` / `:disabled`), while the
+  user-interaction pseudo-classes `:hover` and `:focus-within` stay harmless).
 - `src/lib/__tests__/fix-verification.test.ts` — gate semantics, the
   check-before-render order, the browser isolation (no HTTP, no WebSocket), the
   visible-text verdict, the rendered-element verdict (a hidden element, transparent
@@ -437,7 +444,14 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   colour, the **class removal through a nested negation**, the **`@font-face`
   resource** of an activated font family, the **browser-decoded accessibility
   hiding** (`aria-hidden`, `role` and `inert`, on the element and on its
-  remediation ancestors) and the **removal of `autofocus`**.
+  remediation ancestors) and the **removal of `autofocus`**,
+  and the behaviour the sixteenth review found and the writer used to miss (a
+  **member chain read as a chain** — the dot, the computed, the optional and the
+  optional computed member, for the attribute reads, the `Reflect` reads and the
+  dataset reads; an **introduced id the runtime builds at runtime**; a **literal
+  runtime selector that names an introduced element** by its tag, id, class or
+  attribute; the **alternate base-`href` mutations** (`setAttributeNS(...)` and an
+  `Attr.value` write) and the **base the runtime creates**).
 - `src/lib/__tests__/audit-retry.test.ts` — the audit write is retried before a
   missing trail is reported.
 - `src/app/api/github/create-pr/route.test.ts` — the PR route: no PR without verified
