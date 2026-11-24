@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 fifteenth-review closure shipped, sixteenth review pending** 🟡 |
-| Current task | Run the **sixteenth** independent security review against the fifteenth-review closure tree; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 sixteenth-review closure in progress, seventeenth review pending** 🟡 |
+| Current task | Close the eleven sixteenth-review findings (16-H1…16-H7, 16-M1…16-M4) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the fourteenth-review closure shipped in `d16797c` and is green on every gate and on all four CI workflows; the fifteenth review then reproduced nine **new** equivalent paths, and **all nine are now closed at their root cause** with 37 permanent regressions, the 24/24 closure matrix, the 118/118 prior matrix and the 209/209 combined closure run; the gate stays closed until a fresh independent review returns READY |
-| Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Commit the fifteenth-review closure in the volume DoD order, push to `origin/main`, verify the four CI workflows on the pushed head and then run the sixteenth independent security review |
-| Last verification | 2026-11-24 — fifteenth-review closure: tsc 0, lint 0, vitest 53 files/939 tests, coverage 69.89/62.75/72.93/71.78, build 0, Playwright 79 tests 0 failed, npm audit High 0, closure matrix 24/24 (16 failures before the closure), recovered prior matrices 118/118 + 209/209 across nine files, the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed), fails-before proof 8 + 6 + 5 failures |
+| Status | AMBER — the fifteenth-review closure shipped in `b4bd811` and is green on every gate and on all four CI workflows; the sixteenth review then reproduced **eleven new equivalent paths** (High 7, Medium 4) — seven of them let the customer's own runtime take the repaired page over — and **all eleven are now in closure** |
+| Blocked | The release gate stays closed until a **seventeenth** independent review returns READY; Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits), so no Strix evidence exists for this cycle |
+| Next action | Land the sixteenth-review closure in the volume DoD order (security → docs → state → releases), push to `origin/main`, verify the four CI workflows on the pushed head and then run the seventeenth independent security review |
+| Last verification | 2026-11-24 — sixteenth review: source-only typecheck 0, lint 0, vitest 53 files/939 tests, coverage 69.89/62.75/72.93/71.78, build 0, Playwright 79 tests (78 passed, 1 flaky, 0 failed), npm audit High 0, the recovered prior matrices 118/118 + 192/192 + 24/24 and the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
 

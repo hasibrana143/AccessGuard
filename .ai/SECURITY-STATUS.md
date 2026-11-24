@@ -2,6 +2,68 @@
 
 Last verification: 2026-11-24
 
+## Sixteenth independent security review (2026-11-24) — closure in progress
+
+**Verdict: NOT READY — Critical 0, High 7, Medium 4, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree is **not releasable** until every High
+reproduction is blocked in the unsafe direction, permanent regressions cover the
+root causes, and a fresh independent review returns READY. All eleven findings
+are in closure; the release gate opens only when a **seventeenth independent
+review** returns READY against the sixteenth-review closure tree.
+
+The reviewed closure tree was `b4bd811` (`vol: security — V23: close the
+fifteenth review's runtime, CSS and validation findings`), against the requested
+baseline `08ab9ef`; the checkout at report time was `9ae2a3a`
+(`git diff --quiet b4bd811..HEAD -- src` is exit 0, so the reviewed source is the
+closure tree itself). The reviewer's own artifact is `.ai/SECURITY-REVIEW-16.md`
+(report only — no shipped source, test, dependency, CI, environment or existing
+`.ai/` file was changed by the reviewer). Every reproduction used local synthetic
+repositories, a mocked GitHub transport, local Chromium and listeners bound to
+`127.0.0.1`. No production, third-party or public target was scanned, no live
+repository was mutated, no external GitHub Markdown service was called, and **no
+Strix result is claimed**.
+
+The literal fourth- through fifteenth-review payloads stay closed: the reviewer
+re-ran them in the unsafe direction and got **118/118** recovered prior
+assertions, **192/192** writer closure assertions and **24/24** route assertions
+passing, plus the two pre-closure harnesses failing exactly as expected. The
+eleven findings below are **newly found equivalent paths**.
+
+### Reproduced findings
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 16-H1 | **High** | Chained / optional computed dataset receivers | `img['dataset']['state']` and `img.dataset?.state` each changed the target to class `overlay` and a fixed `1280×720` takeover at the viewport centre; both applied 1 fix, wrote 1 file and the real route opened a pull request | `computedPropertyReads()` keeps only one computed member of a chain, so `img['dataset']['state']` is not understood as a read of `data-state`, and the reflected-property regex requires the literal dot form `dataset.state`, so `img.dataset?.state` is missed too | **in progress** — a member-chain parser resolves the chain and maps the key of a `dataset` receiver to its `data-*` attribute; an unresolvable chain or key fails closed as a generic state read |
+| 16-H2 | **High** | Computed / optional `Reflect` calls | `Reflect['get'](img,'alt')`, `Reflect?.get(img,'alt')` and `Reflect.get?.(img,'alt')` each changed the target to class `overlay` and a fixed `1280×720` takeover; all three applied 1 fix and wrote 1 file | `RUNTIME_STATE_READ_PATTERN` and `REFLECT_PROPERTY_READ_PATTERN` require the literal `Reflect.` member syntax, so `reflectPropertyReads()` cannot normalize a computed, an optional or an optional-call form | **in progress** — the member-chain parser normalizes the dot, computed and optional `Reflect.get` / `Reflect.getOwnPropertyDescriptor` forms and resolves the receiver and the property; an unresolved receiver or property fails closed |
+| 16-H3 | **High** | An optional member inside a callee chain | `Element.prototype.getAttribute?.call(img,'alt')` and `Element.prototype['getAttribute']?.call(img,'alt')` each changed the target to class `overlay` and a fixed `1280×720` takeover; both applied 1 fix and wrote 1 file | `METHOD_CALL_PATTERN` permits an optional call only immediately before the final `(` and `calleeMembers()` has no optional-member state, so the method in `getAttribute?.call(...)` is never identified | **in progress** — the member-chain parser parses optional and computed members in the middle of a callee chain and keeps the attribute-read receiver and argument; an unresolvable method or attribute name fails closed |
+| 16-H4 | **High** | A concatenated introduced id | `document.getElementById('act'+'ivated')` reached the element the fix introduced: a fixed `1280×720` takeover, one fix, one write and a pull request. The sibling spelling `document.querySelector('#'+'activated')` was accepted the same way | `scriptRefersToElementId()` compares the introduced id only with a literal quoted `getElementById(...)` argument or a literal selector; the existing `resolveStringExpression()` is not used there | **in progress** — the id argument and the selector are resolved before the comparison, and an id expression the reader cannot resolve fails closed for the introduced-id check |
+| 16-H5 | **High** | A literal runtime tag selector reaching an introduced element | `document.querySelector('span')` reached the `<span data-state="active">` the remediation introduced: Chromium showed it at `1280×720` with the overlay class; one fix, one write and a pull request | the runtime checks identify the original target by id, introduced elements by literal id and introduced attributes by attribute read; an introduced element's **tag** is never compared with a literal runtime selector | **in progress** — the tag of every introduced element is compared with the tag a literal runtime selector names, and only a selector that can name an introduced element refuses the patch |
+| 16-H6 | **High** | Alternate base-`href` mutation APIs | `document.querySelector('base').setAttributeNS(null,'href','/sub/')` and `document.getElementById('base').attributes.href.value='/sub/'` each made the writer analyse a stylesheet the browser never loaded (`/sub/theme.bin` was requested) and left the repaired target fixed at `1280×720` | `SET_ATTRIBUTE_PATTERN` recognises `setAttribute(...)` but not `setAttributeNS(...)`, and neither pattern models an `Attr.value` assignment | **in progress** — `setAttributeNS(...)` (the attribute name is the second argument) and an `Attr.value` write are modelled as base mutations, and a resolvable base mutation makes the document base unprovable |
+| 16-H7 | **High** | A runtime-created base | `const b=document.createElement('base');b.href='/sub/';document.head.appendChild(b)` in a document **without** a static `<base>` made the writer analyse a stylesheet the browser never loaded (`/sub/theme.bin` was requested) and left the repaired target fixed at `1280×720` | the runtime base-mutation pass starts with `if (!info?.hasBase) continue;`, so a document without a static base is never inspected for a base the runtime creates later | **in progress** — a runtime-created base is detected and its `href` assignment makes the document base unprovable; a document with no base and no runtime base creation stays writable |
+| 16-M1 | Medium | `color-mix()` transparency | `[aria-label]{color:color-mix(in srgb,rgb(0 0 0 / 0),rgb(0 0 0 / 0))}` made the repaired button's computed colour `color(srgb 0 0 0 / 0)`: the visible text became transparent although axe still found the accessible name | `isTransparentColor()` accepts only the function names in `COLOR_FUNCTIONS`; `color-mix(...)` is not parsed as a nested colour expression | **in progress** — the weighted alpha of a `color-mix()` is computed from its nested colours, an opaque mix stays harmless, and a colour function whose alpha cannot be read fails closed |
+| 16-M2 | Medium | An activated `font` shorthand | `@font-face{font-family:Evil;src:url(/font)}` with an activated `font:16px Evil` issued `GET /font` in the customer browser | the activated-resource loop connects a declaration to an `@font-face` only when `declaration.property === 'font-family'`; the `font` shorthand also selects the family | **in progress** — the family component of the shorthand is parsed and resolved through the same `fontFamilyResourceState()` path the longhand uses |
+| 16-M3 | Medium | The wrong duplicate `@font-face src` declaration | `@font-face{font-family:Evil;src:local("Arial");src:url(/font2)}` issued `GET /font2` — the browser used the later URL declaration while the analyser treated the first `local(...)` declaration as the only source | `collectFontFace()` uses `declarations.find(...)` for `src`, so it retains the **first** duplicate declaration; CSS declaration order makes the later one win | **in progress** — the effective `src` descriptor is the last declaration of the face, and an unresolved effective source fails closed |
+| 16-M4 | Medium | An `:enabled` transition | `button:enabled{background-image:url(/pixel-enabled)}` issued `GET /pixel-enabled` after the fix removed `disabled` from the button | `parseSubject()` treats an unknown simple pseudo-class as `opaqueConditional` and does not model its state transition; `compoundActivatedByFix()` models no control-state transition | **in progress** — the `disabled`/`enabled` pair is modelled as a control-state transition the fix can create; `:hover` and `:focus-within` stay harmless |
+
+### Reviewer's gate suite
+
+| Check | Result |
+|---|---|
+| Recovered fourth- through fifteenth-review payloads | PASS — the prior / legitimate matrix 118/118, the writer closure matrices 192/192 across seven files, the route matrices 24 passed with the 2 intentional pre-closure failures, plus the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
+| New equivalent-path writer / Chromium harness | PASS — every harmful variant of the eleven findings was writable, with a Chromium geometry / computed-style / accessibility-tree / `127.0.0.1` observable |
+| New equivalent-path route harness | PASS — the representative cases returned `200 success:true`, applied one source fix, wrote three files, opened the pull request and recorded both audit events |
+| Legitimate-behaviour harness | PASS — 35 listed behaviours stayed writable or harmless |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 939/939, coverage 69.89/62.75/72.93/71.78, build 0, Playwright 79 (78 passed, 1 flaky, 0 failed), `npm audit` Critical 0 / High 0 (15 moderate) |
+| Tracked-file secret scan | PASS — 786 tracked files; one AWS-key-shaped **documentation placeholder** (path and category only, value never printed) and no live credential |
+
+### Gate status
+
+The sixth through fifteenth review closures are shipped (`b4bd811`); the
+sixteenth review returned **NOT READY** (High 7, Medium 4) and all eleven of its
+findings are in closure. The **release gate is still closed**: it opens only when
+a **seventeenth independent review** returns READY (Critical 0, High 0) against
+the sixteenth-review closure tree.
+
 ## Fifteenth independent security review (2026-11-24) — closure shipped
 
 **Verdict: NOT READY — Critical 0, High 4, Medium 5, Low 0.** The READY gate

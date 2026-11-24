@@ -1,6 +1,33 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-24 (fifteenth-review closure)
+Last run: 2026-11-24 (sixteenth-review closure)
+
+## Sixteenth independent security review evidence
+
+| Check | Result |
+|---|---|
+| Sixteenth independent security review | **NOT READY — Critical 0, High 7, Medium 4, Low 0** against the closure tree `b4bd811` (checkout `9ae2a3a`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-16.md` |
+| Recovered fourth- through fifteenth-review payloads | PASS — the prior / legitimate matrix 118/118, the writer closure matrices 192/192 across seven files, the route matrices 24 passed with the 2 intentional pre-closure failures, plus the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
+| New equivalent-path writer / Chromium harness | PASS — every harmful variant of the eleven findings was writable, with a Chromium geometry / computed-style / accessibility-tree / `127.0.0.1` observable |
+| New equivalent-path real-route harness | PASS — the representative cases returned `200 success:true`, applied one source fix, wrote three files, opened the pull request and recorded both audit events |
+| Legitimate-behaviour harness | PASS — the 35 listed behaviours stayed writable or harmless |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0, no diagnostics |
+| `npm run lint` | PASS — exit 0, no ESLint errors |
+| `npx vitest run --coverage` | PASS — 53 files, 939/939 tests |
+| Coverage | PASS — statements 69.89% (threshold 55) · branches 62.75% (50) · functions 72.93% (58) · lines 71.78% (57) |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS with one retry — 79 tests, 78 passed, 1 flaky, 0 failed (the authenticated landing CTA passed on the retry) |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
+| `npm audit --omit=dev --audit-level=high` | PASS — exit 0, 5 moderate transitive advisories, 0 high / 0 critical |
+| Tracked-file secret scan | PASS — 786 tracked files; one AWS-key-shaped **documentation placeholder** in `.openclaw/skills/document-generate/SKILL.md` (path and category only, value never printed) and no live credential |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
+
+## Sixteenth-review closure evidence (in progress)
+
+| Check | Result |
+|---|---|
+| Scope B — the destination CSS reader | PASS — 7 permanent regressions in `css-context.test.ts` (`16-M1a`, `16-M1b`, `16-M2a`, `16-M2b`, `16-M3a`, `16-M4a`, `16-M4b`) and 1 in `github-pr.test.ts` (`16-M1c`); the fails-before proof shows exactly the 4 harmful CSS tests failing on the pre-closure tree (4 failed + 147 passed) while every benign twin passes before and after |
+| Scope A — the repository runtime reader | IN PROGRESS |
 
 ## Fifteenth independent security review evidence
 

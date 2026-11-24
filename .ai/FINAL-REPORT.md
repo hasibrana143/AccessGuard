@@ -90,6 +90,16 @@ exactly as expected, 12 failed + 5 passed and 2 failed + 7 passed; the
 fails-before proof: 8 + 6 + 5 regressions fail on the pre-closure tree). The
 gate opens only when a **sixteenth independent review** returns READY (Critical 0,
 High 0).
+The **sixteenth review** then reproduced **eleven more equivalent paths** — seven
+of them let the customer's own runtime take the repaired page over — the
+**chained and optional computed dataset receivers**, the **computed and optional
+`Reflect` calls**, the **optional member inside a callee chain**, the
+**concatenated introduced id**, the **literal runtime tag selector**, the
+**alternate base-`href` mutation APIs**, the **runtime-created base**, the
+**`color-mix()` transparency**, the **activated `font` shorthand**, the **wrong
+duplicate `@font-face src`** and the **`:enabled` transition**. The closure is in
+progress; the gate opens only when a **seventeenth independent review** returns
+READY (Critical 0, High 0).
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -97,6 +107,28 @@ High 0).
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Sixteenth independent security review (2026-11-24)
+
+> The verdict was NOT READY — Critical 0, High 7, Medium 4, Low 0 — against tree
+> `b4bd811`. The closure is **in progress**; the dispositions are in
+> `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is
+> `.ai/SECURITY-REVIEW-16.md`.
+> The release gate opens only when a **seventeenth independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 16-H1 — chained and optional computed dataset receivers bypassed the reflected-attribute gate | High | `img['dataset']['state']` and `img.dataset?.state` each changed the target to class `overlay` and a fixed `1280×720` takeover; both applied 1 fix, wrote 1 file and the real route opened a pull request | **In closure** — the member chain is parsed as a chain and the key of a `dataset` receiver is mapped to its `data-*` attribute; an unresolvable chain or key fails closed |
+| 16-H2 — computed and optional `Reflect` calls bypassed the property-read gate | High | `Reflect['get'](img,'alt')`, `Reflect?.get(img,'alt')` and `Reflect.get?.(img,'alt')` each changed the target to class `overlay` and a fixed `1280×720` takeover | **In closure** — the dot, computed and optional `Reflect` forms are normalized and the receiver and the property are resolved; an unresolved receiver or property fails closed |
+| 16-H3 — an optional member inside a callee chain bypassed the call parser | High | `Element.prototype.getAttribute?.call(img,'alt')` and `Element.prototype['getAttribute']?.call(img,'alt')` each changed the target to class `overlay` and a fixed `1280×720` takeover | **In closure** — optional and computed members in the middle of a callee chain are parsed and the attribute-read receiver and argument are kept |
+| 16-H4 — a concatenated introduced id bypassed the literal-id check | High | `document.getElementById('act'+'ivated')` reached the element the fix introduced: a fixed `1280×720` takeover, one fix, one write and a pull request | **In closure** — the id argument and the selector are resolved before the comparison, and an unresolved id expression fails closed for the introduced-id check |
+| 16-H5 — a literal runtime tag selector reached a remediation-introduced element | High | `document.querySelector('span')` reached the `<span data-state="active">` the remediation introduced: Chromium showed it at `1280×720` with the overlay class | **In closure** — the tag of every introduced element is compared with the tag a literal runtime selector names |
+| 16-H6 — alternate base-`href` mutation APIs bypassed the base resolver | High | `setAttributeNS(null,'href','/sub/')` and `attributes.href.value='/sub/'` each made the writer analyse a stylesheet the browser never loaded (`/sub/theme.bin` was requested) | **In closure** — `setAttributeNS(...)` and an `Attr.value` write are modelled as base mutations |
+| 16-H7 — a runtime-created base bypassed the static-has-base gate | High | `const b=document.createElement('base');b.href='/sub/';document.head.appendChild(b)` in a document without a static base made the writer analyse a stylesheet the browser never loaded | **In closure** — a runtime-created base is detected and its `href` assignment makes the document base unprovable; a document with no base and no runtime base creation stays writable |
+| 16-M1 — `color-mix()` could make activated text fully transparent | Medium | `[aria-label]{color:color-mix(in srgb,rgb(0 0 0 / 0),rgb(0 0 0 / 0))}` made the repaired button's computed colour `color(srgb 0 0 0 / 0)` | **Closed** — the weighted alpha of a mixed colour is computed from its nested colours, an opaque mix stays harmless, and a colour function whose alpha cannot be read fails closed. The same reading is now shared with the remediation check in `github-pr.ts` |
+| 16-M2 — an activated `font` shorthand was not connected to its font-face | Medium | `@font-face{font-family:Evil;src:url(/font)}` with an activated `font:16px Evil` issued `GET /font` in the customer browser | **Closed** — the family component of the shorthand is parsed and resolved through the same `fontFamilyResourceState()` path the longhand uses |
+| 16-M3 — the wrong duplicate `@font-face src` declaration won in the analyser | Medium | `@font-face{font-family:Evil;src:local("Arial");src:url(/font2)}` issued `GET /font2` — the browser used the later URL declaration | **Closed** — the effective `src` descriptor is the last declaration of the face |
+| 16-M4 — an `:enabled` transition was not modelled | Medium | `button:enabled{background-image:url(/pixel-enabled)}` issued `GET /pixel-enabled` after the fix removed `disabled` from the button | **Closed** — the `disabled`/`enabled` pair is modelled as a control-state transition the fix can create; `:hover` and `:focus-within` stay harmless |
 
 ### Fifteenth independent security review (2026-11-24)
 
