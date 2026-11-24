@@ -114,6 +114,21 @@ A remediation is rejected before it can reach a browser or a repository when it:
   raw-text element (`textarea`, `title`) or inside a bogus comment is not a fix.
   An `image-alt` fix also has to **keep the media source** of the original
   image — a fix that drops the `src` leaves a broken image behind,
+- **replaces the native semantics** of the element it patches: a native control
+  (`button`, `input`, `select`, `textarea`, a link with an `href`) may not
+  become a `div` or a `span` with an `aria-label`. The box has a name, so the
+  axe rule passes, but it has no activation behaviour and it is not in the focus
+  order. A `button` may become an equivalent native control (an
+  `input type="submit"`),
+- **takes the element out of the keyboard focus order**: a `tabindex` that turns
+  negative, or a native focusable element that becomes a non-focusable tag, is
+  refused. The reverse — a fix that *adds* `tabindex="0"`, which the
+  `keyboard-navigation` rule needs — stays allowed,
+- **hides the repaired image from the accessibility tree**: an `image-alt` fix
+  may not add `aria-hidden="true"` or `role="presentation"` to a content image.
+  The image stays painted, but it leaves the accessibility tree, so axe stops
+  reporting the rule because the rule no longer sees the image. Only an image
+  the customer already marked as decorative may stay decorative,
 - still contains a placeholder (`TODO`, `FIXME`, `{{…}}`, `YOUR_ALT_TEXT`),
 - does not address the rule it claims to fix (per-rule check),
 - is empty or longer than 20k characters.
@@ -249,6 +264,13 @@ guessed from the syntax, and the animations of the snippet reach their **end
 state** before the page is judged, because the end state is what the user sees
 after the animation runs. The browser is the reference, so the verdict does not
 depend on how the hiding or the transparency was written.
+
+The element that is judged is the **patched target**, not the first element the
+snippet happens to render: a remediation may introduce elements of its own. The
+id of the original element names the target; without an id the target is the
+one outermost element of the same kind. A snippet whose target cannot be
+identified is **not judged at all**, so the fix stays `unverified` with no
+confidence instead of being reported as a pass.
 
 ## 5. What verification does NOT prove
 

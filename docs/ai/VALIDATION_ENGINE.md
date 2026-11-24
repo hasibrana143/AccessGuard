@@ -250,6 +250,32 @@ writes anything into a customer's repository:
    destination analysis, so an unsafe candidate beyond the budget cannot become a
    review artifact.
 
+   Nine more gaps of the same judgement are closed after that. The **stylesheet
+   discovery follows the browser**: a `<link>` is parsed with the quoted attribute
+   semantics of `src/lib/html-attributes.ts` (a `>` inside a quoted value does not end
+   the tag), the HTML entities of `rel` and `href` are decoded before they are
+   compared, and a link whose attributes cannot be read makes the destination
+   **unprovable** instead of being skipped. The **document base** is read at runtime as
+   well: a repository script that assigns the `href` of a `<base>` element changes the
+   base the browser loads its stylesheets from, so the base becomes unprovable and the
+   destination is refused instead of falling back to the document URL. A **remediation
+   that introduces an element** changes the DOM position of the elements around it, so
+   a repository stylesheet with a **structural selector** (`:nth-child(…)`,
+   `:nth-last-child(…)`, a sibling combinator) makes the destination unprovable; the
+   patched element itself is identified by its **id** (or by its kind when it has
+   none), never by its position in the snippet, and a remediation that removes an
+   element of the original is refused. The **remediation's own inline style** is
+   checked for a resource with the same machinery as the repository's rules: the
+   `var()` references resolve against the definitions that can reach the element, an
+   `image-set(…)` is a resource like a `url(…)`, and an unresolved reference is
+   unprovable. The **closing bracket of an attribute selector** is read with quote and
+   escape handling, so `img[alt="\]"]` is the selector the browser sees and not a
+   malformed one. The **link state** is compared before and after the fix: an added
+   `href` turns `:link` and `:any-link` on, so the rules that use them are judged like
+   the rules the fix activates with an attribute. A **viewport-unit offset** is
+   composed with the **declared size** of the element, so `99vw` moves a `64×64` target
+   out of the viewport although the offset alone is smaller than one viewport.
+
 An incomplete scan never patches a file; the fix stays a review suggestion. The
 review comment that is written into the file instead neutralizes the comment
 terminator (`*/`, `-->`, `--!>`), so untrusted text cannot close the comment and
