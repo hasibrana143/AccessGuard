@@ -128,7 +128,19 @@ A remediation is rejected before it can reach a browser or a repository when it:
   may not add `aria-hidden="true"` or `role="presentation"` to a content image.
   The image stays painted, but it leaves the accessibility tree, so axe stops
   reporting the rule because the rule no longer sees the image. Only an image
-  the customer already marked as decorative may stay decorative,
+  the customer already marked as decorative may stay decorative. The values are
+  read the way the browser reads them — a numeric entity is decoded first, so
+  `aria-hidden="&#116;rue"` hides the image exactly like `aria-hidden="true"`
+  does — and `inert` hides it as well, because it is a boolean attribute. The
+  **remediation's ancestors** are inspected too: the browser applies the
+  semantics of the ancestor to the child, so an `aria-hidden="true"` wrapper
+  around the repaired image hides it just the same. A `role="presentation"`
+  ancestor is **not** a hiding form — Chromium keeps the image with the role
+  `image` — so it is not blanket-refused,
+- **removes the initial focus** of the element it patches: a remediation that
+  drops `autofocus` moves the focus to the body, so the user loses the element
+  the page itself put in focus. A fix that keeps `autofocus`, and a fix that
+  adds it, stay allowed,
 - still contains a placeholder (`TODO`, `FIXME`, `{{…}}`, `YOUR_ALT_TEXT`),
 - does not address the rule it claims to fix (per-rule check),
 - is empty or longer than 20k characters.

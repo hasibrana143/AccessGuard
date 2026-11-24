@@ -276,6 +276,41 @@ writes anything into a customer's repository:
    composed with the **declared size** of the element, so `99vw` moves a `64×64` target
    out of the viewport although the offset alone is smaller than one viewport.
 
+   Nine more gaps of the same judgement are closed after that. The **runtime reads an
+   attribute by the shape of the call**, not by a literal method name: the direct call,
+   the optional call (`img.getAttribute?.('alt')`), the prototype receiver
+   (`Element.prototype.getAttribute.call(img,'alt')`) and a statically resolvable
+   computed method name (`img['get'+'Attribute']('alt')`) are the same read, and the
+   attribute argument is resolved with the existing string-expression resolver. A
+   method name or an attribute name the reader cannot resolve fails closed into the
+   generic bucket, because the script then reacts to **any** attribute the fix adds. A
+   **dataset key** is mapped to its `data-*` attribute for the bracket access
+   (`img.dataset['state']`) and for the `Reflect.get` / `getOwnPropertyDescriptor`
+   forms on a `dataset` receiver, so the reader sees the same attribute the browser
+   sees. An **id the fix introduces** is an introduced id on the patched target as
+   well as on every element the remediation adds: `document.getElementById('activated')`
+   finds the element only after the fix, so the runtime reference refuses the source
+   patch. An **indexed collection receiver** resolves to its collection —
+   `document.querySelectorAll('base')[0].href='/sub/'` names an element the analyser
+   cannot choose, so the document base becomes unprovable and the stylesheet the
+   browser really loads is the one that is judged.
+
+   The **destination CSS** closes four more gaps of the same kind. The **colour alpha**
+   is read in one browser-equivalent grammar: the legacy comma alpha and the modern
+   slash alpha, for every colour function that has one, so `rgba(0 0 0 / 0)` is
+   transparent like `rgba(0,0,0,0)`. A **removed class** and a **changed attribute
+   value** propagate through a nested negation and through the `:is()` / `:where()`
+   alternatives, so `button:is(:not(.armed))` is a rule the fix activates when the fix
+   removes `.armed`. An **`@font-face`** is collected with its `src` descriptors, and an
+   activated `font-family` resolves to the resource of the matching face, so a font
+   the fix activates is a customer-side request like any other resource. And the
+   **remediation's own accessibility semantics** are read the way the browser reads
+   them: the value is entity-decoded (`aria-hidden="&#116;rue"` is `true`), `inert`
+   hides the element, and the **remediation's ancestors** are inspected as well, so an
+   `aria-hidden="true"` wrapper hides the repaired image. A `role="presentation"`
+   ancestor is **not** a hiding form — Chromium keeps the image with the role `image` —
+   and the legitimate decorative-image cases stay allowed.
+
 An incomplete scan never patches a file; the fix stays a review suggestion. The
 review comment that is written into the file instead neutralizes the comment
 terminator (`*/`, `-->`, `--!>`), so untrusted text cannot close the comment and
@@ -394,7 +429,15 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   library), the blob whose extension
   does not say
   whether it is binary, the template destination, failed writes not reported as
-  applied.
+  applied, and the **alternate attribute-read call forms** (the prototype `.call`
+  receiver, the optional call and the computed method name) with the **dataset
+  reads** (the bracket access and the `Reflect.get` on a `dataset` receiver), the
+  **id the fix introduces on the patched target**, the **indexed collection
+  receivers** of the document base, the **modern slash alpha** of a transparent
+  colour, the **class removal through a nested negation**, the **`@font-face`
+  resource** of an activated font family, the **browser-decoded accessibility
+  hiding** (`aria-hidden`, `role` and `inert`, on the element and on its
+  remediation ancestors) and the **removal of `autofocus`**.
 - `src/lib/__tests__/audit-retry.test.ts` — the audit write is retried before a
   missing trail is reported.
 - `src/app/api/github/create-pr/route.test.ts` — the PR route: no PR without verified
