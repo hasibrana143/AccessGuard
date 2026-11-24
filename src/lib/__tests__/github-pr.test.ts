@@ -513,6 +513,19 @@ describe('validateRemediation', () => {
     }
   });
 
+  it('16-M1c rejects a mixed colour with a zero alpha and keeps an opaque mix', () => {
+    const transparent = validateRemediation(
+      '<a href="/about" style="color:color-mix(in srgb,rgb(0 0 0 / 0),rgb(0 0 0 / 0))">Read more</a>'
+    );
+    expect(transparent.valid).toBe(false);
+    expect(transparent.reason).toContain('transparent');
+
+    const opaque = validateRemediation(
+      '<a href="/about" style="color:color-mix(in srgb,rgb(0 0 0),rgb(255 255 255))">Read more</a>'
+    );
+    expect(opaque.valid).toBe(true);
+  });
+
   it('rejects a remediation that gives the patched element a zero size', () => {
     const result = validateRemediation(
       '<img id="target" src="x" alt="Photo" style="width:0;height:0">',

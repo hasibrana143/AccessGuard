@@ -3,6 +3,7 @@
 
 import type { Severity } from '@/types';
 import { validateFixForRule } from '@/lib/fix-validation';
+import { isTransparentColor } from '@/lib/css-context';
 import {
   buildReplacement,
   containsPlaceholder,
@@ -256,43 +257,6 @@ function checkUriAttribute(name: string, value: string): string | null {
   }
 
   return null;
-}
-
-/** True when a CSS alpha is exactly zero, with or without a percent sign. */
-function isZeroAlpha(value: string): boolean {
-  const alpha = value.trim();
-  const number = alpha.endsWith('%') ? alpha.slice(0, -1) : alpha;
-  return /^(?:0(?:\.0+)?|\.0+)$/.test(number);
-}
-
-/**
- * True when a colour value makes the text invisible.
- *
- * `transparent` and every colour with an alpha of zero are invisible: the text
- * stays in the document, so the rendered-text check does not catch it.
- */
-function isTransparentColor(value: string): boolean {
-  const normalized = value.replace(/\s+/g, '').toLowerCase();
-  if (normalized === 'transparent') return true;
-
-  const functional = /^(?:rgba|hsla)\(([^)]*)\)$/.exec(normalized);
-  if (functional) {
-    const parts = (functional[1] ?? '').split(',');
-    if (parts.length < 4) return false;
-    return isZeroAlpha(parts[3] ?? '');
-  }
-
-  // The modern syntax uses a slash before the alpha: `rgb(0 0 0 / 0%)`.
-  // The function name is not fixed: oklch(), oklab(), lab(), lch() and color()
-  // use the same alpha grammar.
-  const modern = /^[a-z-]+\((.*)\)$/.exec(normalized);
-  if (modern) {
-    const body = modern[1] ?? '';
-    const slash = body.lastIndexOf('/');
-    return slash !== -1 && isZeroAlpha(body.slice(slash + 1));
-  }
-
-  return false;
 }
 
 /** True when a CSS length is exactly zero. */

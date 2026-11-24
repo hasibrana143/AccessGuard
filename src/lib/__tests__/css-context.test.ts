@@ -1440,3 +1440,96 @@ describe('destination CSS: the fifteenth review regressions', () => {
     ).toContain('cannot be judged');
   });
 });
+
+describe('the sixteenth review regressions', () => {
+  const ORIGINAL = '<button id="target">Save</button>';
+  const PATCHED = '<button id="target" aria-label="Save">Save</button>';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('16-M1a judges the alpha of a mixed colour', () => {
+    expect(
+      harm('[aria-label]{color:color-mix(in srgb,rgb(0 0 0 / 0),rgb(0 0 0 / 0))}')
+    ).toContain('hide');
+    expect(harm('[aria-label]{color:color-mix(in srgb,transparent,transparent)}')).toContain(
+      'hide'
+    );
+  });
+
+  it('16-M1b keeps an opaque mixed colour harmless', () => {
+    expect(
+      harm('[aria-label]{color:color-mix(in srgb,rgb(0 0 0),rgb(255 255 255))}')
+    ).toBeNull();
+    expect(harm('[aria-label]{color:color-mix(in srgb,red 30%,blue)}')).toBeNull();
+  });
+
+  it('16-M1c reads the weight of a mixed colour', () => {
+    // A mix of a transparent and an opaque colour is not fully transparent.
+    expect(harm('[aria-label]{color:color-mix(in srgb,transparent 30%,blue)}')).toBeNull();
+    // Weights that do not add up to 100 % are invalid: the analyser fails closed.
+    expect(harm('[aria-label]{color:color-mix(in srgb,red 30%,blue 30%)}')).toContain('hide');
+  });
+
+  it('16-M2a judges the family of an activated font shorthand', () => {
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/font)} [aria-label]{font:16px Evil}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('16-M2b keeps a font shorthand without a resource harmless', () => {
+    expect(
+      harm('@font-face{font-family:Evil;src:local(Evil)} [aria-label]{font:16px Evil}')
+    ).toBeNull();
+    expect(harm('[aria-label]{font:16px Arial}')).toBeNull();
+  });
+
+  it('16-M2c reads the family behind the other shorthand components', () => {
+    for (const value of [
+      'font:italic 700 16px Evil',
+      'font:oblique 20deg 16px Evil',
+      'font:16px/1.5 Evil',
+      'font:16px "Evil"',
+      'font:16px Evil, sans-serif',
+    ]) {
+      const result = harm(
+        `@font-face{font-family:Evil;src:url(/font)} [aria-label]{${value}}`
+      );
+      expect(result).toContain('customer-side request');
+    }
+  });
+
+  it('16-M2d keeps a shorthand without a family of its own harmless', () => {
+    // A shorthand without a family component resets the family to its initial
+    // value, and a system font names no family at all.
+    expect(harm('[aria-label]{font:16px}')).toBeNull();
+    expect(harm('[aria-label]{font:menu}')).toBeNull();
+    expect(harm('[aria-label]{font:inherit}')).toBeNull();
+  });
+
+  it('16-M3a judges the effective source of a duplicated font face', () => {
+    const result = harm(
+      '@font-face{font-family:Evil;src:local("Arial");src:url(/font2)} [aria-label]{font-family:Evil}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('16-M4a judges the control state the fix creates', () => {
+    const result = harm(
+      'button:enabled{background-image:url(/pixel-enabled)}',
+      '<button id="target" disabled><span aria-hidden="true">x</span></button>',
+      '<button id="target" aria-label="Save"><span aria-hidden="true">x</span></button>'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('16-M4b keeps the user-interaction pseudo-classes harmless', () => {
+    expect(harm('button:hover{background-image:url(/pixel)}')).toBeNull();
+    expect(harm('button:focus-within{background-image:url(/pixel)}')).toBeNull();
+  });
+});

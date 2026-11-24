@@ -2183,6 +2183,277 @@ describe('the fifteenth review regressions', () => {
   });
 });
 
+describe('the sixteenth review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix(
+    remediationCode = '<img id="target" src="x" alt="Photo">',
+    elementHtml = '<img id="target" src="x">'
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml,
+        remediationCode,
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  }
+
+  /** A repository whose script reacts to a state read on the patched image. */
+  function overlayRepository(expression: string) {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(${expression})img.classList.add('overlay')});</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+  }
+
+  it('16-H1a: does not patch an element a script activates through a chained dataset read', async () => {
+    overlayRepository("img['dataset']['state']==='active'");
+
+    await expectRefused(
+      await planAltFix('<img id="target" src="x" alt="Photo" data-state="active">')
+    );
+  });
+
+  it('16-H1b: does not patch an element a script activates through an optional dataset read', async () => {
+    overlayRepository("img.dataset?.state==='active'");
+
+    await expectRefused(
+      await planAltFix('<img id="target" src="x" alt="Photo" data-state="active">')
+    );
+  });
+
+  it('16-H1c: writes a fix when the script reads an unrelated dataset key', async () => {
+    overlayRepository("img.dataset?.other==='active'");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('16-H1d: does not patch an element a script activates through an optional computed dataset read', async () => {
+    overlayRepository("img['dataset']?.['state']==='active'");
+
+    await expectRefused(
+      await planAltFix('<img id="target" src="x" alt="Photo" data-state="active">')
+    );
+  });
+
+  it('16-H1e: does not patch an element a script activates through a dot dataset read', async () => {
+    overlayRepository("img.dataset.state==='active'");
+
+    await expectRefused(
+      await planAltFix('<img id="target" src="x" alt="Photo" data-state="active">')
+    );
+  });
+
+  it('16-H2a: does not patch an element a script activates through a computed Reflect read', async () => {
+    overlayRepository("Reflect['get'](img,'alt')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('16-H2b: does not patch an element a script activates through an optional Reflect read', async () => {
+    overlayRepository("Reflect?.get(img,'alt')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('16-H2c: does not patch an element a script activates through an optional Reflect call', async () => {
+    overlayRepository("Reflect.get?.(img,'alt')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('16-H2d: writes a fix when the script reads an unrelated reflected property', async () => {
+    overlayRepository("Reflect['get'](img,'src')");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('16-H3a: does not patch an element a script activates through an optional prototype call', async () => {
+    overlayRepository("Element.prototype.getAttribute?.call(img,'alt')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('16-H3b: does not patch an element a script activates through a computed prototype call', async () => {
+    overlayRepository("Element.prototype['getAttribute']?.call(img,'alt')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('16-H3c: writes a fix when the script reads an unrelated attribute', async () => {
+    overlayRepository("Element.prototype.getAttribute?.call(img,'src')");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('16-H4a: does not patch an element whose new id repository runtime builds at runtime', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img src="x"><script>document.getElementById('act'+'ivated').classList.add('overlay');</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(
+      await planAltFix('<img id="activated" src="x" alt="Photo">', '<img src="x">')
+    );
+  });
+
+  it('16-H4b: does not patch an element whose new id repository runtime selects at runtime', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img src="x"><script>document.querySelector('#'+'activated').classList.add('overlay');</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(
+      await planAltFix('<img id="activated" src="x" alt="Photo">', '<img src="x">')
+    );
+  });
+
+  it('16-H4c: writes a fix when the runtime does not name the introduced id', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img src="x"><script>document.getElementById('act'+'ivated').classList.add('active');</script></body></html>`
+    );
+
+    await expectWritten(
+      await planAltFix('<img id="other" src="x" alt="Photo">', '<img src="x">')
+    );
+  });
+
+  it('16-H5a: does not patch an element a script selects through the tag of an introduced element', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelector('span').classList.add('overlay');</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(
+      await planAltFix('<span data-state="active"></span><img id="target" src="x" alt="Photo">')
+    );
+  });
+
+  it('16-H5b: writes a fix when the runtime selector cannot name the introduced element', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelector('div').classList.add('active');</script></body></html>`
+    );
+
+    await expectWritten(
+      await planAltFix('<span data-state="active"></span><img id="target" src="x" alt="Photo">')
+    );
+  });
+
+  it('16-H6a: does not patch an element when runtime changes the document base through setAttributeNS', async () => {
+    tree(['index.html', 'theme.bin', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      `<html><head><base id="base" href="/"><script>document.querySelector('base').setAttributeNS(null,'href','/sub/');</script><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>`
+    );
+    fileContent('theme.bin', 'img{color:red}');
+    fileContent(
+      'sub/theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('16-H6b: does not patch an element when runtime changes the document base through an attribute node', async () => {
+    tree(['index.html', 'theme.bin', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      `<html><head><base id="base" href="/"><script>document.getElementById('base').attributes.href.value='/sub/';</script><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>`
+    );
+    fileContent('theme.bin', 'img{color:red}');
+    fileContent(
+      'sub/theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('16-H6c: writes a fix when runtime changes another element', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><head><base id="base" href="/"></head><body><a id="other" href="/">Other</a><img id="target" src="x"><script>document.getElementById('other').setAttributeNS(null,'href','/elsewhere/');</script></body></html>`
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('16-H7a: does not patch an element when runtime creates the document base', async () => {
+    tree(['index.html', 'theme.bin', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      `<html><head><script>const b=document.createElement('base');b.href='/sub/';document.head.appendChild(b);</script><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>`
+    );
+    fileContent('theme.bin', 'img{color:red}');
+    fileContent(
+      'sub/theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('16-H7b: writes a fix when the runtime creates no base element', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><head><script>const s=document.createElement('span');s.className='active';</script></head><body><img id="target" src="x"></body></html>`
+    );
+
+    await expectWritten(await planAltFix());
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();

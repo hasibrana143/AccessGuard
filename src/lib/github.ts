@@ -538,10 +538,14 @@ function isAttributeReadMethod(name: string): boolean {
 }
 
 /**
- * The members of a callee expression, and the computed ones it cannot resolve.
+ * The members of an expression, and the computed ones it cannot resolve.
  *
- * A call in the middle of the expression contributes no member: the arguments
- * of `querySelectorAll('img')` are not members of the callee.
+ * A dot member, an optional-dot member (`?.name`), a computed member
+ * (`['name']`) and an optional computed member (`?.['name']`) are all members
+ * of the chain, and a call contributes no member: the arguments of
+ * `querySelectorAll('img')` are not members of the callee, so
+ * `Element.prototype.getAttribute?.call` ends in `call` while
+ * `Reflect['get']` ends in `get`.
  */
 function calleeMembers(callee: string): { name: string | null; computed: boolean }[] {
   const members: { name: string | null; computed: boolean }[] = [];
@@ -552,6 +556,15 @@ function calleeMembers(callee: string): { name: string | null; computed: boolean
 
     if (/\s/.test(character)) {
       i++;
+      continue;
+    }
+
+    if (character === '?') {
+      // An optional access: `?.member` and `?.[member]` read the same member,
+      // and an optional call `?.(` is a call.
+      i++;
+      while (i < callee.length && /\s/.test(callee[i] as string)) i++;
+      if (callee[i] === '.') i++;
       continue;
     }
 
@@ -590,9 +603,26 @@ function calleeMembers(callee: string): { name: string | null; computed: boolean
   return members;
 }
 
+/**
+ * One member of a member chain.
+ *
+ * A dot member (`a.b`), an optional-dot member (`a?.b`), a computed member
+ * (`a['b']`), an optional computed member (`a?.['b']`) and an optional access
+ * of a computed member (`a?.['b']` after a dot) all read a member of the
+ * chain, so every one of them is part of the pattern.
+ */
+const MEMBER_ACCESS_SOURCE =
+  '(?:\\s*\\.\\s*[A-Za-z_$][\\w$]*' +
+  '|\\s*\\?\\s*\\.\\s*[A-Za-z_$][\\w$]*' +
+  '|\\s*\\?\\s*\\.\\s*\\[[^\\]]*\\]' +
+  '|\\s*\\[\\s*[^\\]]*?\\s*\\]' +
+  '|\\s*\\?\\s*\\[[^\\]]*\\])';
+
 /** A method call and the receiver it is called on. */
-const METHOD_CALL_PATTERN =
-  /([A-Za-z_$][\w$]*(?:\s*(?:\.\s*[A-Za-z_$][\w$]*|\([^()\n]*\)|\[[^\]]*\]))*)\s*(?:\?\.\s*)?\(/g;
+const METHOD_CALL_PATTERN = new RegExp(
+  `([A-Za-z_$][\\w$]*(?:${MEMBER_ACCESS_SOURCE}|\\s*\\([^()\\n]*\\))*)\\s*(?:\\?\\.\\s*)?\\(`,
+  'g'
+);
 
 /**
  * The attribute names a script reads through a DOM call, and the ones it
@@ -699,22 +729,42 @@ function readCallArguments(source: string, from: number): string[] | null {
 }
 
 /** The Reflect property readers whose second argument names a property. */
-const REFLECT_PROPERTY_READ_PATTERN =
-  /\bReflect\s*\.\s*(?:get|getOwnPropertyDescriptor)\s*\(/g;
+const REFLECT_PROPERTY_METHODS = new Set(['get', 'getownpropertydescriptor']);
 
-/** The property names a Reflect reader reads, and the ones it cannot resolve. */
-function reflectPropertyNameReads(content: string): { name: string | null }[] {
-  return reflectPropertyReads(content).map(read => ({ name: read.name }));
-}
+/** An expression that is a member chain the analyser can read. */
+const MEMBER_CHAIN_EXPRESSION = new RegExp(
+  `^[A-Za-z_$][\\w$]*(?:${MEMBER_ACCESS_SOURCE})*$`
+);
 
-/** A Reflect property read and the receiver it reads from. */
+/**
+ * A Reflect property read and the receiver it reads from.
+ *
+ * The spelling of the call does not matter: `Reflect.get(obj,'alt')`,
+ * `Reflect['get'](obj,'alt')`, `Reflect?.get(obj,'alt')` and
+ * `Reflect.get?.(obj,'alt')` all read the `alt` property. A receiver that is
+ * not a member chain cannot be resolved, so the read is a generic state read.
+ */
 function reflectPropertyReads(content: string): { receiver: string; name: string | null }[] {
   const reads: { receiver: string; name: string | null }[] = [];
 
-  for (const match of content.matchAll(REFLECT_PROPERTY_READ_PATTERN)) {
+  for (const match of content.matchAll(METHOD_CALL_PATTERN)) {
+    const members = calleeMembers(match[1] ?? '');
+    if (members.length < 2) continue;
+
+    const method = members[members.length - 1];
+    if (method.name === null || !REFLECT_PROPERTY_METHODS.has(method.name.toLowerCase())) continue;
+    const object = members[members.length - 2];
+    if (object.name === null || object.name.toLowerCase() !== 'reflect') continue;
+
     const args = readCallArguments(content, match.index + match[0].length);
     const receiver = args && args.length > 0 ? (args[0] ?? '').trim() : '';
     const expression = args && args.length > 1 ? args[1] : null;
+    if (!MEMBER_CHAIN_EXPRESSION.test(receiver)) {
+      // The receiver cannot be resolved: the read may be of any object.
+      reads.push({ receiver: '', name: null });
+      continue;
+    }
+
     reads.push({
       receiver,
       name: expression === null ? null : resolveStringExpression(expression.trim()),
@@ -722,6 +772,11 @@ function reflectPropertyReads(content: string): { receiver: string; name: string
   }
 
   return reads;
+}
+
+/** The property names a Reflect reader reads, and the ones it cannot resolve. */
+function reflectPropertyNameReads(content: string): { name: string | null }[] {
+  return reflectPropertyReads(content).map(read => ({ name: read.name }));
 }
 
 /** A selector argument passed to a DOM selection API. */
@@ -761,9 +816,77 @@ function selectorNameReads(content: string): { name: string | null }[] {
   return reads;
 }
 
+/** The attributes a selector names, and whether one is unreadable. */
 interface SelectorAttributes {
   names: string[];
   dynamic: boolean;
+}
+
+/** The element a selector names: the last compound of the selector. */
+function selectorSubject(selector: string): string {
+  const parts = selector.split(/[\s>+~]+/).filter(Boolean);
+  return parts[parts.length - 1] ?? selector.trim();
+}
+
+/** The class names a selector names. */
+function selectorClasses(selector: string): string[] {
+  const names: string[] = [];
+  for (const match of selector.matchAll(/\.([A-Za-z_][\w-]*)/g)) names.push(match[1] ?? '');
+  return names;
+}
+
+/**
+ * True when a literal selector can name one of the elements the fix
+ * introduced.
+ *
+ * The selector names an element by its tag, its id, one of its classes or one
+ * of its attributes, so a script that selects one of them reaches the element
+ * the fix introduced. The values of the attribute selectors are not compared:
+ * a selector that names the attribute of the element is close enough.
+ */
+function selectorNamesIntroducedElement(
+  selector: string,
+  elements: { tag: string; classes: Set<string>; id: string | null; attributes: Map<string, string> }[]
+): boolean {
+  const subject = selectorSubject(selector);
+  const tag = /^([A-Za-z][\w-]*)/.exec(subject)?.[1]?.toLowerCase() ?? null;
+  const id = /#([A-Za-z_][\w-]*)/.exec(subject)?.[1] ?? null;
+  const classes = selectorClasses(subject);
+  const attributes = selectorAttributes(subject).names;
+
+  return elements.some(element => {
+    if (tag !== null && tag !== element.tag.toLowerCase()) return false;
+    if (id !== null && id !== element.id) return false;
+    if (classes.some(name => !element.classes.has(name))) return false;
+    if (attributes.some(name => !element.attributes.has(name))) return false;
+    return true;
+  });
+}
+
+/**
+ * True when a script selects one of the elements the fix introduced.
+ *
+ * A literal selector names an element by its tag, its id, one of its classes
+ * or one of its attributes. A selector the analyser cannot resolve may name
+ * one of them as well, so it fails closed.
+ */
+function scriptSelectsIntroducedElement(
+  content: string,
+  elements: { tag: string; classes: Set<string>; id: string | null; attributes: Map<string, string> }[]
+): boolean {
+  if (elements.length === 0) return false;
+
+  for (const read of selectionSelectorReads(content)) {
+    if (read === null) return true;
+    if (selectorNamesIntroducedElement(read, elements)) return true;
+  }
+
+  for (const read of tagNameReads(content)) {
+    if (read === null) return true;
+    if (elements.some(element => element.tag.toLowerCase() === read.toLowerCase())) return true;
+  }
+
+  return false;
 }
 
 /** The attribute names a selector names, and whether one is unreadable. */
@@ -820,13 +943,83 @@ const SERVICE_WORKER_PATTERN =
 const CSS_IN_JS_PATTERN =
   /(?:from\s*|require\s*\(\s*|import\s*(?:\(\s*)?)['"`](?:styled-components(?:\/[^'"`]*)?|emotion(?:\/[^'"`]*)?)['"`]|['"`]@emotion\/|\bcreateGlobalStyle\b|\bmakeStyles\b|\bstyled\s*\.\s*[A-Za-z_$][\w$]*\s*(?:`|\()|\bstyled\s*\(\s*`/i;
 
-/** True when a script names an element by its static id. */
-function scriptRefersToElementId(content: string, id: string): boolean {
+/** The ids a `getElementById` call names, and the ones it cannot resolve. */
+function elementIdReads(content: string): (string | null)[] {
+  const reads: (string | null)[] = [];
+
+  for (const match of content.matchAll(/\bgetElementById\s*\(/g)) {
+    const args = readCallArguments(content, match.index + match[0].length);
+    const argument = args && args.length > 0 ? args[0] : null;
+    reads.push(argument === null ? null : resolveStringExpression(argument.trim()));
+  }
+
+  return reads;
+}
+
+/** The selectors a selection call names, and the ones it cannot resolve. */
+function selectionSelectorReads(content: string): (string | null)[] {
+  const reads: (string | null)[] = [];
+
+  for (const match of content.matchAll(/\b(?:querySelector|querySelectorAll)\s*\(/g)) {
+    const args = readCallArguments(content, match.index + match[0].length);
+    const argument = args && args.length > 0 ? args[0] : null;
+    reads.push(argument === null ? null : resolveStringExpression(argument.trim()));
+  }
+
+  return reads;
+}
+
+/** The tags a tag collection call names, and the ones it cannot resolve. */
+function tagNameReads(content: string): (string | null)[] {
+  const reads: (string | null)[] = [];
+
+  for (const match of content.matchAll(/\bgetElementsByTagName\s*\(/g)) {
+    const args = readCallArguments(content, match.index + match[0].length);
+    const argument = args && args.length > 0 ? args[0] : null;
+    reads.push(argument === null ? null : resolveStringExpression(argument.trim()));
+  }
+
+  return reads;
+}
+
+/**
+ * True when a script names an element by its id.
+ *
+ * The id argument and the selector are resolved before the comparison: a
+ * script that builds the id at runtime names the element too. An expression
+ * the analyser cannot resolve fails closed when the id is one the fix
+ * introduced — the script may name that element.
+ */
+function scriptRefersToElementId(content: string, id: string, failClosed = false): boolean {
   const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const quote = "['\"`]";
-  return new RegExp(
-    `#${escapedId}(?![\\w-])|\\bgetElementById\\s*\\(\\s*${quote}${escapedId}${quote}|\\bquerySelector(?:All)?\\s*\\(\\s*${quote}#${escapedId}${quote}`
-  ).test(content);
+  if (
+    new RegExp(
+      `#${escapedId}(?![\\w-])|\\bgetElementById\\s*\\(\\s*${quote}${escapedId}${quote}|\\bquerySelector(?:All)?\\s*\\(\\s*${quote}#${escapedId}${quote}`
+    ).test(content)
+  ) {
+    return true;
+  }
+
+  const selectorPattern = new RegExp(`#${escapedId}(?![\\w-])`);
+
+  for (const read of elementIdReads(content)) {
+    if (read === null) {
+      if (failClosed) return true;
+      continue;
+    }
+    if (read === id) return true;
+  }
+
+  for (const read of selectionSelectorReads(content)) {
+    if (read === null) {
+      if (failClosed) return true;
+      continue;
+    }
+    if (selectorPattern.test(read)) return true;
+  }
+
+  return false;
 }
 
 /** Assignments to the `href` property of an element. */
@@ -836,6 +1029,19 @@ const HREF_PROPERTY_ASSIGNMENT_PATTERN =
 /** Calls that set an attribute by name. */
 const SET_ATTRIBUTE_PATTERN =
   /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*(?:\s*\([^()\n]*\))?(?:\s*\[\s*[^\]\n]*\s*\])?)\s*\.\s*setAttribute\s*\(/gi;
+
+/** Calls that set an attribute by name and namespace. */
+const SET_ATTRIBUTE_NS_PATTERN =
+  /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*(?:\s*\([^()\n]*\))?(?:\s*\[\s*[^\]\n]*\s*\])?)\s*\.\s*setAttributeNS\s*\(/gi;
+
+/**
+ * Assignments to the `value` property of an attribute node.
+ *
+ * `element.attributes.href.value = '/sub/'` writes the `href` attribute of the
+ * element exactly like `element.setAttribute('href','/sub/')` does.
+ */
+const ATTRIBUTE_VALUE_ASSIGNMENT_PATTERN =
+  /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*(?:\s*\([^()\n]*\))?(?:\s*\[\s*[^\]\n]*\s*\])?)\s*\.\s*attributes\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*([^\]\n]*)\s*\])\s*\.\s*value\b\s*(?:\*\*=|<<=|>>=|\|\|=|&&=|\?\?=|\+=|-=|\*=|\/=|%=|=(?![=>]))/gi;
 
 /**
  * The collection an indexed receiver reads from, and the index it reads.
@@ -873,6 +1079,9 @@ function expressionNamesBase(
 ): boolean {
   const normalized = expression.trim();
   if (baseVariables.has(normalized)) return true;
+
+  // A base the runtime creates is a base element too.
+  if (/\bcreateElement\s*\(\s*['"`]base['"`]\s*\)/i.test(normalized)) return true;
 
   const elementId = /\bgetElementById\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
   if (elementId) return baseIds.has(elementId[2] ?? '');
@@ -949,7 +1158,8 @@ function elementVariables(
 function receiverMayBeBase(
   receiver: string,
   baseIds: Set<string>,
-  variables: { base: Set<string>; other: Set<string> }
+  variables: { base: Set<string>; other: Set<string> },
+  runtimeBase: boolean
 ): boolean {
   const normalized = receiver.trim();
 
@@ -958,7 +1168,7 @@ function receiverMayBeBase(
   // picks the base element.
   const indexed = indexedReceiver(normalized);
   if (indexed) {
-    return receiverMayBeBase(indexed.collection, baseIds, variables);
+    return receiverMayBeBase(indexed.collection, baseIds, variables, runtimeBase);
   }
 
   if (variables.base.has(normalized)) return true;
@@ -977,16 +1187,40 @@ function receiverMayBeBase(
   const tagName = /\bgetElementsByTagName\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
   if (tagName) return tagName[2]?.toLowerCase() === 'base';
 
-  // An unresolved receiver may still hold the base element.
-  return true;
+  // An unresolved receiver may still hold the base element — but only when the
+  // document has a base the analyser cannot name. A base the runtime creates is
+  // known: the variable that holds it.
+  return !runtimeBase;
 }
 
-/** True when runtime code can change the href of the document's base element. */
-function scriptMutatesBaseHref(content: string, baseIds: Set<string>): boolean {
+/**
+ * True when a script creates a base element at runtime.
+ *
+ * A document without a `<base>` element can still get one: the runtime creates
+ * it and assigns its `href`, and the browser loads its stylesheet from there.
+ */
+function scriptCreatesBase(content: string): boolean {
+  return /\bcreateElement\s*\(\s*['"`]base['"`]\s*\)/i.test(content);
+}
+
+/**
+ * True when runtime code can change the href of the document's base element.
+ *
+ * Every statically resolvable way of writing the attribute counts: the `href`
+ * property, `setAttribute('href', …)`, `setAttributeNS(…, 'href', …)` and the
+ * `value` of an attribute node. A base the runtime creates is a base element
+ * too, so the variable that holds it is read as the base.
+ */
+function scriptMutatesBaseHref(
+  scripts: string[],
+  baseIds: Set<string>,
+  runtimeBase: boolean
+): boolean {
+  const content = scripts.join('\n');
   const variables = elementVariables(content, baseIds);
 
   for (const match of content.matchAll(HREF_PROPERTY_ASSIGNMENT_PATTERN)) {
-    if (receiverMayBeBase(match[1] ?? '', baseIds, variables)) return true;
+    if (receiverMayBeBase(match[1] ?? '', baseIds, variables, runtimeBase)) return true;
   }
 
   for (const match of content.matchAll(SET_ATTRIBUTE_PATTERN)) {
@@ -994,7 +1228,23 @@ function scriptMutatesBaseHref(content: string, baseIds: Set<string>): boolean {
     const attribute = args && args.length > 0 ? args[0] : null;
     const name = attribute === null ? null : resolveStringExpression(attribute.trim());
     if (name !== null && name.toLowerCase() !== 'href') continue;
-    if (receiverMayBeBase(match[1] ?? '', baseIds, variables)) return true;
+    if (receiverMayBeBase(match[1] ?? '', baseIds, variables, runtimeBase)) return true;
+  }
+
+  for (const match of content.matchAll(SET_ATTRIBUTE_NS_PATTERN)) {
+    const args = readCallArguments(content, match.index + match[0].length);
+    // The namespace is the first argument; the attribute name is the second.
+    const attribute = args && args.length > 1 ? args[1] : null;
+    const name = attribute === null ? null : resolveStringExpression(attribute.trim());
+    if (name !== null && name.toLowerCase() !== 'href') continue;
+    if (receiverMayBeBase(match[1] ?? '', baseIds, variables, runtimeBase)) return true;
+  }
+
+  for (const match of content.matchAll(ATTRIBUTE_VALUE_ASSIGNMENT_PATTERN)) {
+    const attribute = match[2] ?? match[3] ?? null;
+    const name = attribute === null ? null : resolveStringExpression(attribute.trim());
+    if (name !== null && name.toLowerCase() !== 'href') continue;
+    if (receiverMayBeBase(match[1] ?? '', baseIds, variables, runtimeBase)) return true;
   }
 
   return false;
@@ -1075,11 +1325,42 @@ function attributeOfDatasetKey(key: string): string {
   return `data-${key.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()}`;
 }
 
+/** A member chain such as `img['dataset']['state']` or `img.dataset?.state`. */
+const MEMBER_CHAIN_PATTERN = new RegExp(
+  `[A-Za-z_$][\\w$]*(?:${MEMBER_ACCESS_SOURCE})+`,
+  'g'
+);
+
+/**
+ * The dataset keys a script reads, and the ones it cannot resolve.
+ *
+ * The chain is read as a chain: `dataset.state`, `dataset['state']`,
+ * `dataset?.state`, `el['dataset']['state']` and `el['data'+'set']['state']`
+ * all read the same `data-state` attribute. A key the analyser cannot resolve
+ * is `null`, and the read fails closed.
+ */
+function datasetKeyReads(content: string): (string | null)[] {
+  const keys: (string | null)[] = [];
+
+  for (const match of content.matchAll(MEMBER_CHAIN_PATTERN)) {
+    const members = calleeMembers(match[0]);
+    for (let index = 0; index < members.length - 1; index++) {
+      const member = members[index];
+      if (member.name === null || member.name.toLowerCase() !== 'dataset') continue;
+      const key = members[index + 1];
+      keys.push(key?.name ?? null);
+    }
+  }
+
+  return keys;
+}
+
 /**
  * True when a script reads a `data-*` attribute through the dataset.
  *
- * `dataset.state`, `dataset['state']` and `Reflect.get(el.dataset,'state')`
- * all read the `data-state` attribute.
+ * `dataset.state`, `dataset['state']`, `dataset?.state`,
+ * `el['dataset']['state']` and `Reflect.get(el.dataset,'state')` all read the
+ * `data-state` attribute.
  */
 function scriptReadsDatasetAttribute(content: string, names: Set<string>): boolean {
   const wanted = new Set(
@@ -1089,14 +1370,16 @@ function scriptReadsDatasetAttribute(content: string, names: Set<string>): boole
   );
   if (wanted.size === 0) return false;
 
-  for (const read of computedPropertyReads(content)) {
-    if (!/\bdataset\s*$/i.test(read.object)) continue;
-    if (read.name === null) continue;
-    if (wanted.has(attributeOfDatasetKey(read.name).toLowerCase())) return true;
+  for (const key of datasetKeyReads(content)) {
+    // A key the analyser cannot resolve may be the attribute the fix adds.
+    if (key === null) return true;
+    if (wanted.has(attributeOfDatasetKey(key).toLowerCase())) return true;
   }
 
   for (const read of reflectPropertyReads(content)) {
-    if (!/\.\s*dataset\s*$/i.test(read.receiver)) continue;
+    const members = calleeMembers(read.receiver);
+    const receiver = members[members.length - 1];
+    if (!receiver || receiver.name === null || receiver.name.toLowerCase() !== 'dataset') continue;
     if (read.name === null) continue;
     if (wanted.has(attributeOfDatasetKey(read.name).toLowerCase())) return true;
   }
@@ -1221,7 +1504,7 @@ export async function planRepositoryFixes(
   const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate, conflictingRemediationKeys } =
     await import('@/lib/github-pr');
   const { locateElement, isPatchableFile } = await import('@/lib/ast-patch');
-  const { buildCssContext, destinationCssHarm, collectStyleSources, analyzeStylesheetLinks, extractCssImports, stripCssLineComments, describeElements } =
+  const { buildCssContext, destinationCssHarm, collectStyleSources, analyzeStylesheetLinks, extractCssImports, stripCssLineComments, describeElements, introducedElements } =
     await import('@/lib/css-context');
 
   const candidates = violations.filter(v => v.remediationCode && v.elementHtml);
@@ -1469,10 +1752,10 @@ export async function planRepositoryFixes(
 
   // Runtime code can change the base after the static markup was read. The
   // effective base is then unknowable, so the destination is unprovable and the
-  // document URL is not a safe fallback.
+  // document URL is not a safe fallback. A document without a `<base>` element
+  // is inspected as well when the runtime creates one.
   for (const [path, content] of contentCache) {
     const info = documentBaseInfo.get(path);
-    if (!info?.hasBase) continue;
 
     const inline = extractInlineScripts(content);
     const handlers = extractEventHandlerAttributes(content);
@@ -1481,7 +1764,13 @@ export async function planRepositoryFixes(
       .filter((script): script is string => script !== undefined);
     const runtime = [...inline.scripts, ...handlers.handlers, ...linked];
 
-    if (runtime.some(script => scriptMutatesBaseHref(script, info.ids))) {
+    const createsBase = runtime.some(script => scriptCreatesBase(script));
+    if (!info?.hasBase && !createsBase) continue;
+    // A base the runtime creates is known: only the variable that holds it is
+    // the base, so an unresolved receiver is another element.
+    const runtimeBase = !info?.hasBase && createsBase;
+
+    if (scriptMutatesBaseHref(runtime, info?.ids ?? new Set(), runtimeBase)) {
       documentBases.delete(path);
       styleProblems.push(
         `the document base in ${path} is changed by repository runtime, which the analyser cannot resolve`
@@ -1565,6 +1854,10 @@ export async function planRepositoryFixes(
     const originalElement = describeElements(violation.elementHtml ?? '')[0];
     const patchedElements = describeElements(violation.remediationCode ?? '');
     const patchedElement = patchedElements[0];
+    // The element the remediation patches and the elements it introduces. The
+    // patched element is paired with the original by its id, or by its kind
+    // when the original carries no id.
+    const pairing = introducedElements(violation.elementHtml ?? '', violation.remediationCode ?? '');
     if (originalElement && patchedElement) {
       if (
         originalElement.id &&
@@ -1586,7 +1879,7 @@ export async function planRepositoryFixes(
         // finds the element by that id only after the fix.
         if (element.id && element.id !== originalElement.id) introducedIds.add(element.id);
       }
-      for (const element of patchedElements.slice(1)) {
+      for (const element of pairing.introduced) {
         for (const name of element.attributes.keys()) {
           // The id is judged by the id check above, which needs the literal
           // id in a selector and not a property read.
@@ -1597,7 +1890,21 @@ export async function planRepositoryFixes(
       if (
         introducedIds.size > 0 &&
         runtimeMutationScripts.some(content =>
-          [...introducedIds].some(id => scriptRefersToElementId(content, id))
+          [...introducedIds].some(id => scriptRefersToElementId(content, id, true))
+        )
+      ) {
+        pendingFixIds.delete(violation.id);
+        refusedFixIds.add(violation.id);
+        continue;
+      }
+
+      // A script that selects one of the elements the remediation introduced
+      // reaches it only after the fix: a literal selector names an element by
+      // its tag, its id, one of its classes or one of its attributes.
+      if (
+        pairing.introduced.length > 0 &&
+        runtimeMutationScripts.some(content =>
+          scriptSelectsIntroducedElement(content, pairing.introduced)
         )
       ) {
         pendingFixIds.delete(violation.id);
@@ -1629,6 +1936,9 @@ export async function planRepositoryFixes(
         (runtimeMutationScripts.some(content =>
           scriptReadsIntroducedAttribute(content, introducedAttributes)
         ) ||
+          runtimeMutationScripts.some(content =>
+            scriptSelectorNamesAttribute(content, introducedAttributes)
+          ) ||
           genericStateReadMutationScripts.length > 0)
       ) {
         pendingFixIds.delete(violation.id);

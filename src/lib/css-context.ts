@@ -524,7 +524,10 @@ function collectFontFace(body: string, context: CssContext): void {
   }
 
   const sources = context.fontFaces.get(family) ?? [];
-  const source = declarations.find(declaration => declaration.property === 'src');
+  // The last `src` declaration of a face is the effective one: the browser
+  // reads the declaration order, not the first source the analyser finds.
+  const declared = declarations.filter(declaration => declaration.property === 'src');
+  const source = declared[declared.length - 1];
   if (source) sources.push(source.value);
   context.fontFaces.set(family, sources);
 }
@@ -684,6 +687,8 @@ interface SelectorRequirements {
   focusPseudo: boolean;
   /** The compound contains a link pseudo-class. */
   linkPseudo: boolean;
+  /** The compound contains a control-state pseudo-class. */
+  controlState: 'enabled' | 'disabled' | null;
   /** The selector could not be read. */
   malformed: boolean;
 }
@@ -693,6 +698,9 @@ const FOCUS_PSEUDO_CLASSES = new Set(['focus', 'focus-within', 'focus-visible'])
 
 /** The pseudo-classes that match a link with an `href`. */
 const LINK_PSEUDO_CLASSES = new Set(['link', 'any-link']);
+
+/** The pseudo-classes that match a control by its disabled state. */
+const CONTROL_STATE_PSEUDO_CLASSES = new Set(['enabled', 'disabled']);
 
 /** The positive requirement a double negation is equivalent to. */
 function doubleNegationPositive(requirements: SelectorRequirements): SelectorRequirements | null {
@@ -789,6 +797,7 @@ function parseSubject(selector: string): SelectorRequirements {
     opaqueConditional: false,
     focusPseudo: false,
     linkPseudo: false,
+    controlState: null,
     malformed: false,
   };
 
@@ -868,6 +877,9 @@ function parseSubject(selector: string): SelectorRequirements {
       }
       if (LINK_PSEUDO_CLASSES.has(name)) {
         requirements.linkPseudo = true;
+      }
+      if (CONTROL_STATE_PSEUDO_CLASSES.has(name)) {
+        requirements.controlState = name as 'enabled' | 'disabled';
       }
       i = identifier.end;
       if (selector[i] === '(') {
@@ -1217,6 +1229,16 @@ interface ElementChanges {
   linkDeactivated: boolean;
   /** The link state changes. */
   linkChanged: boolean;
+  /** The fix enables a control the `disabled` attribute switched off. */
+  enabledActivated: boolean;
+  /** The fix disables a control with the `disabled` attribute. */
+  disabledActivated: boolean;
+}
+
+/** True when the element is a control the `disabled` attribute switches off. */
+function isDisabledControl(element: ElementDescriptor | null): boolean {
+  if (!element) return false;
+  return DISABLEABLE_TAGS.has(element.tag) && element.attributes.has('disabled');
 }
 
 /**
@@ -1261,6 +1283,8 @@ function changesBetween(
   const isLink = isLinkElement(after);
   const linkActivated = !wasLink && isLink;
   const linkDeactivated = wasLink && !isLink;
+  const wasDisabled = isDisabledControl(before);
+  const isDisabled = isDisabledControl(after);
 
   return {
     attributes,
@@ -1273,6 +1297,8 @@ function changesBetween(
     linkActivated,
     linkDeactivated,
     linkChanged: linkActivated || linkDeactivated,
+    enabledActivated: wasDisabled && !isDisabled,
+    disabledActivated: !wasDisabled && isDisabled,
   };
 }
 
@@ -1288,6 +1314,8 @@ function compoundActivatedByFix(compound: string, changes: ElementChanges): bool
 
   const positiveRequirementActivated = (candidate: SelectorRequirements): boolean => {
     if (candidate.linkPseudo && changes.linkActivated) return true;
+    if (candidate.controlState === 'enabled' && changes.enabledActivated) return true;
+    if (candidate.controlState === 'disabled' && changes.disabledActivated) return true;
 
     for (const requirement of candidate.attributes) {
       const value = changes.attributes.get(requirement.name);
@@ -1312,6 +1340,9 @@ function compoundActivatedByFix(compound: string, changes: ElementChanges): bool
 
   const positiveRequirementRemoved = (candidate: SelectorRequirements): boolean => {
     if (candidate.linkPseudo && changes.linkDeactivated) return true;
+    // A control that becomes disabled stops matching `:enabled`.
+    if (candidate.controlState === 'enabled' && changes.disabledActivated) return true;
+    if (candidate.controlState === 'disabled' && changes.enabledActivated) return true;
 
     for (const requirement of candidate.attributes) {
       const removed = changes.removedAttributes.get(requirement.name);
@@ -1338,6 +1369,7 @@ function compoundActivatedByFix(compound: string, changes: ElementChanges): bool
 
   const functionalRequirementMayChange = (candidate: SelectorRequirements): boolean => {
     if (candidate.linkPseudo && changes.linkChanged) return true;
+    if (candidate.controlState && (changes.enabledActivated || changes.disabledActivated)) return true;
 
     for (const requirement of candidate.attributes) {
       if (
@@ -1460,6 +1492,133 @@ function fontSourceState(
   return 'unknown';
 }
 
+/** The font sizes a `font` shorthand may carry. */
+const FONT_SIZE_KEYWORDS = new Set([
+  'xx-small', 'x-small', 'small', 'medium', 'large', 'x-large', 'xx-large',
+  'smaller', 'larger',
+]);
+
+/**
+ * The units that are not a length.
+ *
+ * A number with one of them is not a font size: `oblique 20deg` carries an
+ * angle, not a size, and a size after it must still be found.
+ */
+const NON_LENGTH_UNITS = new Set([
+  'deg', 'grad', 'rad', 'turn', 's', 'ms', 'hz', 'khz', 'dpi', 'dpcm', 'dppx',
+]);
+
+/** The system fonts the `font` shorthand may name. */
+const SYSTEM_FONT_KEYWORDS = new Set([
+  'caption', 'icon', 'menu', 'message-box', 'small-caption', 'status-bar',
+]);
+
+/** The CSS-wide keywords. */
+const CSS_WIDE_KEYWORDS = new Set(['inherit', 'initial', 'unset', 'revert', 'revert-layer']);
+
+/** The whitespace-separated components of a value, with a quoted part kept whole. */
+function splitCssValue(value: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let quote: string | null = null;
+
+  for (const character of value) {
+    if (quote) {
+      current += character;
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      if (current) {
+        parts.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += character;
+  }
+  if (current) parts.push(current);
+
+  return parts;
+}
+
+/**
+ * The family list of a `font` shorthand.
+ *
+ * The grammar is `[ <font-style> || <font-variant> || <font-weight> ||
+ * <font-stretch> ]? <font-size> [ / <line-height> ]? <font-family>`, so the
+ * family is everything after the size. An empty string means the shorthand
+ * selects no family of its own (a CSS-wide or system font keyword, or a
+ * shorthand without a family component resets the family to its initial
+ * value), and `null` means the family cannot be read.
+ */
+function fontShorthandFamily(value: string): string | null {
+  const parts = splitCssValue(value);
+  if (parts.length === 0) return '';
+
+  // A CSS-wide keyword and a system font name no family of their own: the
+  // element keeps the font it has.
+  const first = (parts[0] ?? '').toLowerCase();
+  if (
+    parts.length === 1 &&
+    (CSS_WIDE_KEYWORDS.has(first) || SYSTEM_FONT_KEYWORDS.has(first))
+  ) {
+    return '';
+  }
+
+  let sizeIndex = -1;
+  for (let index = 0; index < parts.length; index++) {
+    const size = (parts[index] ?? '').split('/')[0] ?? '';
+    const lower = size.toLowerCase();
+    if (FONT_SIZE_KEYWORDS.has(lower)) {
+      sizeIndex = index;
+      break;
+    }
+    // A number with a length unit is a size; a number without a unit is a
+    // weight, and a number with an angle or a time unit is neither.
+    const unit = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)([a-z]+|%)?$/i.exec(size);
+    if (unit && unit[1] && !NON_LENGTH_UNITS.has(unit[1].toLowerCase())) {
+      sizeIndex = index;
+      break;
+    }
+  }
+  if (sizeIndex === -1) return null;
+
+  // The line height follows the size, attached to it or separated from it.
+  let familyStart = sizeIndex + 1;
+  if (!(parts[sizeIndex] ?? '').includes('/')) {
+    const next = parts[familyStart];
+    if (next === '/') familyStart += 2;
+    else if (next?.startsWith('/')) familyStart += 1;
+  }
+
+  return parts.slice(familyStart).join(' ').trim();
+}
+
+/**
+ * The family list an activated declaration selects.
+ *
+ * The `font-family` longhand names the family; the `font` shorthand names it
+ * after its size component. An empty string means the declaration selects no
+ * family, and `null` means the family cannot be read.
+ */
+function activatedFontFamily(
+  declaration: Declaration,
+  definitions: Map<string, string>
+): string | null {
+  if (declaration.property === 'font-family') return declaration.value;
+  if (declaration.property !== 'font') return '';
+
+  const resolved = resolveCustomProperties(declaration.value, definitions);
+  if (resolved.includes('var(')) return null;
+  return fontShorthandFamily(resolved);
+}
+
 /** Whether a font-family selects a font-face that loads a resource. */
 function fontFamilyResourceState(
   value: string,
@@ -1550,37 +1709,113 @@ const LOGICAL_INSET_EDGES: Record<string, 'top' | 'bottom' | 'left' | 'right'> =
   'inset-inline-end': 'right',
 };
 
-/** True when a CSS alpha is exactly zero, with or without a percent sign. */
-function isZeroAlpha(value: string): boolean {
-  const alpha = value.trim();
-  const number = alpha.endsWith('%') ? alpha.slice(0, -1) : alpha;
-  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(number)) return false;
-  return Number(number) === 0;
-}
-
 /** The colour functions whose comma or slash alpha the analyser reads. */
 const COLOR_FUNCTIONS = new Set([
   'rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'oklch', 'oklab', 'lab', 'lch', 'color',
 ]);
 
+/** The alpha a colour component carries, or null when it cannot be read. */
+function alphaNumber(value: string): number | null {
+  const alpha = value.trim();
+  if (!alpha) return null;
+  const percent = alpha.endsWith('%');
+  const number = percent ? alpha.slice(0, -1) : alpha;
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(number)) return null;
+  const parsed = Number(number);
+  if (!Number.isFinite(parsed)) return null;
+  return percent ? parsed / 100 : parsed;
+}
+
 /**
- * True when a colour value makes the text invisible.
+ * The alpha of a `color-mix()` of two colours.
  *
- * `transparent` and every colour with an alpha of zero are invisible: the text
- * stays in the document, so only the colour tells the user that it is there.
+ * The mix carries the weighted alpha of the two colours it mixes: both weights
+ * omitted split the mix evenly, one omitted takes the rest, and two given
+ * weights have to add up to 100 %.
  */
-export function isTransparentColor(value: string): boolean {
+function colorMixAlpha(body: string): number | null {
+  const parts = splitTopLevel(body, ',').map(part => part.trim());
+  // The first part is the interpolation method and space: `in srgb`.
+  if (parts.length !== 3) return null;
+
+  const colours: string[] = [];
+  const weights: (number | null)[] = [];
+  for (const part of parts.slice(1)) {
+    const weighted = /^(.*?)\s+(\d+(?:\.\d+)?%)$/.exec(part);
+    if (weighted) {
+      colours.push((weighted[1] ?? '').trim());
+      weights.push(Number.parseFloat(weighted[2] ?? '') / 100);
+    } else {
+      colours.push(part);
+      weights.push(null);
+    }
+  }
+
+  const firstWeight = weights[0] ?? null;
+  const secondWeight = weights[1] ?? null;
+  let first: number;
+  let second: number;
+  if (firstWeight === null && secondWeight === null) {
+    first = 0.5;
+    second = 0.5;
+  } else if (firstWeight === null) {
+    second = secondWeight as number;
+    first = 1 - second;
+  } else if (secondWeight === null) {
+    first = firstWeight;
+    second = 1 - first;
+  } else {
+    if (Math.abs(firstWeight + secondWeight - 1) > 0.001) {
+      // The weights do not add up: the declaration is invalid.
+      return null;
+    }
+    first = firstWeight;
+    second = secondWeight;
+  }
+
+  const firstAlpha = colorAlpha(colours[0] ?? '');
+  const secondAlpha = colorAlpha(colours[1] ?? '');
+  if (firstAlpha === null || secondAlpha === null) return null;
+  return first * firstAlpha + second * secondAlpha;
+}
+
+/**
+ * The alpha of a colour value, or null when the analyser cannot read it.
+ *
+ * A named colour is opaque, a colour function carries its alpha in the legacy
+ * comma component or after the modern slash, and a `color-mix()` carries the
+ * weighted alpha of the two colours it mixes.
+ */
+function colorAlpha(value: string): number | null {
   const normalized = value.trim().toLowerCase();
-  if (normalized === 'transparent') return true;
+  if (!normalized) return null;
+  if (normalized === 'transparent') return 0;
+  if (
+    normalized === 'currentcolor' ||
+    normalized === 'inherit' ||
+    normalized === 'initial' ||
+    normalized === 'unset' ||
+    normalized === 'revert'
+  ) {
+    return 1;
+  }
 
   // A hex colour with an alpha of zero is transparent: `#0000` and `#00000000`.
-  if (/^#[0-9a-f]{4}$/.test(normalized)) return normalized[4] === '0';
-  if (/^#[0-9a-f]{8}$/.test(normalized)) return normalized.slice(7) === '00';
+  if (/^#[0-9a-f]{4}$/.test(normalized)) return normalized[4] === '0' ? 0 : 1;
+  if (/^#[0-9a-f]{8}$/.test(normalized)) return Number.parseInt(normalized.slice(7, 8), 16) / 255;
+  if (/^#[0-9a-f]{3}$/.test(normalized) || /^#[0-9a-f]{6}$/.test(normalized)) return 1;
 
   const functional = /^([a-z-]+)\((.*)\)$/.exec(normalized);
-  if (!functional || !COLOR_FUNCTIONS.has(functional[1] ?? '')) return false;
+  if (!functional) {
+    // A named colour is opaque; anything else cannot be read.
+    return /^[a-z]+$/.test(normalized) ? 1 : null;
+  }
 
+  const name = functional[1] ?? '';
   const body = functional[2] ?? '';
+  if (name === 'color-mix') return colorMixAlpha(body);
+  if (!COLOR_FUNCTIONS.has(name)) return null;
+
   const commaParts = splitTopLevel(body, ',');
   const slashParts = splitTopLevel(body, '/');
 
@@ -1589,7 +1824,32 @@ export function isTransparentColor(value: string): boolean {
   // rgb(), rgba(), hsl() and hsla(); the other colour functions use slash.
   const alpha =
     commaParts.length === 4 ? commaParts[3] : slashParts.length === 2 ? slashParts[1] : null;
-  return alpha !== null && isZeroAlpha(alpha);
+  // A colour function without an alpha component is opaque.
+  if (alpha === null) return 1;
+  return alphaNumber(alpha);
+}
+
+/**
+ * True when a colour value makes the text invisible.
+ *
+ * `transparent` and every colour with an alpha of zero are invisible: the text
+ * stays in the document, so only the colour tells the user that it is there. A
+ * colour function whose alpha the analyser cannot read may hide the text as
+ * well, so it fails closed.
+ */
+export function isTransparentColor(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'transparent') return true;
+
+  // A custom property is resolved elsewhere: an unresolved reference is
+  // unprovable there, and the value must not be read as a colour here.
+  if (normalized.includes('var(')) return false;
+
+  const alpha = colorAlpha(normalized);
+  if (alpha !== null) return alpha === 0;
+
+  // A colour function the analyser cannot read may make the text invisible.
+  return /^([a-z-]+)\(.*\)$/.test(normalized);
 }
 
 /** The custom properties a set of declarations defines. */
@@ -3455,6 +3715,22 @@ function pairElements(
   return { target, before: original, introduced, removed };
 }
 
+/**
+ * The elements a remediation introduces, and the element it patches.
+ *
+ * The patched element is paired with the original by its id, or by its kind
+ * when the original carries no id. Every other element of the remediation that
+ * the original does not carry is introduced by the fix.
+ */
+export function introducedElements(
+  originalHtml: string,
+  patchedHtml: string
+): { target: ElementDescriptor | null; introduced: ElementDescriptor[] } {
+  const pairing = pairElements(describeElements(originalHtml), describeElements(patchedHtml));
+  if ('error' in pairing) return { target: null, introduced: [] };
+  return { target: pairing.target, introduced: pairing.introduced };
+}
+
 /** The name of the CSS function that opens at `index`. */
 function functionNameBefore(source: string, index: number): string {
   const match = /([a-zA-Z_-][\w-]*)\s*$/.exec(source.slice(0, index));
@@ -3697,9 +3973,16 @@ export function destinationCssHarm(
               return 'the repository stylesheet cannot be judged: an activated resource depends on a custom property the analyser cannot resolve';
             }
 
-            if (declaration.property !== 'font-family') continue;
+            if (declaration.property !== 'font-family' && declaration.property !== 'font') {
+              continue;
+            }
+            const family = activatedFontFamily(declaration, ruleDefinitions);
+            if (family === null) {
+              return 'the repository stylesheet cannot be judged: an activated font family or resource cannot be resolved';
+            }
+            if (family === '') continue;
             const fontResource = fontFamilyResourceState(
-              declaration.value,
+              family,
               ruleDefinitions,
               context.fontFaces
             );
