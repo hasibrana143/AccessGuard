@@ -22,12 +22,26 @@ Last run: 2026-11-24 (sixteenth-review closure)
 | Tracked-file secret scan | PASS — 786 tracked files; one AWS-key-shaped **documentation placeholder** in `.openclaw/skills/document-generate/SKILL.md` (path and category only, value never printed) and no live credential |
 | Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
 
-## Sixteenth-review closure evidence (in progress)
+## Sixteenth-review closure evidence
 
 | Check | Result |
 |---|---|
-| Scope B — the destination CSS reader | PASS — 7 permanent regressions in `css-context.test.ts` (`16-M1a`, `16-M1b`, `16-M2a`, `16-M2b`, `16-M3a`, `16-M4a`, `16-M4b`) and 1 in `github-pr.test.ts` (`16-M1c`); the fails-before proof shows exactly the 4 harmful CSS tests failing on the pre-closure tree (4 failed + 147 passed) while every benign twin passes before and after |
-| Scope A — the repository runtime reader | IN PROGRESS |
+| Scope A — the repository runtime reader | PASS — 21 permanent regressions in `github.test.ts` (`16-H1a`–`16-H1e`, `16-H2a`–`16-H2d`, `16-H3a`–`16-H3c`, `16-H4a`–`16-H4c`, `16-H5a`–`16-H5b`, `16-H6a`–`16-H6c`, `16-H7a`–`16-H7b`); the fails-before proof shows exactly the 14 harmful cases failing on the pre-closure tree (14 failed + 125 passed) while every benign twin passes before and after |
+| Scope B — the destination CSS reader | PASS — 10 permanent regressions in `css-context.test.ts` (`16-M1a`, `16-M1b`, `16-M1c`, `16-M2a`, `16-M2b`, `16-M2c`, `16-M2d`, `16-M3a`, `16-M4a`, `16-M4b`) and 1 in `github-pr.test.ts` (`16-M1c`); the fails-before proof shows exactly the 7 harmful CSS cases failing on the pre-closure tree (7 failed + 258 passed) while every benign twin passes before and after |
+| Sixteenth-review closure matrix (temporary) | PASS — 42/42: every finding is blocked in the unsafe direction (0 fixes, 0 writes) and every benign twin stays writable. The file was deleted after the run |
+| Gap found by the closure matrix | FIXED — the optional **computed** member `img['dataset']?.['state']` was still open; the shared member pattern now covers the optional computed access, and the permanent regressions `16-H1d` and `16-H1e` lock it down |
+| Recovered prior payload matrices | PASS — the prior / legitimate matrix 118/118 (run with `tsx`), the combined writer closure run 192/192 across seven files and the route run 24 passed with the 2 intentional pre-closure failures |
+| Pre-closure eleventh-review harnesses (recovered) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0, no diagnostics |
+| `npm run lint` | PASS — exit 0, no ESLint errors |
+| `npx vitest run --coverage` | PASS — 53 files, 972/972 tests (was 53/939) |
+| Coverage | PASS — statements 70.3% (threshold 55) · branches 63.09% (50) · functions 73.36% (58) · lines 72.38% (57) |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS with one retry — 79 tests, 78 passed, 1 flaky, 0 failed |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
+| `npm audit --omit=dev --audit-level=high` | PASS — exit 0, 5 moderate transitive advisories, 0 high / 0 critical |
+| Environment note | The local dev database had lost its `default-org` seed (the API suites then answered `401`); `npm run db:seed` restored it and the suites are green. No schema, migration or production data changed |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
 
 ## Fifteenth independent security review evidence
 

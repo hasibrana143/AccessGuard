@@ -2,15 +2,36 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 sixteenth-review closure in progress, seventeenth review pending** 🟡 |
+| Current phase | **SECURITY FIX LOOP — V23 sixteenth-review closure shipped, seventeenth review pending** 🟡 |
 | Current task | Close the eleven sixteenth-review findings (16-H1…16-H7, 16-M1…16-M4) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the fifteenth-review closure shipped in `b4bd811` and is green on every gate and on all four CI workflows; the sixteenth review then reproduced **eleven new equivalent paths** (High 7, Medium 4) — seven of them let the customer's own runtime take the repaired page over — and **all eleven are now in closure** |
+| Status | AMBER — the sixteenth review reproduced **eleven new equivalent paths** (High 7, Medium 4); all eleven are now closed at their root cause and every gate is green. The release gate stays closed until a **seventeenth** independent review returns READY |
 | Blocked | The release gate stays closed until a **seventeenth** independent review returns READY; Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits), so no Strix evidence exists for this cycle |
-| Next action | Land the sixteenth-review closure in the volume DoD order (security → docs → state → releases), push to `origin/main`, verify the four CI workflows on the pushed head and then run the seventeenth independent security review |
-| Last verification | 2026-11-24 — sixteenth review: source-only typecheck 0, lint 0, vitest 53 files/939 tests, coverage 69.89/62.75/72.93/71.78, build 0, Playwright 79 tests (78 passed, 1 flaky, 0 failed), npm audit High 0, the recovered prior matrices 118/118 + 192/192 + 24/24 and the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
+| Next action | Push the sixteenth-review closure to `origin/main`, verify the four CI workflows on the pushed head and then run the seventeenth independent security review |
+| Last verification | 2026-11-24 — sixteenth-review closure: source-only typecheck 0, lint 0, vitest 53 files/972 tests, coverage 70.3/63.09/73.36/72.38, build 0, Playwright 79 tests (78 passed, 1 flaky, 0 failed), npm audit High 0, the recovered prior matrices 118/118 + 192/192 + 24/24 and the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-24, sixteenth-review closure)
+
+| Check | Result |
+|---|---|
+| Sixteenth-review closure | PASS — all eleven findings (16-H1…16-H7, 16-M1…16-M4) closed at their root cause in `src/lib/github.ts`, `src/lib/css-context.ts` and `src/lib/github-pr.ts`; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-16.md` |
+| Permanent regressions | PASS — 32 new tests (21 in `github.test.ts`, 10 in `css-context.test.ts`, 1 in `github-pr.test.ts`); the pre-closure tree fails 14 harmful Scope A cases and 7 harmful Scope B cases, and every benign twin passes before and after |
+| Sixteenth-review closure matrix (temporary) | PASS — 42/42: every finding is blocked in the unsafe direction (0 fixes, 0 writes) and every benign twin stays writable. The file was deleted after the run |
+| Gap found by the closure matrix | FIXED — the optional **computed** member `img['dataset']?.['state']` was still open; the shared member pattern now covers the optional computed access, and the permanent regressions `16-H1d` and `16-H1e` lock it down |
+| Prior payload matrices (recovered) | PASS — the prior / legitimate matrix 118/118 (run with `tsx`), the combined writer closure run 192/192 across seven files and the route run 24 passed with the 2 intentional pre-closure failures |
+| Pre-closure eleventh-review harnesses (recovered) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
+| `npx vitest run --coverage` | PASS — 53 files, 972/972 tests (was 53/939) |
+| Coverage | PASS — statements 70.3% (threshold 55) · branches 63.09% (50) · functions 73.36% (58) · lines 72.38% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build) |
+| `npx playwright test --project=chromium` | PASS — 79 tests, 78 passed, 1 flaky, 0 failed |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories); `npm audit --omit=dev --audit-level=high` exits 0 with 5 moderate advisories |
+| Environment note | The local dev database had lost its `default-org` seed (the API suites then answered `401`); `npm run db:seed` restored it and the suites are green. The seed is a dev fixture — no schema, migration or production data changed |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
+| Release gate | CLOSED — opens only when a **seventeenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-24, fifteenth-review closure)
 

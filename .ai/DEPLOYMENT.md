@@ -448,6 +448,47 @@ vulnerabilities still exist, so they confirm the closure.
 Strix was **not** run for this cycle: every configured provider refuses the run
 (quota / EOL model / no credits), so no Strix result is claimed.
 
+## The fifteenth-review closure run (2026-11-24)
+
+All four workflows are green on `9ae2a3a` (the fifteenth-review closure cycle):
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45326350671 | CI | ✅ success (6.5m) — lint, source-only typecheck, vitest + coverage, `next build`, `npm audit`, Playwright |
+| 45326350629 | Docker | ✅ success (15.2m) — the multi-arch image builds, the Trivy step passes with the CRITICAL/HIGH filter, the SARIF upload and the Syft SBOM attest are green |
+| 45326350627 | Deploy | ✅ success (1.4m) — **skipped with a notice**: `HAS_VERCEL_CREDS: false`, so the Vercel secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) are not configured and nothing was deployed |
+| 45326350776 | AccessGuard Scan | ✅ success (0.1m) — **skipped with a notice**: `ACCESSGUARD_API_KEY` / `ACCESSGUARD_PROJECT_ID` are not configured, so the VPAT report and the self-scan did not run |
+
+The two skips are the documented secret-gated behaviour, not a coverage result:
+neither the deployment nor the self-scan is claimed as evidence for this cycle.
+
+### How the fifteenth-review cycle was shipped
+
+The commits, in the order the volume definition of done asks for:
+
+| Commit | Layer | Content |
+|---|---|---|
+| `3859697` | state | the fifteenth independent review recorded — the reviewer's own artifact `.ai/SECURITY-REVIEW-15.md` and the dispositions |
+| `b4bd811` | security | the nine fifteenth-review findings closed at their root cause, with 37 permanent regressions (the alternate attribute-read call forms, the reflected `data-*` reads, the id introduced on the patched target, the indexed collection receivers of the document base, the modern slash-alpha transparency, the class removal through a nested negation, the `@font-face` resource, the accessibility-tree hiding through the browser semantics and the removal of `autofocus`) |
+| `d4cfaaf` | ai | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
+| `92341a3` | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
+| `9ae2a3a` | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
+
+The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit`
+0, `npm run lint` 0, `npx vitest run --coverage` 53 files / 939 tests, coverage
+69.89 / 62.75 / 72.93 / 71.78 (thresholds 55 / 50 / 58 / 57), `npm run build` 0,
+`npx playwright test --project=chromium` 79 tests with 0 failed,
+`npm audit --audit-level=high` Critical 0 / High 0, plus the temporary closure
+matrix at 24/24 (16 failures and 8 passed on the pre-closure tree), the
+fails-before proof at 8 + 6 + 5 failures, and the recovered prior matrices at
+118/118 and 209/209 across nine files (all deleted after the run). The two
+pre-closure eleventh-review harnesses failed exactly as expected (12 failed + 5
+passed and 2 failed + 7 passed) — the failures assert that the eleventh-review
+vulnerabilities still exist, so they confirm the closure.
+
+Strix was **not** run for this cycle: every configured provider refuses the run
+(quota / EOL model / no credits), so no Strix result is claimed.
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the
