@@ -18,7 +18,7 @@
 // that apply are unioned, so the verdict does not depend on the order the
 // stylesheets were read in.
 
-import { decodeHtmlEntities, parseTagAttributes } from '@/lib/html-attributes';
+import { decodeHtmlEntities, parseHtmlTags, parseTagAttributes } from '@/lib/html-attributes';
 
 /** A CSS rule: the selector and the declarations it applies. */
 export interface CssRule {
@@ -86,19 +86,76 @@ export function extractStyleBlocks(html: string): string[] {
   return collectStyleSources(html).map(source => source.css);
 }
 
-/** The `href` of every `<link rel="stylesheet">` of a document. */
-export function extractStylesheetLinks(html: string): string[] {
+/** The stylesheet links of a document and the links the analyser cannot read. */
+export interface StylesheetLinkAnalysis {
+  /** The decoded `href` of every readable stylesheet link. */
+  links: string[];
+  /** Why a stylesheet link cannot be judged. */
+  unprovable: string[];
+}
+
+/** True when a link tag stops before its attributes can be read completely. */
+function linkAttributesAreUnreadable(html: string, attributeEnd: number): boolean {
+  const trailing = html.slice(attributeEnd);
+  const tagEnd = trailing.indexOf('>');
+  if (tagEnd === -1) return true;
+  // A quote left after the last parsed attribute means the tag ended inside a
+  // quoted value. The browser reads that quote as part of the value.
+  return /["']/.test(trailing.slice(0, tagEnd));
+}
+
+/**
+ * The stylesheet links of a document.
+ *
+ * The browser decodes the entities of `rel` and `href`, and a `>` inside a
+ * quoted attribute does not end the tag. A link whose attributes cannot be
+ * read may hide a stylesheet, so the destination is unprovable.
+ */
+export function analyzeStylesheetLinks(html: string): StylesheetLinkAnalysis {
   const links: string[] = [];
-  const pattern = /<link\b([^>]*)>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(html)) !== null) {
-    const attributes = parseTagAttributes(match[1] ?? '');
-    const rel = (attributes.find(a => a.name === 'rel')?.value ?? '').toLowerCase();
-    if (!rel.split(/\s+/).includes('stylesheet')) continue;
-    const href = attributes.find(a => a.name === 'href')?.value;
-    if (href) links.push(href.trim());
+  const unprovable: string[] = [];
+  const tags = parseHtmlTags(html);
+  const tagsByStart = new Map(tags.map(tag => [tag.start, tag]));
+
+  for (const candidate of html.matchAll(/<link\b/gi)) {
+    const tag = tagsByStart.get(candidate.index);
+    if (!tag) {
+      unprovable.push('a stylesheet link has attributes the analyser cannot read');
+      continue;
+    }
+
+    const relAttribute = tag.attributes.find(attribute => attribute.name === 'rel');
+    const rel = decodeHtmlEntities(relAttribute?.value ?? '').toLowerCase();
+    const hrefAttribute = tag.attributes.find(attribute => attribute.name === 'href');
+    const href = decodeHtmlEntities(hrefAttribute?.value ?? '').trim();
+    const lastAttributeEnd = tag.attributes[tag.attributes.length - 1]?.end ?? tag.start + 5;
+
+    if (rel.split(/\s+/).includes('stylesheet')) {
+      if (!href) {
+        unprovable.push('a stylesheet link has no readable href');
+        continue;
+      }
+      if (linkAttributesAreUnreadable(html, lastAttributeEnd)) {
+        unprovable.push('a stylesheet link has attributes the analyser cannot read');
+        continue;
+      }
+      links.push(href);
+      continue;
+    }
+
+    // Without a readable `rel`, an unreadable tag may hide the stylesheet
+    // token the browser would use.
+    if (!relAttribute && linkAttributesAreUnreadable(html, lastAttributeEnd)) {
+      unprovable.push('a stylesheet link has attributes the analyser cannot read');
+    }
   }
-  return links;
+
+  return { links, unprovable };
+}
+
+/** The `href` of every readable `<link rel="stylesheet">` of a document. */
+export function extractStylesheetLinks(html: string): string[] {
+  return analyzeStylesheetLinks(html).links;
 }
 
 /** The targets of the `@import` rules of a stylesheet. */
@@ -595,12 +652,17 @@ interface SelectorRequirements {
   opaqueConditional: boolean;
   /** The compound contains a focus pseudo-class. */
   focusPseudo: boolean;
+  /** The compound contains a link pseudo-class. */
+  linkPseudo: boolean;
   /** The selector could not be read. */
   malformed: boolean;
 }
 
 /** The pseudo-classes the `autofocus` remediation can activate. */
 const FOCUS_PSEUDO_CLASSES = new Set(['focus', 'focus-within', 'focus-visible']);
+
+/** The pseudo-classes that match a link with an `href`. */
+const LINK_PSEUDO_CLASSES = new Set(['link', 'any-link']);
 
 /** The positive requirement a double negation is equivalent to. */
 function doubleNegationPositive(requirements: SelectorRequirements): SelectorRequirements | null {
@@ -641,6 +703,7 @@ function mergePositiveRequirements(
   target.attributes.push(...source.attributes);
   target.alternatives.push(...source.alternatives);
   target.focusPseudo ||= source.focusPseudo;
+  target.linkPseudo ||= source.linkPseudo;
 }
 
 /** The selector list of an `:nth-child()` or `:nth-last-child()` rule. */
@@ -649,6 +712,37 @@ function nthChildSelectorList(argument: string): string | null {
   const ofIndex = words.findIndex(word => word.toLowerCase() === 'of');
   if (ofIndex <= 0 || ofIndex === words.length - 1) return null;
   return words.slice(ofIndex + 1).join(' ');
+}
+
+/** The offset of the `]` that closes an attribute selector. */
+function attributeSelectorEnd(selector: string, from: number): number | null {
+  let quote: string | null = null;
+
+  for (let i = from + 1; i < selector.length; i++) {
+    const char = selector[i] as string;
+
+    if (quote) {
+      if (char === '\\') {
+        i++;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+
+    if (char === '\\') {
+      i++;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '[') return null;
+    if (char === ']') return i;
+  }
+
+  return null;
 }
 
 /** The requirements of the subject compound of a selector. */
@@ -664,6 +758,7 @@ function parseSubject(selector: string): SelectorRequirements {
     opaqueFunctional: false,
     opaqueConditional: false,
     focusPseudo: false,
+    linkPseudo: false,
     malformed: false,
   };
 
@@ -704,8 +799,8 @@ function parseSubject(selector: string): SelectorRequirements {
     }
 
     if (char === '[') {
-      const end = selector.indexOf(']', i);
-      if (end === -1) {
+      const end = attributeSelectorEnd(selector, i);
+      if (end === null) {
         requirements.malformed = true;
         return requirements;
       }
@@ -740,6 +835,9 @@ function parseSubject(selector: string): SelectorRequirements {
       const name = identifier.value.toLowerCase();
       if (FOCUS_PSEUDO_CLASSES.has(name)) {
         requirements.focusPseudo = true;
+      }
+      if (LINK_PSEUDO_CLASSES.has(name)) {
+        requirements.linkPseudo = true;
       }
       i = identifier.end;
       if (selector[i] === '(') {
@@ -801,7 +899,7 @@ function parseSubject(selector: string): SelectorRequirements {
         }
         i = end;
       } else {
-        requirements.opaqueConditional = true;
+        if (!requirements.linkPseudo) requirements.opaqueConditional = true;
       }
       expectTag = false;
       continue;
@@ -946,11 +1044,18 @@ function attributeMatches(
   }
 }
 
+/** True when an element is an HTML link with an `href`. */
+function isLinkElement(element: ElementDescriptor | null): boolean {
+  if (!element) return false;
+  return (element.tag === 'a' || element.tag === 'area') && element.attributes.has('href');
+}
+
 /** How the subject compound of a selector matches an element. */
 function matchSubject(requirements: SelectorRequirements, element: ElementDescriptor): Match {
   if (requirements.malformed) return 'maybe';
 
   if (requirements.tag && requirements.tag !== '*' && requirements.tag !== element.tag) return 'no';
+  if (requirements.linkPseudo && !isLinkElement(element)) return 'no';
 
   for (const className of requirements.classes) {
     if (!element.classes.has(className)) return 'no';
@@ -1076,6 +1181,12 @@ interface ElementChanges {
   focus: boolean;
   /** The fix makes the patched element focusable. */
   focusable: boolean;
+  /** The fix turns a non-link into a link. */
+  linkActivated: boolean;
+  /** The fix turns a link into a non-link. */
+  linkDeactivated: boolean;
+  /** The link state changes. */
+  linkChanged: boolean;
 }
 
 /**
@@ -1116,6 +1227,10 @@ function changesBetween(
   const focusable =
     (!canReceiveFocus(before) && canReceiveFocus(after)) ||
     (!isKeyboardFocusable(before) && isKeyboardFocusable(after));
+  const wasLink = isLinkElement(before);
+  const isLink = isLinkElement(after);
+  const linkActivated = !wasLink && isLink;
+  const linkDeactivated = wasLink && !isLink;
 
   return {
     attributes,
@@ -1125,6 +1240,9 @@ function changesBetween(
     removedClasses,
     focus,
     focusable,
+    linkActivated,
+    linkDeactivated,
+    linkChanged: linkActivated || linkDeactivated,
   };
 }
 
@@ -1136,8 +1254,11 @@ function changesBetween(
  */
 function compoundActivatedByFix(compound: string, changes: ElementChanges): boolean | 'unprovable' {
   const requirements = parseSubject(compound);
+  if (requirements.malformed) return 'unprovable';
 
   const positiveRequirementActivated = (candidate: SelectorRequirements): boolean => {
+    if (candidate.linkPseudo && changes.linkActivated) return true;
+
     for (const requirement of candidate.attributes) {
       const value = changes.attributes.get(requirement.name);
       if (value === undefined) continue;
@@ -1160,6 +1281,8 @@ function compoundActivatedByFix(compound: string, changes: ElementChanges): bool
   };
 
   const positiveRequirementRemoved = (candidate: SelectorRequirements): boolean => {
+    if (candidate.linkPseudo && changes.linkDeactivated) return true;
+
     for (const requirement of candidate.attributes) {
       const removed = changes.removedAttributes.get(requirement.name);
       if (removed !== undefined && attributeMatches(removed, requirement.operator, requirement.value) !== 'no') {
@@ -1184,6 +1307,8 @@ function compoundActivatedByFix(compound: string, changes: ElementChanges): bool
   };
 
   const functionalRequirementMayChange = (candidate: SelectorRequirements): boolean => {
+    if (candidate.linkPseudo && changes.linkChanged) return true;
+
     for (const requirement of candidate.attributes) {
       if (
         changes.attributes.has(requirement.name) ||
@@ -2055,14 +2180,17 @@ function isZeroLength(value: string): boolean {
 }
 
 /** True when a length moves content far enough off-screen to hide it. */
-function isLargeOffset(value: string): boolean {
+function isLargeOffset(value: string, composedSize = 0): boolean {
   const matches = [...value.matchAll(/(-?(?:\d+|\d*\.\d+))([a-z%]+)/gi)];
   return matches.some(match => {
     const amount = Math.abs(Number(match[1]));
     const unit = match[2] ?? '';
     // A viewport unit is the size of the screen: moving an element by a whole
-    // viewport puts it off-screen even though the number is small.
-    if (VIEWPORT_UNITS.has(unit)) return amount >= 100;
+    // viewport puts it off-screen even though the number is small. A smaller
+    // offset still hides the element when its declared size crosses the edge.
+    if (VIEWPORT_UNITS.has(unit)) {
+      return amount >= 100 || (amount / 100) * VIEWPORT_LENGTH + composedSize > VIEWPORT_LENGTH;
+    }
     // A percentage of the element itself: 100% moves it out of the view.
     if (unit === '%') return amount >= 100;
     return LENGTH_UNITS.has(unit) && amount >= 999;
@@ -2681,6 +2809,22 @@ function axisSizeOf(state: ElementState, axis: 'x' | 'y'): AxisSize {
   return size;
 }
 
+/** The size of an element on one axis, including its HTML size attribute. */
+function elementSizeOnAxis(
+  state: ElementState,
+  element: ElementDescriptor,
+  axis: 'x' | 'y'
+): number | null {
+  const cssSize = axisSizeOf(state, axis);
+  if (cssSize.known) {
+    return Math.max(cssSize.fixedPx, (cssSize.ratio / 100) * VIEWPORT_LENGTH);
+  }
+
+  const attribute = element.attributes.get(axis === 'x' ? 'width' : 'height');
+  const match = attribute ? /^(\d+(?:\.\d+)?)$/.exec(attribute.trim()) : null;
+  return match?.[1] ? Number(match[1]) : null;
+}
+
 /** The factor of a readable numeric `zoom` value. */
 function zoomFactorOf(value: string): number | null {
   if (!isNumber(value)) return null;
@@ -2903,7 +3047,8 @@ function stateOf(
   element: ElementDescriptor,
   keyframes: Map<string, CssKeyframe[]>,
   inline: Declaration[] = [],
-  definitions: Map<string, string> = new Map()
+  definitions: Map<string, string> = new Map(),
+  inlineDefinitions: Map<string, string> = definitions
 ): ElementState {
   const state: ElementState = {
     positioned: false,
@@ -3023,17 +3168,61 @@ function stateOf(
   // element: the inline declarations are the last word. The custom properties
   // they define resolve the `var()` references of the repository's rules, so a
   // fix that supplies a custom property cannot hide behind one.
-  const declarations: Declaration[] = [];
   for (const rule of rules) {
-    declarations.push(...parseDeclarations(rule.declarations));
+    for (const declaration of parseDeclarations(rule.declarations)) {
+      apply({
+        property: declaration.property,
+        value: resolveCustomProperties(declaration.value, definitions),
+      });
+    }
   }
-  declarations.push(...inline);
-
-  for (const declaration of declarations) {
+  for (const declaration of inline) {
     apply({
       property: declaration.property,
-      value: resolveCustomProperties(declaration.value, definitions),
+      value: resolveCustomProperties(declaration.value, inlineDefinitions),
     });
+  }
+
+  // Compose a viewport-unit offset with the element's declared size. A 99vw
+  // shift moves a 64px target beyond the viewport even though the offset alone
+  // is smaller than one viewport.
+  const width = elementSizeOnAxis(state, element, 'x');
+  const height = elementSizeOnAxis(state, element, 'y');
+  const largestSize = Math.max(width ?? 0, height ?? 0);
+  for (const [property, values] of state.values) {
+    let size: number | null = null;
+    if (
+      property === 'left' ||
+      property === 'right' ||
+      property === 'inset-inline-start' ||
+      property === 'inset-inline-end' ||
+      property === 'margin-left' ||
+      property === 'margin-right' ||
+      property === 'margin-inline-start' ||
+      property === 'margin-inline-end' ||
+      property === 'text-indent'
+    ) {
+      size = width;
+    } else if (
+      property === 'top' ||
+      property === 'bottom' ||
+      property === 'inset-block-start' ||
+      property === 'inset-block-end' ||
+      property === 'margin-top' ||
+      property === 'margin-bottom' ||
+      property === 'margin-block-start' ||
+      property === 'margin-block-end'
+    ) {
+      size = height;
+    } else if (
+      property === 'inset-inline' ||
+      property === 'inset-block'
+    ) {
+      size = property === 'inset-inline' ? width : height;
+    } else if (property === 'inset' || property === 'margin' || property === 'transform' || property === 'translate') {
+      size = largestSize;
+    }
+    if (size !== null && values.some(value => isLargeOffset(value, size))) state.hidden = true;
   }
 
   // A zero maximum size with clipping removes the control from the customer's
@@ -3104,6 +3293,144 @@ function coversViewport(state: ElementState): boolean {
 }
 
 /**
+ * True when two element descriptors describe the same element.
+ *
+ * The identity of an element is its tag and its id. A fix may change the
+ * attributes of an element it keeps — an added `aria-label`, a changed class —
+ * and that is neither a removal nor a new element.
+ */
+function sameElement(left: ElementDescriptor, right: ElementDescriptor): boolean {
+  if (left.id !== null || right.id !== null) {
+    return left.id !== null && left.id === right.id;
+  }
+  return left.tag === right.tag;
+}
+
+/** The patched target and the elements the remediation adds or removes. */
+interface ElementPairing {
+  target: ElementDescriptor;
+  before: ElementDescriptor | null;
+  introduced: ElementDescriptor[];
+  removed: boolean;
+}
+
+/** Pair the patched target with the original element. */
+function pairElements(
+  originalElements: ElementDescriptor[],
+  patchedElements: ElementDescriptor[]
+): ElementPairing | { error: string } {
+  if (patchedElements.length === 0) {
+    return { error: 'the patched element cannot be identified because the remediation has no element' };
+  }
+
+  const original = originalElements[0] ?? null;
+  if (!original) {
+    return { error: 'the patched element cannot be identified because the original element cannot be read' };
+  }
+  let target: ElementDescriptor | undefined;
+
+  if (original.id) {
+    const candidates = patchedElements.filter(element => element.id === original.id);
+    if (candidates.length !== 1) {
+      return { error: 'the patched element cannot be identified by its id' };
+    }
+    target = candidates[0];
+  } else {
+    // Without an id the patched element is the one of the same kind: a
+    // remediation carries the children of the original element as well, and
+    // they are not the element the fix is about.
+    const candidates = patchedElements.filter(element => element.tag === original.tag);
+    if (candidates.length !== 1) {
+      return {
+        error:
+          'the patched element cannot be identified because the remediation must contain exactly one element of its kind',
+      };
+    }
+    target = candidates[0];
+  }
+
+  const originalOthers = originalElements.slice(1);
+  const patchedOthers = patchedElements.filter(element => element !== target);
+  const removed = originalOthers.some(
+    originalElement => !patchedOthers.some(patchedElement => sameElement(originalElement, patchedElement))
+  );
+  const introduced = patchedOthers.filter(
+    patchedElement => !originalElements.some(originalElement => sameElement(originalElement, patchedElement))
+  );
+
+  return { target, before: original, introduced, removed };
+}
+
+/** The name of the CSS function that opens at `index`. */
+function functionNameBefore(source: string, index: number): string {
+  const match = /([a-zA-Z_-][\w-]*)\s*$/.exec(source.slice(0, index));
+  return match?.[1] ? decodeCssEscapes(match[1]).toLowerCase() : '';
+}
+
+/**
+ * True when a selector depends on the DOM position of an element.
+ *
+ * A sibling combinator and an `nth-child()` selector change what they match
+ * when a remediation introduces an element. The analyser sees the remediation
+ * snippet rather than the customer's document, so it cannot compute that
+ * transition.
+ */
+function hasStructuralSelector(selector: string): boolean {
+  let quote: string | null = null;
+  let bracketDepth = 0;
+  const functions: string[] = [];
+
+  for (let i = 0; i < selector.length; i++) {
+    const char = selector[i] as string;
+
+    if (quote) {
+      if (char === '\\') {
+        i++;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+
+    if (char === '\\') {
+      i++;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '[') {
+      bracketDepth++;
+      continue;
+    }
+    if (char === ']') {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      continue;
+    }
+    if (char === '(') {
+      functions.push(functionNameBefore(selector, i));
+      continue;
+    }
+    if (char === ')') {
+      functions.pop();
+      continue;
+    }
+    if (bracketDepth > 0) continue;
+
+    if (char === ':' && /^:nth-(?:last-)?child\(/i.test(selector.slice(i))) return true;
+    if (
+      (char === '+' || char === '~') &&
+      !functions.some(name => name === 'nth-child' || name === 'nth-last-child')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * The reason the repository's stylesheet can harm the patched element, or null.
  *
  * The check is made on the repository's CSS: a rule that can turn the patched
@@ -3120,13 +3447,28 @@ export function destinationCssHarm(
   }
 
   const patched = describeElements(remediationCode ?? '');
-  if (patched.length === 0) return null;
-
   const original = describeElements(originalElementHtml ?? '');
+  const pairing = pairElements(original, patched);
 
-  for (let index = 0; index < patched.length; index++) {
-    const element = patched[index] as ElementDescriptor;
-    const before = original[index] ?? null;
+  if ('error' in pairing) {
+    return `the destination cannot be judged: ${pairing.error}`;
+  }
+  if (pairing.removed) {
+    return 'the destination cannot be judged: the remediation removes an element from the original';
+  }
+  if (
+    pairing.introduced.length > 0 &&
+    context.rules.some(rule => hasStructuralSelector(rule.selector))
+  ) {
+    return 'the repository stylesheet cannot be judged: an introduced element changes a structural selector';
+  }
+
+  const elementPairs: Array<{ element: ElementDescriptor; before: ElementDescriptor | null }> = [
+    { element: pairing.target, before: pairing.before },
+    ...pairing.introduced.map(element => ({ element, before: null })),
+  ];
+
+  for (const { element, before } of elementPairs) {
 
     // A rule that applies after the fix but not before it is the only rule that
     // can change what the element looks like. A rule with a pseudo-class may
@@ -3164,7 +3506,27 @@ export function destinationCssHarm(
     const resourceDefinitions = globalCustomPropertyDefinitions(context.rules);
     for (const [name, value] of definitions) resourceDefinitions.set(name, value);
 
-    const after = stateOf(afterRules, element, context.keyframes, inline.declarations, definitions);
+    // The remediation's own inline style can request a resource too. Resolve
+    // its custom properties before the check: an unresolved reference is
+    // unprovable, never "no resource".
+    for (const declaration of inline.declarations) {
+      const resource = resourceState(declaration.value, resourceDefinitions);
+      if (resource === 'present') {
+        return "the remediation's inline style can introduce a customer-side request";
+      }
+      if (resource === 'unknown') {
+        return "the repository stylesheet cannot be judged: a remediation resource depends on a custom property the analyser cannot resolve";
+      }
+    }
+
+    const after = stateOf(
+      afterRules,
+      element,
+      context.keyframes,
+      inline.declarations,
+      definitions,
+      resourceDefinitions
+    );
     const earlier = before ? stateOf(beforeRules, before, context.keyframes) : null;
 
     if (coversViewport(after)) {
@@ -3202,7 +3564,8 @@ export function destinationCssHarm(
       changes.removedAttributes.size > 0 ||
       changes.removedClasses.size > 0 ||
       changes.focus ||
-      changes.focusable
+      changes.focusable ||
+      changes.linkChanged
     ) {
       for (const rule of context.rules) {
         for (const part of splitTopLevel(rule.selector, ',')) {

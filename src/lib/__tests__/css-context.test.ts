@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { buildCssContext, collectStyleSources, destinationCssHarm, extractStyleBlocks } from '@/lib/css-context';
+import {
+  analyzeStylesheetLinks,
+  buildCssContext,
+  collectStyleSources,
+  destinationCssHarm,
+  extractStyleBlocks,
+  extractStylesheetLinks,
+} from '@/lib/css-context';
 
 describe('destination CSS context', () => {
   it('extracts the style blocks of an HTML document', () => {
@@ -1090,5 +1097,211 @@ describe('destination CSS: the thirteenth review regressions', () => {
       harm('[alt]{position:relative;inset:9999px;background:#f0f}', original, patched)
     ).toContain('hide');
     expect(harm('[alt]{position:relative;inset:4px;background:#f0f}', original, patched)).toBeNull();
+  });
+});
+
+describe('destination CSS: the fourteenth review regressions', () => {
+  function harm(css: string, original: string, patched: string): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('14-H2a decodes an entity-encoded stylesheet rel attribute', () => {
+    const html =
+      '<html><head><link rel="styles&#x68;eet" href="theme.bin"></head><body><img id="target" src="x"></body></html>';
+    const result = analyzeStylesheetLinks(html);
+
+    expect(result.links).toEqual(['theme.bin']);
+    expect(result.unprovable).toEqual([]);
+    expect(extractStylesheetLinks(html)).toEqual(['theme.bin']);
+  });
+
+  it('14-H2b reads a stylesheet link after a quoted greater-than sign', () => {
+    const result = analyzeStylesheetLinks(
+      '<html><head><link title=">" rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+
+    expect(result.links).toEqual(['theme.bin']);
+    expect(result.unprovable).toEqual([]);
+  });
+
+  it('14-H2c refuses a stylesheet link whose attributes cannot be read', () => {
+    const result = analyzeStylesheetLinks(
+      '<html><head><link rel="stylesheet" href="theme.bin</head><body></body></html>'
+    );
+
+    expect(result.links).toEqual([]);
+    expect(result.unprovable).not.toEqual([]);
+  });
+
+  it('14-H2d decodes an entity-encoded stylesheet href attribute', () => {
+    const result = analyzeStylesheetLinks(
+      '<link rel="stylesheet" href="theme.bin?x=1&#38;y=2">'
+    );
+
+    expect(result.links).toEqual(['theme.bin?x=1&y=2']);
+    expect(result.unprovable).toEqual([]);
+  });
+
+  it('14-H4a refuses an introduced element when repository CSS is structural', () => {
+    const css =
+      'img:nth-child(2) ~ #overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}';
+    const original = '<img id="target" src="x">';
+    const introduced = '<span aria-hidden="true">x</span><img id="target" src="x" alt="Photo">';
+
+    expect(harm(css, original, introduced)).toContain('cannot be judged');
+    expect(harm(css, original, '<img id="target" src="x" alt="Photo">')).toBeNull();
+    expect(harm('[data-label="a ~ b"]{color:red}', original, introduced)).toBeNull();
+  });
+
+  it('14-H4b refuses a remediation that removes an original element', () => {
+    const original = '<div id="target"><span id="child">Text</span></div>';
+
+    expect(
+      harm('.hero{color:red}', original, '<div id="target" aria-label="Label"></div>')
+    ).toContain('cannot be judged');
+    expect(
+      harm(
+        '.hero{color:red}',
+        original,
+        '<div id="target" aria-label="Label"><span id="child">Text</span></div>'
+      )
+    ).toBeNull();
+  });
+
+  it('14-H4c keeps a remediation that changes the attributes of a child it keeps', () => {
+    // The child is the same element with a new attribute: it was neither
+    // removed nor introduced, so the fix stays writable.
+    const original = '<div id="target"><span id="child">Text</span></div>';
+
+    expect(
+      harm(
+        '.hero{color:red}',
+        original,
+        '<div id="target" aria-label="Label"><span id="child" aria-hidden="true">Text</span></div>'
+      )
+    ).toBeNull();
+  });
+
+  it('14-H4d keeps a remediation of an element without an id that has children', () => {
+    const original = '<a href="/about"><span aria-hidden="true">Read more</span></a>';
+
+    expect(
+      harm(
+        '.hero{color:red}',
+        original,
+        '<a href="/about" aria-label="Read more"><span aria-hidden="true">Read more</span></a>'
+      )
+    ).toBeNull();
+  });
+
+  it('14-M2a refuses an inline style that resolves to a resource', () => {
+    const result = harm(
+      ':root{--pixel:url(/pixel)}',
+      '<img id="target" src="x">',
+      '<img id="target" src="x" alt="Photo" style="background-image:var(--pixel)">'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('14-M2b refuses an inline image-set resource', () => {
+    const result = harm(
+      '.hero{color:red}',
+      '<img id="target" src="x">',
+      '<img id="target" src="x" alt="Photo" style="background-image:image-set(\'/pixel\')">'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('14-M2c refuses an inline resource with an unresolved custom property', () => {
+    const result = harm(
+      '.hero{color:red}',
+      '<img id="target" src="x">',
+      '<img id="target" src="x" alt="Photo" style="background-image:var(--missing)">'
+    );
+
+    expect(result).toContain('cannot be judged');
+    expect(
+      harm(
+        ':root{--brand:#06c}',
+        '<img id="target" src="x">',
+        '<img id="target" src="x" alt="Photo" style="color:var(--brand)">'
+      )
+    ).toBeNull();
+    expect(
+      harm(
+        '.hero{color:red}',
+        '<img id="target" src="x">',
+        '<img id="target" src="x" alt="Photo" style="--brand:#06c">'
+      )
+    ).toBeNull();
+  });
+
+  it('14-M3a reads an escaped bracket inside an attribute selector', () => {
+    const result = harm(
+      'img[alt="\\]"] ~ #overlay{background-image:url(/pixel)}',
+      '<img id="target" src="x">',
+      '<img id="target" src="x" alt="]">'
+    );
+
+    expect(result).not.toBeNull();
+  });
+
+  it('14-M3b keeps the ordinary attribute selector forms readable', () => {
+    const original = '<img id="target" src="x">';
+
+    for (const selector of ['[alt]', '[alt="x"]', '[alt=\'x\']', '[alt^="x"]']) {
+      expect(harm(`${selector}{color:red}`, original, '<img id="target" src="x" alt="x">')).toBeNull();
+    }
+    expect(
+      harm(
+        '[data-x="a]b"]{background-image:url(/pixel)}',
+        original,
+        '<img id="target" src="x" data-x="a]b">'
+      )
+    ).toContain('customer-side request');
+  });
+
+  it('14-M4a judges a link rule activated by an added href', () => {
+    const css = 'a:link{background-image:url(/pixel)}';
+    const original = '<a id="target"><span aria-hidden="true">x</span></a>';
+    const patched =
+      '<a id="target" href="#main" aria-label="Text"><span aria-hidden="true">x</span></a>';
+
+    expect(harm(css, original, patched)).toContain('customer-side request');
+    expect(
+      harm(
+        css,
+        '<a id="target" href="#main"><span aria-hidden="true">x</span></a>',
+        '<a id="target" href="#main" aria-label="Text"><span aria-hidden="true">x</span></a>'
+      )
+    ).toBeNull();
+    expect(
+      harm(
+        'a:hover,a:focus-within{color:red}',
+        original,
+        patched
+      )
+    ).toBeNull();
+  });
+
+  it('14-M5a composes a viewport offset with the declared element size', () => {
+    const original = '<img id="target" src="x" width="64" height="64">';
+    const patched = '<img id="target" src="x" width="64" height="64" alt="Photo">';
+
+    expect(
+      harm('[alt]{position:relative;left:-99vw;background:#f0f}', original, patched)
+    ).toContain('hide');
+    expect(
+      harm(
+        '[alt]{position:relative;left:-99vw;width:64px;height:64px;background:#f0f}',
+        '<img id="target" src="x">',
+        '<img id="target" src="x" alt="Photo">'
+      )
+    ).toContain('hide');
+    expect(
+      harm('[alt]{position:relative;left:-2vw;background:#f0f}', original, patched)
+    ).toBeNull();
   });
 });

@@ -11,7 +11,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import * as axeCore from 'axe-core';
 import { validateFixCandidate } from '@/lib/github-pr';
 import { visibleTextContent } from '@/lib/ast-patch';
-import { decodeHtmlEntities } from '@/lib/html-attributes';
+import { decodeHtmlEntities, parseHtmlAttributes } from '@/lib/html-attributes';
 
 export const MIN_FIX_CONFIDENCE = 0.7;
 export const VERIFIED_FIX_CONFIDENCE = 1;
@@ -177,6 +177,28 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 }
 
 /**
+ * The id of the element a fix patches.
+ *
+ * The id names the patched element in the rendered snippet: a remediation may
+ * hold more than one element, and the first one is not necessarily the element
+ * the fix is about.
+ */
+export function targetElementId(elementHtml: string | null | undefined): string | null {
+  if (!elementHtml) return null;
+  const id = parseHtmlAttributes(elementHtml).find(attribute => attribute.name === 'id')?.value;
+  if (!id) return null;
+  const decoded = decodeHtmlEntities(id).trim();
+  return decoded || null;
+}
+
+/** The tag of the element a fix patches. */
+export function targetElementTag(elementHtml: string | null | undefined): string | null {
+  if (!elementHtml) return null;
+  const match = /^\s*<([a-zA-Z][^\s/>]*)/.exec(elementHtml);
+  return match ? (match[1] ?? '').toLowerCase() : null;
+}
+
+/**
  * Check the rendered patched element.
  *
  * The patched element has to stay visible: a fix that hides it (`hidden`,
@@ -189,8 +211,28 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
  *
  * Returns the reason the element may not be written, or null.
  */
-export async function checkRenderedElement(page: Page): Promise<string | null> {
-  const rendering = await page.evaluate(async () => {
+export async function checkRenderedElement(
+  page: Page,
+  targetId: string | null = null,
+  targetTag: string | null = null
+): Promise<string | null> {
+  const inspection = await inspectRenderedElement(page, targetId, targetTag);
+  return inspection.problem;
+}
+
+/**
+ * The rendered state of the patched element.
+ *
+ * `unidentified` says that the patched element could not be found at all: the
+ * snippet was never judged, so the fix stays unverified instead of being
+ * reported as a pass.
+ */
+export async function inspectRenderedElement(
+  page: Page,
+  targetId: string | null = null,
+  targetTag: string | null = null
+): Promise<{ problem: string | null; unidentified: boolean }> {
+  const rendering = await page.evaluate(async ({ id, tag }: { id: string | null; tag: string | null }) => {
     // The end state of an animation is what the user sees after it runs, so the
     // animations of the snippet reach their end before the page is judged.
     const animations = document.getAnimations();
@@ -320,8 +362,27 @@ export async function checkRenderedElement(page: Page): Promise<string | null> {
       element => !['META', 'LINK', 'STYLE', 'SCRIPT', 'TITLE'].includes(element.tagName)
     );
 
-    // The patched element is the first element of the rendered snippet.
-    const target = elements[0] ?? null;
+    // The patched element is the element the fix is about, not the first one
+    // the snippet happens to render: a remediation may introduce elements of
+    // its own. The id of the original element names it; without an id the
+    // outermost element of the same kind is the patched one. An ambiguous
+    // snippet cannot be judged, so it fails closed.
+    const topLevel = elements.filter(
+      element => !elements.some(other => other !== element && other.contains(element))
+    );
+    let target: Element | null = null;
+    let unidentified = false;
+    if (id) {
+      target = document.getElementById(id);
+      if (!target) unidentified = true;
+    } else if (topLevel.length === 1) {
+      target = topLevel[0] ?? null;
+    } else {
+      const sameKind = tag ? topLevel.filter(element => element.tagName.toLowerCase() === tag) : [];
+      target = sameKind.length === 1 ? (sameKind[0] ?? null) : null;
+      if (!target) unidentified = true;
+    }
+
     let hidden = false;
     if (target) {
       const style = window.getComputedStyle(target);
@@ -379,13 +440,25 @@ export async function checkRenderedElement(page: Page): Promise<string | null> {
       }
     }
 
-    return { hidden, transparentText, invisibleText };
-  });
+    return { hidden, transparentText, invisibleText, unidentified };
+  }, { id: targetId, tag: targetTag });
 
-  if (rendering.hidden) return 'the patched element is hidden in the rendered page';
-  if (rendering.transparentText) return 'the patched element shows transparent text';
-  if (rendering.invisibleText) return 'the patched element shows text the user cannot read';
-  return null;
+  if (rendering.unidentified) {
+    return {
+      problem: 'the patched element cannot be identified in the rendered page',
+      unidentified: true,
+    };
+  }
+  if (rendering.hidden) {
+    return { problem: 'the patched element is hidden in the rendered page', unidentified: false };
+  }
+  if (rendering.transparentText) {
+    return { problem: 'the patched element shows transparent text', unidentified: false };
+  }
+  if (rendering.invisibleText) {
+    return { problem: 'the patched element shows text the user cannot read', unidentified: false };
+  }
+  return { problem: null, unidentified: false };
 }
 
 /**
@@ -404,7 +477,9 @@ async function runRuleInBrowser(
   browser: Browser,
   remediationCode: string,
   ruleId: string,
-  originalVisibleText: string
+  originalVisibleText: string,
+  targetId: string | null = null,
+  targetTag: string | null = null
 ): Promise<RuleVerdict> {
   if (!AXE_SOURCE) throw new Error('axe-core source unavailable');
 
@@ -522,9 +597,17 @@ async function runRuleInBrowser(
     // The patched element itself has to stay visible: a fix that hides it or
     // makes its text transparent passes the rule check while the user loses
     // what the element shows.
-    const renderingProblem = await checkRenderedElement(page);
-    if (renderingProblem) {
-      return { fired: true, evaluated: true, detail: renderingProblem };
+    const rendering = await inspectRenderedElement(page, targetId, targetTag);
+    if (rendering.unidentified) {
+      // The snippet was never judged, so the fix has no confidence at all.
+      return {
+        fired: false,
+        evaluated: false,
+        detail: rendering.problem ?? 'the patched element cannot be identified in the rendered page',
+      };
+    }
+    if (rendering.problem) {
+      return { fired: true, evaluated: true, detail: rendering.problem };
     }
 
     const summary = await withTimeout(
@@ -772,7 +855,9 @@ export async function verifyFixes(
             browser,
             fix.remediationCode,
             fix.ruleId,
-            visibleTextContent(fix.elementHtml ?? '')
+            visibleTextContent(fix.elementHtml ?? ''),
+            targetElementId(fix.elementHtml),
+            targetElementTag(fix.elementHtml)
           );
           record(fix, verdictToResult(verdict));
         } catch (err) {

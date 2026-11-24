@@ -47,6 +47,103 @@ describe('validateFixForRule: image-alt', () => {
   });
 });
 
+describe('validateFixForRule: image-alt and the accessibility tree (14-M6)', () => {
+  it('14-M6a rejects a fix that hides the repaired image from the accessibility tree', () => {
+    // The image stays painted, but it leaves the accessibility tree: axe stops
+    // reporting `image-alt` because the rule no longer sees the image.
+    const r = validateFixForRule(
+      'image-alt',
+      '<img id="target" src="x" alt="Photo" aria-hidden="true">',
+      '<img id="target" src="x">'
+    );
+    expect(r.valid).toBe(false);
+    expect(r.reason).toContain('accessibility tree');
+  });
+
+  it('14-M6b rejects a fix that marks a content image as decorative', () => {
+    const r = validateFixForRule(
+      'image-alt',
+      '<img id="target" src="x" alt="" role="presentation">',
+      '<img id="target" src="x">'
+    );
+    expect(r.valid).toBe(false);
+  });
+
+  it('14-M6c accepts a fix that keeps a decorative image decorative', () => {
+    const r = validateFixForRule(
+      'image-alt',
+      '<img id="target" src="x" alt="" aria-hidden="true">',
+      '<img id="target" src="x" alt="">'
+    );
+    expect(r.valid).toBe(true);
+  });
+
+  it('14-M6d accepts a fix that names a content image', () => {
+    const r = validateFixForRule(
+      'image-alt',
+      '<img id="target" src="x" alt="Photo">',
+      '<img id="target" src="x">'
+    );
+    expect(r.valid).toBe(true);
+  });
+});
+
+describe('validateFixForRule: button-name (14-M1)', () => {
+  it('14-M1a accepts a native button that keeps its tag', () => {
+    const r = validateFixForRule(
+      'button-name',
+      '<button id="target" aria-label="Save">x</button>',
+      '<button id="target">x</button>'
+    );
+    expect(r.valid).toBe(true);
+  });
+
+  it('14-M1b rejects a fix that replaces a native button with a div', () => {
+    const r = validateFixForRule(
+      'button-name',
+      '<div id="target" aria-label="Save"><span aria-hidden="true">x</span></div>',
+      '<button id="target"><span aria-hidden="true">x</span></button>'
+    );
+    expect(r.valid).toBe(false);
+  });
+
+  it('14-M1c rejects a native button without an accessible name', () => {
+    const r = validateFixForRule(
+      'button-name',
+      '<button id="target"><span aria-hidden="true">x</span></button>',
+      '<button id="target"><span aria-hidden="true">x</span></button>'
+    );
+    expect(r.valid).toBe(false);
+  });
+
+  it('14-M1i accepts a fix that keeps the ARIA button semantics', () => {
+    const r = validateFixForRule(
+      'button-name',
+      '<div id="target" role="button" aria-label="Save">x</div>',
+      '<div id="target" role="button">x</div>'
+    );
+    expect(r.valid).toBe(true);
+  });
+
+  it('14-M1j accepts a button that is named by the alt of its icon', () => {
+    const r = validateFixForRule(
+      'button-name',
+      '<button id="target"><img src="icon.png" alt="Save"></button>',
+      '<button id="target"><img src="icon.png"></button>'
+    );
+    expect(r.valid).toBe(true);
+  });
+
+  it('14-M1k rejects a link whose text belongs to another element', () => {
+    const r = validateFixForRule(
+      'button-name',
+      '<article>Photo</article><a id="target" href="#x"></a>',
+      '<a id="target" href="#x"></a>'
+    );
+    expect(r.valid).toBe(false);
+  });
+});
+
 describe('validateFixForRule: label', () => {
   it('accepts for/id label association', () => {
     const r = validateFixForRule('label', '<label for="email">Email</label><input id="email" type="email">');

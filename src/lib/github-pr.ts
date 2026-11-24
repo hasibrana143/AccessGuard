@@ -512,6 +512,84 @@ function isOffScreenOffset(value: string): boolean {
   });
 }
 
+/** The tags whose native semantics a remediation may not replace with a box. */
+const NATIVE_INTERACTIVE_TAGS = new Set(['button', 'input', 'select', 'textarea']);
+
+/** The live elements of a snippet, and their attributes. */
+function liveElementsOf(html: string): Array<{ name: string; attrs: Record<string, string> }> {
+  const elements: Array<{ name: string; attrs: Record<string, string> }> = [];
+  const live = liveTagStarts(html);
+  for (const tag of parseHtmlTags(html)) {
+    if (!live.has(tag.start)) continue;
+    const attrs: Record<string, string> = {};
+    for (const attribute of tag.attributes) {
+      if (!(attribute.name in attrs)) attrs[attribute.name] = attribute.value;
+    }
+    elements.push({ name: tag.name, attrs });
+  }
+  return elements;
+}
+
+/** A live element of a snippet, and its attributes. */
+function liveElementOf(html: string): { name: string; attrs: Record<string, string> } | null {
+  return liveElementsOf(html)[0] ?? null;
+}
+
+/**
+ * The element of the remediation that corresponds to the original element.
+ *
+ * The original element's id names it; without an id the patched element is the
+ * one of the same kind — a remediation may carry the children of the original
+ * element and elements of its own. A remediation that names no element cannot
+ * be compared with the original, so it is null.
+ */
+function targetElementOf(
+  remediation: string,
+  original: { name: string; attrs: Record<string, string> }
+): { name: string; attrs: Record<string, string> } | null {
+  const elements = liveElementsOf(remediation);
+  const id = original.attrs['id'];
+  if (id) {
+    return elements.find(element => element.attrs['id'] === id) ?? null;
+  }
+
+  const candidates = elements.filter(element => element.name === original.name);
+  return candidates.length === 1 ? (candidates[0] ?? null) : null;
+}
+
+/** True when the element is in the keyboard focus order. */
+function isKeyboardFocusable(name: string, attrs: Record<string, string>): boolean {
+  if ('hidden' in attrs || 'inert' in attrs) return false;
+
+  const tabIndex = (attrs['tabindex'] ?? '').trim();
+  if (/^[+-]?\d+$/.test(tabIndex)) return Number(tabIndex) >= 0;
+
+  const editable = (attrs['contenteditable'] ?? '').trim().toLowerCase();
+  if (editable !== '' && editable !== 'false') return true;
+
+  if (name === 'a' || name === 'area') return 'href' in attrs;
+  if (name === 'input') return (attrs['type'] ?? 'text').trim().toLowerCase() !== 'hidden';
+  if (name === 'audio' || name === 'video') return 'controls' in attrs;
+  if (name === 'button' || name === 'select' || name === 'textarea') {
+    return !(name === 'button' && 'disabled' in attrs);
+  }
+  return false;
+}
+
+/** True when the remediation keeps the native semantics of the original element. */
+function preservesNativeSemantics(
+  original: { name: string; attrs: Record<string, string> },
+  target: { name: string; attrs: Record<string, string> }
+): boolean {
+  if (original.name === target.name) return true;
+  // A button may become an equivalent native button control.
+  if (original.name === 'button' && target.name === 'input') {
+    const type = (target.attrs['type'] ?? '').trim().toLowerCase();
+    return type === 'submit' || type === 'button' || type === 'reset';
+  }
+  return false;
+}
+
 // Validate AI-generated remediation code before applying it to source files
 export function validateRemediation(
   remediationCode: string | null | undefined,
@@ -653,6 +731,38 @@ export function validateRemediation(
         valid: false,
         reason: `remediation code introduces a new ${name} destination the original element does not have`,
       };
+    }
+  }
+
+  // The remediation must keep the element it patches: a native control that
+  // becomes a box loses its activation semantics, and a control the user can
+  // no longer reach is a control the user cannot use. The axe rule passes on
+  // the name alone, so neither loss is visible to the verification browser.
+  if (originalElementHtml) {
+    const original = liveElementOf(originalElementHtml);
+    if (original) {
+      const target = targetElementOf(code, original);
+      const nativeOriginal =
+        NATIVE_INTERACTIVE_TAGS.has(original.name) ||
+        (original.name === 'a' && 'href' in original.attrs);
+
+      if (nativeOriginal && (!target || !preservesNativeSemantics(original, target))) {
+        return {
+          valid: false,
+          reason: `remediation code replaces the native <${original.name}> element`,
+        };
+      }
+
+      if (
+        target &&
+        isKeyboardFocusable(original.name, original.attrs) &&
+        !isKeyboardFocusable(target.name, target.attrs)
+      ) {
+        return {
+          valid: false,
+          reason: 'remediation code removes the keyboard focusability of the patched element',
+        };
+      }
     }
   }
 

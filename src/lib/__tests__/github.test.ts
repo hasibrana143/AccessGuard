@@ -1720,6 +1720,239 @@ describe('the thirteenth review regressions', () => {
   });
 });
 
+describe('the fourteenth review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix() {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="x">',
+        remediationCode: '<img id="target" src="x" alt="Photo">',
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  it('14-H1a: does not patch an element a script activates through Reflect.get', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(Reflect.get(img,'al'+'t'))img.classList.add('overlay')});</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('14-H1b: does not patch an element a script activates through Reflect.getOwnPropertyDescriptor', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(Reflect.getOwnPropertyDescriptor(img,'al'+'t'))img.classList.add('overlay')});</script></body></html>`
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('14-H1c: does not patch an element a script activates through an unresolved Reflect property name', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>const propertyName='alt';document.querySelectorAll('img').forEach(function(img){if(Reflect.get(img,propertyName))img.classList.add('overlay')});</script></body></html>`
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('14-H1d: writes a fix when Reflect.get reads an unrelated property', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(Reflect.get(img,'src'))img.classList.add('active')});</script></body></html>`
+    );
+
+    const plan = await planAltFix();
+
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  });
+
+  it('14-H2a: does not patch an element an entity-encoded stylesheet link turns into an overlay', async () => {
+    tree(['index.html', 'theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><link rel="styles&#x68;eet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent(
+      'theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('14-H2b: does not patch an element a stylesheet link with a quoted greater-than turns into an overlay', async () => {
+    tree(['index.html', 'theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><link title=">" rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent(
+      'theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('14-H2c: writes a fix when an ordinary stylesheet link is harmless', async () => {
+    tree(['index.html', 'theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('theme.bin', 'img{color:red}');
+
+    const plan = await planAltFix();
+
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  });
+
+  it('14-H2d: does not patch an element when a stylesheet link cannot be read', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><head><link rel="stylesheet" href="theme.bin</head><body><img id="target" src="x"></body></html>'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('14-H3a: does not patch an element when repository runtime changes the document base', async () => {
+    tree(['index.html', 'theme.bin', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><base id="base"><script>document.getElementById("base").href="/sub/";</script><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('theme.bin', 'img{color:red}');
+    fileContent(
+      'sub/theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('14-H3b: does not patch an element when repository runtime sets the base href through a variable', async () => {
+    tree(['index.html', 'theme.bin', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><base id="base"><script>const base=document.getElementById("base");base.setAttribute("href","/sub/");</script><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('theme.bin', 'img{color:red}');
+    fileContent(
+      'sub/theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('14-H3c: does not patch an element when a linked script changes the document base', async () => {
+    tree(['index.html', 'runtime.js', 'theme.bin', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><base id="base"><script src="runtime.js"></script><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('runtime.js', 'document.getElementById("base").href="/sub/";');
+    fileContent('theme.bin', 'img{color:red}');
+    fileContent(
+      'sub/theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('14-H3d: writes a fix when the document has no base element', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><head><script>const link=document.getElementById("target");link.href="/other/";</script></head><body><img id="target" src="x"></body></html>'
+    );
+
+    const plan = await planAltFix();
+
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  });
+
+  it('14-H3e: writes a fix when a base element without href is not changed by runtime', async () => {
+    tree(['index.html', 'theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><base id="base"><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('theme.bin', 'img{color:red}');
+
+    const plan = await planAltFix();
+
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  });
+  it('14-H3f: writes a fix when runtime changes another element instead of the base', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><head><base id="base" href="/sub/"></head><body><a id="other" href="/">Other</a><img id="target" src="x"><script>const other=document.getElementById("other");other.href="/elsewhere/";</script></body></html>'
+    );
+
+    const plan = await planAltFix();
+
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();

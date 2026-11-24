@@ -116,6 +116,60 @@ describe('validateRemediation', () => {
     expect(validateRemediation(undefined).valid).toBe(false);
   });
 
+  it('14-M1d rejects a native button that becomes a div', () => {
+    // The box has a name, so the axe rule passes, but the control has no
+    // activation behaviour and the user cannot reach it with the keyboard.
+    const result = validateRemediation(
+      '<div id="target" aria-label="Save"><span aria-hidden="true">x</span></div>',
+      '<button id="target"><span aria-hidden="true">x</span></button>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('native <button>');
+  });
+
+  it('14-M1e rejects a remediation that takes the element out of the focus order', () => {
+    const result = validateRemediation(
+      '<button id="target" tabindex="-1" aria-label="Save"><span aria-hidden="true">x</span></button>',
+      '<button id="target" tabindex="0"><span aria-hidden="true">x</span></button>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('focusability');
+  });
+
+  it('14-M1f accepts a native button that keeps its semantics', () => {
+    const result = validateRemediation(
+      '<button id="target" aria-label="Save"><span aria-hidden="true">x</span></button>',
+      '<button id="target"><span aria-hidden="true">x</span></button>'
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('14-M1g accepts a fix that gives the element the keyboard focus', () => {
+    const result = validateRemediation(
+      '<div id="target" role="button" tabindex="0" aria-label="Save">x</div>',
+      '<div id="target" role="button">x</div>'
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('14-M1h accepts a button that becomes an equivalent native control', () => {
+    const result = validateRemediation(
+      '<input id="target" type="submit" value="Save">',
+      '<button id="target">Save</button>'
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('14-M1i accepts a remediation that keeps the native control among new elements', () => {
+    // The remediation introduces a sibling: the patched element is still the
+    // button, so its semantics and its focusability are kept.
+    const result = validateRemediation(
+      '<button id="target"><span aria-hidden="true">x</span></button>',
+      '<span aria-hidden="true">x</span><button id="target" aria-label="Save"><span aria-hidden="true">x</span></button>'
+    );
+    expect(result.valid).toBe(true);
+  });
+
   it('rejects script tag injection', () => {
     const result = validateRemediation('<div><script>alert(1)</script></div>');
     expect(result.valid).toBe(false);

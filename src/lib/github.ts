@@ -345,10 +345,14 @@ function resolveDocumentBase(documentPath: string, content: string | null): Docu
 function extractEventHandlerAttributes(markup: string): {
   handlers: string[];
   baseHref: string | null;
+  baseIds: string[];
+  hasBase: boolean;
   incomplete: boolean;
 } {
   const handlers: string[] = [];
   let baseHref: string | null = null;
+  const baseIds: string[] = [];
+  let hasBase = false;
   let templateDepth = 0;
   let cursor = 0;
 
@@ -358,21 +362,21 @@ function extractEventHandlerAttributes(markup: string): {
 
     if (markup.startsWith('<!--', open)) {
       const close = markup.indexOf('-->', open + 4);
-      if (close < 0) return { handlers, baseHref, incomplete: true };
+      if (close < 0) return { handlers, baseHref, baseIds, hasBase, incomplete: true };
       cursor = close + 3;
       continue;
     }
 
     if (markup.startsWith('<!', open) || markup.startsWith('<?', open)) {
       const close = markup.indexOf('>', open + 2);
-      if (close < 0) return { handlers, baseHref, incomplete: true };
+      if (close < 0) return { handlers, baseHref, baseIds, hasBase, incomplete: true };
       cursor = close + 1;
       continue;
     }
 
     if (markup.startsWith('</', open)) {
       const end = markup.indexOf('>', open + 2);
-      if (end < 0) return { handlers, baseHref, incomplete: true };
+      if (end < 0) return { handlers, baseHref, baseIds, hasBase, incomplete: true };
       const name = markup.slice(open + 2, end).trim().split(/[\s/]/)[0]?.toLowerCase();
       if (name === 'template' && templateDepth > 0) templateDepth--;
       cursor = end + 1;
@@ -410,9 +414,14 @@ function extractEventHandlerAttributes(markup: string): {
       }
       index++;
     }
-    if (end < 0 || quote) return { handlers, baseHref, incomplete: true };
+    if (end < 0 || quote) return { handlers, baseHref, baseIds, hasBase, incomplete: true };
 
     const attributes = parseTagAttributes(markup.slice(sectionStart, end));
+    if (tagName === 'base' && templateDepth === 0) {
+      hasBase = true;
+      const id = attributes.find(attribute => attribute.name === 'id')?.value;
+      if (id) baseIds.push(decodeHtmlEntities(id));
+    }
     for (const attribute of attributes) {
       if (/^on/i.test(attribute.name) && attribute.value) {
         handlers.push(decodeHtmlEntities(attribute.value));
@@ -437,12 +446,12 @@ function extractEventHandlerAttributes(markup: string): {
       const closing = new RegExp(`</${tagName}\\s*>`, 'ig');
       closing.lastIndex = cursor;
       const close = closing.exec(markup);
-      if (!close) return { handlers, baseHref, incomplete: true };
+      if (!close) return { handlers, baseHref, baseIds, hasBase, incomplete: true };
       cursor = close.index + close[0].length;
     }
   }
 
-  return { handlers, baseHref, incomplete: false };
+  return { handlers, baseHref, baseIds, hasBase, incomplete: false };
 }
 
 /**
@@ -457,7 +466,7 @@ const RUNTIME_STYLE_PATTERN =
 
 /** Reads that can gate an element mutation at runtime. */
 const RUNTIME_STATE_READ_PATTERN =
-  /\b(?:hasAttribute|getAttribute|getAttributeNames|getAttributeNode|toggleAttribute)\s*\(|\bgetNamedItem\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
+  /\b(?:hasAttribute|getAttribute|getAttributeNames|getAttributeNode|toggleAttribute)\s*\(|\bgetNamedItem\s*\(|\bReflect\s*\.\s*(?:get|getOwnPropertyDescriptor)\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
 
 /** Reads of every attribute, which can react to any attribute the fix adds. */
 const RUNTIME_GENERIC_STATE_READ_PATTERN =
@@ -540,6 +549,74 @@ function attributeNameReads(content: string): { name: string | null }[] {
 /** A computed property read such as `element["al"+"t"]`. */
 const COMPUTED_PROPERTY_READ_PATTERN = /\b[A-Za-z_$][\w$]*\s*(?:\?\.)?\s*\[\s*([^\]]*)\]/g;
 
+/**
+ * The arguments of a call, split at the commas outside nested calls.
+ *
+ * This is only used for the small DOM APIs whose property-name argument the
+ * analyser has to read. A call it cannot read stays unresolved.
+ */
+function readCallArguments(source: string, from: number): string[] | null {
+  const args: string[] = [];
+  let start = from;
+  let depth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+
+  for (let i = from; i < source.length; i++) {
+    const character = source[i] as string;
+
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '(' || character === '[' || character === '{') {
+      depth++;
+      continue;
+    }
+    if (character === ')' || character === ']' || character === '}') {
+      if (depth === 0) {
+        if (character !== ')') return null;
+        args.push(source.slice(start, i));
+        return args;
+      }
+      depth--;
+      continue;
+    }
+    if (character === ',' && depth === 0) {
+      args.push(source.slice(start, i));
+      start = i + 1;
+    }
+  }
+
+  return null;
+}
+
+/** The Reflect property readers whose second argument names a property. */
+const REFLECT_PROPERTY_READ_PATTERN =
+  /\bReflect\s*\.\s*(?:get|getOwnPropertyDescriptor)\s*\(/g;
+
+/** The property names a Reflect reader reads, and the ones it cannot resolve. */
+function reflectPropertyNameReads(content: string): { name: string | null }[] {
+  const reads: { name: string | null }[] = [];
+
+  for (const match of content.matchAll(REFLECT_PROPERTY_READ_PATTERN)) {
+    const args = readCallArguments(content, match.index + match[0].length);
+    const expression = args && args.length > 1 ? args[1] : null;
+    reads.push({
+      name: expression === null ? null : resolveStringExpression(expression.trim()),
+    });
+  }
+
+  return reads;
+}
+
 /** A selector argument passed to a DOM selection API. */
 const SELECTOR_READ_PATTERN =
   /\b(?:matches|closest|querySelector|querySelectorAll)\s*\(\s*([^)]*)\)/gi;
@@ -602,7 +679,10 @@ function scriptReadsDynamicAttribute(content: string): boolean {
 
 /** True when a computed property name cannot be read statically. */
 function scriptReadsDynamicProperty(content: string): boolean {
-  return propertyNameReads(content).some(read => read.name === null);
+  return (
+    propertyNameReads(content).some(read => read.name === null) ||
+    reflectPropertyNameReads(content).some(read => read.name === null)
+  );
 }
 
 /** True when a selector argument or its attribute name cannot be read. */
@@ -631,6 +711,156 @@ function scriptRefersToElementId(content: string, id: string): boolean {
   return new RegExp(
     `#${escapedId}(?![\\w-])|\\bgetElementById\\s*\\(\\s*${quote}${escapedId}${quote}|\\bquerySelector(?:All)?\\s*\\(\\s*${quote}#${escapedId}${quote}`
   ).test(content);
+}
+
+/** Assignments to the `href` property of an element. */
+const HREF_PROPERTY_ASSIGNMENT_PATTERN =
+  /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*(?:\s*\([^()\n]*\))?)\s*(?:\.\s*href\b|\[\s*['"`]href['"`]\s*\])\s*(?:\*\*=|<<=|>>=|\|\|=|&&=|\?\?=|\+=|-=|\*=|\/=|%=|=(?![=>]))/gi;
+
+/** Calls that set an attribute by name. */
+const SET_ATTRIBUTE_PATTERN =
+  /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*(?:\s*\([^()\n]*\))?)\s*\.\s*setAttribute\s*\(/gi;
+
+/** True when a selector can name a base element. */
+function selectorNamesBase(selector: string, baseIds: Set<string>): boolean {
+  const normalized = selector.trim();
+  if (/(?:^|[\s>+~])base(?:$|[#.\[])/i.test(normalized)) return true;
+
+  for (const id of baseIds) {
+    const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`#${escaped}(?![\\w-])`).test(normalized)) return true;
+    if (new RegExp(`\\[\\s*id\\s*=\\s*['\"]?${escaped}(?:['\"]|\\s|\\])`, 'i').test(normalized)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/** True when an expression resolves to a base element. */
+function expressionNamesBase(
+  expression: string,
+  baseIds: Set<string>,
+  baseVariables: Set<string>
+): boolean {
+  const normalized = expression.trim();
+  if (baseVariables.has(normalized)) return true;
+
+  const elementId = /\bgetElementById\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
+  if (elementId) return baseIds.has(elementId[2] ?? '');
+
+  const selector = /\bquerySelector(?:All)?\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
+  if (selector) return selectorNamesBase(selector[2] ?? '', baseIds);
+
+  const tagName = /\bgetElementsByTagName\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
+  return tagName?.[2]?.toLowerCase() === 'base';
+}
+
+/** True when an expression resolves to an element that is not the base. */
+function expressionNamesOtherElement(
+  expression: string,
+  baseIds: Set<string>,
+  baseVariables: Set<string>,
+  otherVariables: Set<string>
+): boolean {
+  const normalized = expression.trim();
+  if (baseVariables.has(normalized)) return false;
+  if (otherVariables.has(normalized)) return true;
+
+  const elementId = /\bgetElementById\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
+  if (elementId) return !baseIds.has(elementId[2] ?? '');
+
+  const tagName = /\bgetElementsByTagName\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
+  if (tagName) return tagName[2]?.toLowerCase() !== 'base';
+
+  const selector = /\bquerySelector(?:All)?\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
+  if (selector) {
+    const value = selector[2] ?? '';
+    if (selectorNamesBase(value, baseIds)) return false;
+    const explicitId = /#([A-Za-z_][\w-]*)/.exec(value);
+    if (explicitId) return !baseIds.has(explicitId[1] ?? '');
+    const explicitTag = /^[A-Za-z][\w-]*/.exec(value);
+    if (explicitTag) return explicitTag[0].toLowerCase() !== 'base';
+  }
+
+  return false;
+}
+
+/** The variables that hold the base element and those that hold another element. */
+function elementVariables(
+  content: string,
+  baseIds: Set<string>
+): { base: Set<string>; other: Set<string> } {
+  const variables = { base: new Set<string>(), other: new Set<string>() };
+  const assignments = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+)/g;
+
+  // An alias of a base variable is a base variable too.
+  for (let depth = 0; depth < 3; depth++) {
+    let changed = false;
+    for (const match of content.matchAll(assignments)) {
+      const name = match[1] ?? '';
+      const expression = match[2] ?? '';
+      if (variables.base.has(name) || variables.other.has(name)) continue;
+      if (expressionNamesBase(expression, baseIds, variables.base)) {
+        variables.base.add(name);
+        changed = true;
+      } else if (
+        expressionNamesOtherElement(expression, baseIds, variables.base, variables.other)
+      ) {
+        variables.other.add(name);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+
+  return variables;
+}
+
+/** True when a mutation receiver may be the document's base element. */
+function receiverMayBeBase(
+  receiver: string,
+  baseIds: Set<string>,
+  variables: { base: Set<string>; other: Set<string> }
+): boolean {
+  const normalized = receiver.trim();
+  if (variables.base.has(normalized)) return true;
+  if (variables.other.has(normalized)) return false;
+  if (/^(?:window|document)\.location$/i.test(normalized)) return false;
+
+  const elementId = /\bgetElementById\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
+  if (elementId) return baseIds.has(elementId[2] ?? '');
+
+  const selector = /\bquerySelector(?:All)?\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
+  if (selector) {
+    if (selectorNamesBase(selector[2] ?? '', baseIds)) return true;
+    return !expressionNamesOtherElement(normalized, baseIds, variables.base, variables.other);
+  }
+
+  const tagName = /\bgetElementsByTagName\s*\(\s*(['"`])(.*?)\1\s*\)/.exec(normalized);
+  if (tagName) return tagName[2]?.toLowerCase() === 'base';
+
+  // An unresolved receiver may still hold the base element.
+  return true;
+}
+
+/** True when runtime code can change the href of the document's base element. */
+function scriptMutatesBaseHref(content: string, baseIds: Set<string>): boolean {
+  const variables = elementVariables(content, baseIds);
+
+  for (const match of content.matchAll(HREF_PROPERTY_ASSIGNMENT_PATTERN)) {
+    if (receiverMayBeBase(match[1] ?? '', baseIds, variables)) return true;
+  }
+
+  for (const match of content.matchAll(SET_ATTRIBUTE_PATTERN)) {
+    const args = readCallArguments(content, match.index + match[0].length);
+    const attribute = args && args.length > 0 ? args[0] : null;
+    const name = attribute === null ? null : resolveStringExpression(attribute.trim());
+    if (name !== null && name.toLowerCase() !== 'href') continue;
+    if (receiverMayBeBase(match[1] ?? '', baseIds, variables)) return true;
+  }
+
+  return false;
 }
 
 /** True when a selector read names one of the attributes. */
@@ -728,6 +958,16 @@ function scriptReadsAttributeProperty(content: string, names: Set<string>): bool
     }
   }
 
+  for (const read of reflectPropertyNameReads(content)) {
+    if (read.name === null) continue;
+    const propertyName = read.name.toLowerCase();
+    for (const name of names) {
+      if (name.toLowerCase() === propertyName) return true;
+      const aliases = attributePropertyAliases(name).filter(alias => !alias.includes('.'));
+      if (aliases.some(alias => alias.toLowerCase() === propertyName)) return true;
+    }
+  }
+
   return false;
 }
 
@@ -810,7 +1050,7 @@ export async function planRepositoryFixes(
   const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate, conflictingRemediationKeys } =
     await import('@/lib/github-pr');
   const { locateElement, isPatchableFile } = await import('@/lib/ast-patch');
-  const { buildCssContext, destinationCssHarm, collectStyleSources, extractStylesheetLinks, extractCssImports, stripCssLineComments, describeElements } =
+  const { buildCssContext, destinationCssHarm, collectStyleSources, analyzeStylesheetLinks, extractCssImports, stripCssLineComments, describeElements } =
     await import('@/lib/css-context');
 
   const candidates = violations.filter(v => v.remediationCode && v.elementHtml);
@@ -959,6 +1199,7 @@ export async function planRepositoryFixes(
   const cssPaths = new Set<string>();
   const styleProblems: string[] = [];
   const documentBases = new Map<string, URL>();
+  const documentBaseInfo = new Map<string, { ids: Set<string>; hasBase: boolean }>();
   const runtimeMutationScripts: string[] = [];
   const conditionalMutationScripts: string[] = [];
   const selectorMutationScripts: string[] = [];
@@ -1019,6 +1260,13 @@ export async function planRepositoryFixes(
 
   for (const [path, content] of contentCache) {
     // A script file is runtime code, not a document: it carries no base.
+    if (!SCRIPT_FILE_PATTERN.test(path)) {
+      const extracted = extractEventHandlerAttributes(content);
+      documentBaseInfo.set(path, {
+        ids: new Set(extracted.baseIds),
+        hasBase: extracted.hasBase,
+      });
+    }
     const base = resolveDocumentBase(path, SCRIPT_FILE_PATTERN.test(path) ? null : content);
     if (!base.url) {
       styleProblems.push(`the document base in ${path} ${base.problem ?? 'cannot be resolved'}`);
@@ -1031,6 +1279,7 @@ export async function planRepositoryFixes(
   // `<script src>` by its MIME type, so the name of the file says nothing:
   // every target is runtime code and is inspected as such.
   const scriptTargets = new Set<string>();
+  const documentScriptTargets = new Map<string, Set<string>>();
   for (const [path, content] of contentCache) {
     const base = documentBases.get(path);
     if (!base) continue;
@@ -1041,6 +1290,31 @@ export async function planRepositoryFixes(
         continue;
       }
       scriptTargets.add(target);
+      const targets = documentScriptTargets.get(path) ?? new Set<string>();
+      targets.add(target);
+      documentScriptTargets.set(path, targets);
+    }
+  }
+
+  // Runtime code can change the base after the static markup was read. The
+  // effective base is then unknowable, so the destination is unprovable and the
+  // document URL is not a safe fallback.
+  for (const [path, content] of contentCache) {
+    const info = documentBaseInfo.get(path);
+    if (!info?.hasBase) continue;
+
+    const inline = extractInlineScripts(content);
+    const handlers = extractEventHandlerAttributes(content);
+    const linked = [...(documentScriptTargets.get(path) ?? [])]
+      .map(target => contentCache.get(target))
+      .filter((script): script is string => script !== undefined);
+    const runtime = [...inline.scripts, ...handlers.handlers, ...linked];
+
+    if (runtime.some(script => scriptMutatesBaseHref(script, info.ids))) {
+      documentBases.delete(path);
+      styleProblems.push(
+        `the document base in ${path} is changed by repository runtime, which the analyser cannot resolve`
+      );
     }
   }
 
@@ -1054,10 +1328,13 @@ export async function planRepositoryFixes(
       }
       cssSources.push({ path, css: source.css, baseUrl: documentBases.get(path) });
     }
-    for (const link of extractStylesheetLinks(content)) {
+    const stylesheetLinks = analyzeStylesheetLinks(content);
+    for (const reason of stylesheetLinks.unprovable) {
+      styleProblems.push(`the stylesheet link in ${path} is unprovable: ${reason}`);
+    }
+    for (const href of stylesheetLinks.links) {
       const base = documentBases.get(path);
       if (!base) continue;
-      const href = decodeHtmlEntities(link);
       const target = resolveRepositoryPath(path, href, base);
       if (!target || !contentCache.has(target)) {
         styleProblems.push(`the stylesheet ${href} is not part of the repository`);

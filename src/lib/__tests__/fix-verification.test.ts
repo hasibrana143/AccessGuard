@@ -11,6 +11,8 @@ import {
   passesConfidenceGate,
   resolveChromiumExecutable,
   selectVerifiedFixes,
+  targetElementId,
+  targetElementTag,
   verdictToResult,
   verifyFixes,
   type FixVerificationResult,
@@ -161,6 +163,17 @@ describe('verifyFixes', () => {
   });
 });
 
+describe('the patched element (14-H4)', () => {
+  it('14-H4d reads the id and the tag of the element a fix patches', () => {
+    expect(targetElementId('<img id="target" src="a.jpg">')).toBe('target');
+    expect(targetElementTag('<img id="target" src="a.jpg">')).toBe('img');
+    expect(targetElementId('<img src="a.jpg">')).toBeNull();
+    expect(targetElementTag('<img src="a.jpg">')).toBe('img');
+    expect(targetElementId(null)).toBeNull();
+    expect(targetElementTag(null)).toBeNull();
+  });
+});
+
 describe('selectVerifiedFixes', () => {
   const verified = (id: string): [string, FixVerificationResult] => [
     id,
@@ -266,6 +279,52 @@ describe.skipIf(!browserAvailable())('verifyFixes with a real browser', () => {
     ]);
     expect(results.get('v4')?.status).toBe('failed');
     expect(results.get('v4')?.confidence).toBe(0);
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('14-H4a judges the patched element, not the first element the remediation introduces', async () => {
+    // The remediation introduces a visible span and patches the image. The
+    // image is the element the fix is about, so it is the one that is judged:
+    // the image paints no area at all, and the user never sees it.
+    const results = await verifyFixes([
+      {
+        id: 'v14-h4a',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="hero.jpg">',
+        remediationCode:
+          '<span aria-hidden="true">x</span><img id="target" src="hero.jpg" alt="A" style="max-width:0">',
+      },
+    ]);
+    expect(results.get('v14-h4a')?.status).not.toBe('verified');
+    expect(passesConfidenceGate(results.get('v14-h4a')?.confidence ?? null)).toBe(false);
+    expect(results.get('v14-h4a')?.reason).toContain('hidden');
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('14-H4b refuses a remediation whose patched element cannot be identified', async () => {
+    // Several elements of their own and no id: the snippet cannot be judged,
+    // so the fix stays unverified instead of being reported as a pass.
+    const results = await verifyFixes([
+      {
+        id: 'v14-h4b',
+        ruleId: 'image-alt',
+        remediationCode: '<span aria-hidden="true">x</span><img src="hero.jpg" alt="A">',
+      },
+    ]);
+    expect(results.get('v14-h4b')?.status).toBe('unverified');
+    expect(results.get('v14-h4b')?.confidence).toBeNull();
+    expect(results.get('v14-h4b')?.reason).toContain('cannot be identified');
+  }, BROWSER_TEST_TIMEOUT);
+
+  it('14-H4c still verifies a remediation that patches one element', async () => {
+    const results = await verifyFixes([
+      {
+        id: 'v14-h4c',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" src="hero.jpg">',
+        remediationCode: '<img id="target" src="hero.jpg" alt="A team photo">',
+      },
+    ]);
+    expect(results.get('v14-h4c')?.status).toBe('verified');
+    expect(results.get('v14-h4c')?.confidence).toBe(1);
   }, BROWSER_TEST_TIMEOUT);
 
   it('never renders a candidate that injects an event handler', async () => {
