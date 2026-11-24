@@ -64,8 +64,19 @@ The fourteenth review independently reproduced ten more equivalent paths — the
 change**, the **native semantics and keyboard focus**, the **remediation-introduced
 CSS resource**, the **escaped `]` in an attribute selector**, the **`:link`
 transition**, the **viewport-unit offset** and the **`aria-hidden` suppression**.
-The closure of those ten findings is in progress; the gate opens only when a
-**fifteenth independent review** returns READY (Critical 0, High 0).
+**All ten are now fixed at their root cause, with a permanent regression each**
+(the closure matrix: 23/23 assertions — every finding blocked in the unsafe
+direction and every benign twin still allowed; the recovered prior matrices
+118/118, 145/145 and 17/17; the two pre-closure harnesses failing exactly as
+expected, 12 failed + 5 passed and 2 failed + 7 passed; the fails-before proof:
+21 + 7 + 2 regressions fail on the pre-closure tree).
+Two false positives the review never asked for were found while reviewing the
+closure and fixed with them: the element pairing compared the attributes of the
+original and the patched element, so an ordinary fix that keeps a child element
+with changed attributes was refused, and the "exactly one element" rule refused
+every remediation with nested children when the original had no id.
+**The release verdict is still NOT READY** — the gate requires Critical 0 and
+High 0 from an independent pass, and the **fifteenth review is the next check**.
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -77,23 +88,23 @@ The closure of those ten findings is in progress; the gate opens only when a
 ### Fourteenth independent security review (2026-11-24)
 
 > The verdict was NOT READY — Critical 0, High 4, Medium 6, Low 0 — against tree
-> `be81d02`. The closure of the ten findings is **in progress** (the dispositions are
-> in `.ai/SECURITY-STATUS.md`; the reviewer's own artifact is
-> `.ai/SECURITY-REVIEW-14.md`).
+> `be81d02`. **All ten findings are closed** in `d16797c` (the closure
+> documentation is `1803d50`; the dispositions are in `.ai/SECURITY-STATUS.md`;
+> the reviewer's own artifact is `.ai/SECURITY-REVIEW-14.md`).
 > The release gate opens only when a **fifteenth independent review** returns READY.
 
 | Finding | Severity | Reproduced unsafe result | Status |
 |---|---|---|---|
-| 14-H1 — a `Reflect.get(object, propertyName)` computed property read bypassed the runtime state-read gate | High | `Reflect.get(img,'al'+'t')` changed the target to class `overlay` and a fixed `1280×720` takeover at the viewport centre; verified with confidence `1`, applied 1 fix, wrote 1 file and the real route opened a pull request | **In progress** |
-| 14-H2 — the stylesheet-link discovery was not browser-equivalent | High | an entity-encoded `rel` and a quoted `>` in another attribute each hid the stylesheet from the writer while Chromium loaded it; the patched target became a fixed `1280×720` takeover | **In progress** |
-| 14-H3 — a runtime-mutated `<base href>` bypassed the resource resolution | High | the script set `base.href="/sub/"` before the `<link>` was parsed: the writer analysed the benign root stylesheet while Chromium loaded the unreviewed `sub/theme.bin` | **In progress** |
-| 14-H4 — a remediation-introduced element changed the structural CSS and the verifier judged the wrong element | High | an introduced `<span aria-hidden="true">` made the image the second child, so `img:nth-child(2) ~ #overlay` turned the sibling into a fixed `1280×720` takeover | **In progress** |
-| 14-M1 — native semantics and keyboard focus could be removed | Medium | a native `<button>` replaced by a `<div>` and a `tabindex="0"` changed to `"-1"`: Tab focused the original button and focused neither repaired element | **In progress** |
-| 14-M2 — the remediation could introduce a CSS resource request | Medium | `style="background-image:var(--pixel)"` with `:root{--pixel:url(/pixel)}` and `style="background-image:image-set('/pixel')"`: the after-fix listener observed `GET /pixel` in both cases | **In progress** |
-| 14-M3 — a quoted escaped `]` defeated the CSS attribute-selector analysis | Medium | `img[alt="\]"] ~ #overlay{background-image:url(/pixel)}`: the after-fix listener observed `GET /pixel` | **In progress** |
-| 14-M4 — adding `href` activated `:link` | Medium | `a:link{background-image:url(/pixel)}` with an added `href="#main"`: the after-fix listener observed `GET /pixel` | **In progress** |
-| 14-M5 — a `99vw` offset moved the patched content off-screen | Medium | the left edge of the `64×64` target moved from `8` to `-1259.1875` (computed `left: -1267.2px`) | **In progress** |
-| 14-M6 — `aria-hidden="true"` could suppress the repaired image | Medium | Chromium's accessibility tree changed the target from role `image` to role `none` (`ignored: true`), so axe stopped reporting `image-alt` | **In progress** |
+| 14-H1 — a `Reflect.get(object, propertyName)` computed property read bypassed the runtime state-read gate | High | `Reflect.get(img,'al'+'t')` changed the target to class `overlay` and a fixed `1280×720` takeover at the viewport centre; verified with confidence `1`, applied 1 fix, wrote 1 file and the real route opened a pull request | **Closed** — `Reflect.get` and `Reflect.getOwnPropertyDescriptor` are computed property reads; the property-name argument is resolved with the existing string-expression resolver and a name the reader cannot resolve is a generic dynamic state read |
+| 14-H2 — the stylesheet-link discovery was not browser-equivalent | High | an entity-encoded `rel` and a quoted `>` in another attribute each hid the stylesheet from the writer while Chromium loaded it; the patched target became a fixed `1280×720` takeover | **Closed** — the `<link>` tags are parsed with the browser's quoted-attribute semantics, the entities of `rel` and `href` are decoded, and a stylesheet link whose attributes cannot be read makes the destination unprovable |
+| 14-H3 — a runtime-mutated `<base href>` bypassed the resource resolution | High | the script set `base.href="/sub/"` before the `<link>` was parsed: the writer analysed the benign root stylesheet while Chromium loaded the unreviewed `sub/theme.bin` | **Closed** — a runtime that assigns a base element's `href` makes the effective base unprovable; the document URL is no longer a fallback |
+| 14-H4 — a remediation-introduced element changed the structural CSS and the verifier judged the wrong element | High | an introduced `<span aria-hidden="true">` made the image the second child, so `img:nth-child(2) ~ #overlay` turned the sibling into a fixed `1280×720` takeover | **Closed** — an introduced element makes a structural selector (`:nth-child(…)`, `:nth-last-child(…)`, a sibling combinator) unprovable, and the verifier judges the patched target (by id, else by kind) instead of the first rendered element; an unidentifiable target stays unverified with no confidence |
+| 14-M1 — native semantics and keyboard focus could be removed | Medium | a native `<button>` replaced by a `<div>` and a `tabindex="0"` changed to `"-1"`: Tab focused the original button and focused neither repaired element | **Closed** — a remediation keeps the native interactive semantics of the element it patches (a native control, a link with an `href` or `role="button"`) and never removes its keyboard focusability |
+| 14-M2 — the remediation could introduce a CSS resource request | Medium | `style="background-image:var(--pixel)"` with `:root{--pixel:url(/pixel)}` and `style="background-image:image-set('/pixel')"`: the after-fix listener observed `GET /pixel` in both cases | **Closed** — the remediation's own inline style is checked for a resource with the repository's custom properties resolved; a reference the analyser cannot resolve is unprovable |
+| 14-M3 — a quoted escaped `]` defeated the CSS attribute-selector analysis | Medium | `img[alt="\]"] ~ #overlay{background-image:url(/pixel)}`: the after-fix listener observed `GET /pixel` | **Closed** — the closing bracket of an attribute selector is read with browser-equivalent quote and escape handling, and a selector whose attribute syntax cannot be read is unprovable |
+| 14-M4 — adding `href` activated `:link` | Medium | `a:link{background-image:url(/pixel)}` with an added `href="#main"`: the after-fix listener observed `GET /pixel` | **Closed** — an added `href` activates the `:link` and `:any-link` rules through the same destination decision as the other fix-created states; `:hover` and `:focus-within` stay harmless |
+| 14-M5 — a `99vw` offset moved the patched content off-screen | Medium | the left edge of the `64×64` target moved from `8` to `-1259.1875` (computed `left: -1267.2px`) | **Closed** — a viewport-unit offset is composed with the declared element size, so `99vw` on the exact `64×64` target is not harmless |
+| 14-M6 — `aria-hidden="true"` could suppress the repaired image | Medium | Chromium's accessibility tree changed the target from role `image` to role `none` (`ignored: true`), so axe stopped reporting `image-alt` | **Closed** — the decorative exception requires an actually decorative original, so a remediation cannot hide the element it claims to repair |
 
 ### Thirteenth independent security review (2026-11-23)
 
@@ -340,18 +351,23 @@ it had excluded.
 
 ## Verification
 
-The table below is the **eleventh-review closure** run (2026-11-23) — the current
+The table below is the **fourteenth-review closure** run (2026-11-24) — the current
 state of the tree. The earlier rounds are listed in `.ai/TEST-STATUS.md`.
 
 | Check | Result |
 |---|---|
 | `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
 | `npm run lint` | PASS — 0 errors |
-| `npx vitest run --coverage` | PASS — 53 files, 799 tests, 0 failed (was 53/770) |
-| `npx vitest run --coverage` | PASS — statements 66.59% / branches 59.2% / functions 69.02% / lines 68.3% (CI thresholds 55/50/58/57) |
-| `npm run build` | PASS — exit 0, Next standalone build |
-| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed (4.4 min) |
+| `npx vitest run --coverage` | PASS — 53 files, 902 tests, 0 failed (was 53/853) |
+| `npx vitest run --coverage` | PASS — statements 68.88% / branches 61.78% / functions 72.06% / lines 70.74% (CI thresholds 55/50/58/57) |
+| `npm run build` | PASS — exit 0, Next standalone build (116 static pages) |
+| `npx playwright test --project=chromium` | PASS — 78 passed, 1 flaky (the accessibility spec failed its first attempt and passed on the retry; no assertion failed on the re-run), exit 0 |
 | `npm audit --audit-level=high` | PASS — Critical 0, High 0 (15 moderate, dev-toolchain) |
+| Tracked-file secret scan | PASS — the diff carries no credential pattern and no `.env`, `.log`, `secret`, `credential`, `.pem` or `.key` file |
+| Fourteenth-review closure matrix (temporary, deleted afterwards) | PASS — 23/23: the ten findings blocked in the unsafe direction (0 fixes, 0 writes), the benign twins allowed |
+| Fails-before proof | PASS — 21 + 7 + 2 regressions fail on the pre-closure tree (each scope reverted in turn) |
+| Prior payload matrices (temporary, deleted afterwards) | PASS — the prior / legitimate matrix 118/118, the twelfth / thirteenth / tenth / eleventh / ninth closure matrices 145/145, the route matrices 17/17 |
+| Pre-closure eleventh-review harnesses (temporary, deleted afterwards) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
 | Eleventh-review closure matrix (temporary, deleted afterwards) | PASS — 46/46: the 13 new reproductions blocked in the unsafe direction, the benign twins allowed, the route refusing both new cases with `400` and no branch, no write and no pull request |
 | Prior payload matrices (temporary, deleted afterwards) | PASS — the tenth-review matrix 19/19, the ninth-review matrix 42/42, the prior / legitimate matrix 118/118 |
 | Earlier rounds (the first, re-review, third, fourth, fifth and sixth reviews) | PASS — see `.ai/TEST-STATUS.md` |
@@ -409,6 +425,8 @@ Deploy (44955597965) and AccessGuard Scan (44955597959) are green on the same co
 - `11065e4` / `9cee793` — the twelfth-review closure (code, docs); the state and volume entry follow in the same cycle
 - `b723be5` — the thirteenth independent security review (state)
 - `be81d02` / `24263f3` — the thirteenth-review closure (code, docs); the state and volume entry follow in the same cycle
+- `9ec1a3c` — the fourteenth independent security review (state)
+- `d16797c` / `1803d50` — the fourteenth-review closure (code, docs); the state and volume entry follow in the same cycle
 
 ## What this does NOT prove (read before making a claim)
 

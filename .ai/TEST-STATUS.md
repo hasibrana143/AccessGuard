@@ -1,6 +1,27 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-24 (fourteenth independent security review)
+Last run: 2026-11-24 (fourteenth-review closure)
+
+## Fourteenth-review closure evidence
+
+| Check | Result |
+|---|---|
+| Fourteenth-review closure | PASS — all ten findings (14-H1…14-H4, 14-M1…14-M6) closed at their root cause in `d16797c` (the closure documentation is `1803d50`); the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-14.md` |
+| Permanent regressions | PASS — 49 new tests: 14 in `github.test.ts` (the `Reflect.get` read, the `Reflect.getOwnPropertyDescriptor` read, the unresolved `Reflect` name, the unrelated `Reflect` property, the entity-encoded stylesheet link, the quoted `>` stylesheet link, the ordinary stylesheet link, the unreadable stylesheet link, the runtime base mutation, the base mutation through a variable, the linked-script base mutation, the document without a base, the unchanged base, the unrelated runtime mutation), 15 in `css-context.test.ts` (the stylesheet-link analysis, the structural selector, the removed element, the inline-style resource, the `image-set` resource, the unresolved custom property, the escaped `]`, the ordinary attribute selectors, the `:link` transition, the viewport offset), 10 in `fix-validation.test.ts` (the hidden image, the decorative image, the replaced button, the unnamed button, the ARIA button, the icon button, the link text of another element), 6 in `github-pr.test.ts` (the native semantics, the focus order, the equivalent native control, the kept control among new elements) and 4 in `fix-verification.test.ts` (the patched target, the unidentified target) |
+| Fails-before proof | PASS — the regressions fail on the pre-closure tree: 21 failures with `src/lib/css-context.ts` and `src/lib/github.ts` reverted (13 in `css-context.test.ts`, 8 in `github.test.ts`), 7 failures with `src/lib/fix-validation.ts` and `src/lib/github-pr.ts` reverted (5 + 2) and 2 failures with `src/lib/fix-verification.ts` reverted. The closure matrix independently failed on 14-H1a and 14-H3a before the runtime scope landed |
+| Fourteenth-review closure matrix (temporary) | PASS — 23/23: the ten findings are blocked in the unsafe direction (0 fixes, 0 writes, non-null destination harm or `validation:false`) and the benign twins stay allowed. The file was deleted after the run |
+| False positive found while reviewing the closure | FIXED — the element pairing compared the attributes of the original and the patched element, so an ordinary fix that keeps a child element with changed attributes was refused, and the "exactly one element" rule refused every remediation with nested children when the original had no id. The identity of an element is its tag and its id; the target is the original's id or the unique element of the same kind. The regressions `14-H4c` and `14-H4d` lock the behaviour down |
+| Prior payload matrices (recovered) | PASS — the prior / legitimate matrix 118/118 (run with `tsx`), the twelfth / thirteenth / tenth / eleventh / ninth closure matrices 145/145 across five files, and the route matrices 17/17 across two files |
+| Pre-closure eleventh-review harnesses (recovered) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
+| `npx vitest run --coverage` | PASS — 53 shipped files, 902/902 tests (was 53/853) |
+| Coverage | PASS — statements 68.88% (threshold 55) · branches 61.78% (50) · functions 72.06% (58) · lines 70.74% (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS — 78 passed, 1 flaky (the accessibility spec failed its first attempt and passed on the retry; no assertion failed on the re-run), exit 0 |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
+| Tracked-file secret scan | PASS — the diff carries no credential pattern and no `.env`, `.log`, `secret`, `credential`, `.pem` or `.key` file |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
 
 ## Fourteenth independent security review evidence
 
