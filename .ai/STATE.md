@@ -2,15 +2,25 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 fourteenth-review closure shipped, fifteenth review pending** 🟡 |
-| Current task | The ten findings of the fourteenth independent security review (Critical 0, **High 4**, Medium 6) are closed at their root cause in `d16797c` with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) from a **fifteenth** independent review |
+| Current phase | **SECURITY FIX LOOP — V23 fifteenth-review closure in progress** 🟡 |
+| Current task | Close the nine findings of the fifteenth independent security review (Critical 0, **High 4**, Medium 5) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) from a **sixteenth** independent review |
 | Owner | CTO agent |
-| Status | AMBER — the fourteenth-review closure is committed and pushed (49 permanent regressions, the closure matrix 23/23, the recovered prior matrices green, the full gate suite green); the gate stays closed until a fresh independent review returns READY |
+| Status | AMBER — the fourteenth-review closure shipped in `d16797c` and is green on every gate and on all four CI workflows; the fifteenth review then reproduced nine **new** equivalent paths (the alternate attribute-read call syntaxes, the reflected `data-*` reads, the id introduced on the patched target, the indexed collection receivers for the document base, the modern slash-alpha transparency, the class removal through nested negation, the `@font-face` resource, the accessibility-tree hiding through browser semantics and the removal of `autofocus`); the closure is in progress, the gate stays closed until a fresh independent review returns READY |
 | Blocked | Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits); no Strix evidence exists for this cycle |
-| Next action | Run the **fifteenth** independent security review against the fourteenth-review closure tree and record the verdict in `.ai/SECURITY-REVIEW-15.md` |
-| Last verification | 2026-11-24 — fourteenth-review closure: tsc 0, lint 0, vitest 53 files/902 tests, coverage 68.88/61.78/72.06/70.74, build 0, Playwright 78 passed + 1 flaky, npm audit High 0, closure matrix 23/23, recovered prior matrices 118/118 + 145/145 + 17/17, the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed), fails-before proof 21 + 7 + 2 failures |
+| Next action | Close the nine fifteenth-review findings in three disjoint scopes (the repository runtime, the destination CSS and the remediation validation), run the closure matrix and the full gate suite, commit in the volume DoD order, push to `origin/main` and then run the sixteenth independent security review |
+| Last verification | 2026-11-24 — fourteenth-review closure: tsc 0, lint 0, vitest 53 files/902 tests, coverage 68.88/61.78/72.06/70.74, build 0, Playwright 78 passed + 1 flaky, npm audit High 0, closure matrix 23/23, recovered prior matrices 118/118 + 145/145 + 17/17, the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed), fails-before proof 21 + 7 + 2 failures; the four CI workflows green on `2da3e00` |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-24, fifteenth independent security review)
+
+| Check | Result |
+|---|---|
+| Fifteenth independent security review | **NOT READY — Critical 0, High 4, Medium 5, Low 0** against the fourteenth-review closure tree `d16797c` (checkout `2da3e00`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-15.md` and the findings are in `.ai/SECURITY-STATUS.md` |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 902/902, coverage 68.88/61.78/72.06/70.74, build 0, Playwright 79 (77 passed, 2 flaky, 0 failed), `npm audit` Critical 0 / High 0 (15 moderate) |
+| Recovered fourth- through fourteenth-review payloads | PASS — 185/185 recovered assertions across eight matrices and route harnesses, plus the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
+| New equivalent-path harnesses | 19 candidates (16 harmful, 2 controls correctly refused, 1 benign) and 11/11 route assertions — the nine findings below are newly found equivalent paths, not re-openings of the literal prior payloads |
+| Release gate | CLOSED — opens only when a **sixteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-24, fourteenth-review closure)
 

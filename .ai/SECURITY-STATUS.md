@@ -2,6 +2,63 @@
 
 Last verification: 2026-11-24
 
+## Fifteenth independent security review (2026-11-24) — closure in progress
+
+**Verdict: NOT READY — Critical 0, High 4, Medium 5, Low 0.** The READY gate
+requires Critical 0 and High 0. This tree is **not releasable** until every High
+reproduction is blocked in the unsafe direction, permanent regressions cover the
+root causes, and a fresh independent review returns READY.
+
+The reviewed closure tree was `d16797c` (`vol: security — V23: close the
+fourteenth review's runtime, stylesheet, validation and verification findings`),
+against the requested baseline `08ab9ef`; the checkout at report time was
+`2da3e00` (`git diff --quiet d16797c..HEAD -- src` is exit 0, so the reviewed
+source is the closure tree itself). The reviewer's own artifact is
+`.ai/SECURITY-REVIEW-15.md` (report only — no shipped source, test, dependency,
+CI, environment or existing `.ai/` file was changed by the reviewer). Every
+reproduction used local synthetic repositories, a mocked GitHub transport, local
+Chromium and listeners bound to `127.0.0.1`. No production, third-party or public
+target was scanned, no live repository was mutated, no external GitHub Markdown
+service was called, and **no Strix result is claimed**.
+
+The literal fourth- through fourteenth-review payloads stay closed: the reviewer
+re-ran them in the unsafe direction and got **185/185** recovered assertions
+passing plus the two pre-closure harnesses failing exactly as expected. The nine
+findings below are **newly found equivalent paths**.
+
+### Reproduced findings
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 15-H1 | **High** | Alternate attribute-read call syntaxes | `Element.prototype.getAttribute.call(img,'alt')`, `img.getAttribute?.('alt')` and `img['get'+'Attribute']('alt')` each changed the target to class `overlay` and a fixed `1280×720` takeover at the viewport centre; all three applied 1 fix, wrote 1 file and the real route opened a pull request | `RUNTIME_STATE_READ_PATTERN` and `ATTRIBUTE_NAME_READ_PATTERN` require the literal method name to be followed directly by `(`, so a prototype receiver with `.call`, an optional call and a computed method name are not recognised as state reads | **In progress** — every statically resolvable attribute-read call form is recognised (direct, optional, prototype `.call`/`.apply` and a computed method name); a method or attribute name the reader cannot resolve fails closed as a generic state read |
+| 15-H2 | **High** | Reflected `data-*` attribute reads | `img.dataset['state']` and `Reflect.get(img.dataset,'state')` each changed the target to class `overlay` and a fixed `1280×720` takeover; both applied 1 fix, wrote 1 file and the real route opened a pull request | `attributePropertyAliases()` knows only the literal dot form `dataset.state`; the bracket form is not matched and `Reflect.get` on a `dataset` receiver is not mapped to the `data-*` attribute | **In progress** — the dataset bracket access and the `Reflect.get` / `getOwnPropertyDescriptor` forms on a `dataset` receiver are reads of the `data-*` attribute; an unresolved dataset key fails closed |
+| 15-H3 | **High** | An id introduced on the patched target | a remediation that added `id="activated"` to the patched image let `document.getElementById('activated')` reach the target after the fix: a fixed `1280×720` takeover, one fix, one write and a pull request | the introduced ids are collected only from `patchedElements.slice(1)`, so a **new** id on the patched target is excluded, and the attribute-read checks do not model `getElementById(...)` as a read of the `id` attribute | **In progress** — a new or changed id on the patched target and on every introduced element is an introduced id, and runtime code that references it refuses the source patch |
+| 15-H4 | **High** | Indexed collection receivers for the document base | `document.querySelectorAll('base')[0].href='/sub/'` and `document.getElementsByTagName('base')[0].href='/sub/'` each made the writer analyse a stylesheet the browser never loaded: the listener observed `/sub/theme.bin`, and the repaired target was fixed at `1280×720`; both applied 1 fix, wrote 1 file and the real route opened a pull request | the `href`-assignment receiver grammar has no indexed collection expression, and neither the expression resolver nor `receiverMayBeBase()` interprets the following `[0]` | **In progress** — an indexed collection receiver is resolved, and a receiver that may contain the base makes the document base unprovable; an unresolved collection or index fails closed |
+| 15-M1 | Medium | Modern slash-alpha transparency | `[aria-label]{color:rgba(0 0 0 / 0)}` made the repaired button's computed colour `rgba(0, 0, 0, 0)`: the visible text became transparent although axe still found the accessible name | `isTransparentColor()` splits only on commas and returns `false` for a slash-alpha colour before the modern grammar is evaluated | **In progress** — the legacy comma alpha and the modern slash alpha are read in one browser-equivalent colour grammar |
+| 15-M2 | Medium | Class removal through nested negation | `button:is(:not(.armed)){background-image:url(/pixel)}` issued `GET /pixel` after the fix removed `.armed` from the button | `positiveRequirementRemoved()` does not traverse a candidate's negated requirements, and the final negated check examines only the root requirements | **In progress** — a removed class and a changed attribute value are propagated through nested negation and through the `:is()` / `:where()` alternatives |
+| 15-M3 | Medium | An `@font-face` resource | `@font-face{font-family:Evil;src:url(/font)}` with an activated `font-family:Evil` issued `GET /font` in the customer browser | `@font-face` is classified as a `VALUE_AT_RULE` and its body is discarded, so no family-to-resource relation exists | **In progress** — the font faces and their `src` resources are collected, and an activated `font-family` resolves to its resource |
+| 15-M4 | Medium | Accessibility-tree hiding through browser semantics | `aria-hidden="&#116;rue"`, `role="&#112;resentation"`, an `aria-hidden="true"` **ancestor** and `inert` each removed the repaired image from the accessibility tree (absent, or role `none` with `ignored:true`); all four applied 1 fix, wrote 1 file and the real route opened a pull request | the raw attribute value is compared with the literal `true` / `presentation` / `none` (no browser entity decoding), the image-alt check inspects the target only (not its remediation ancestors) and has no `inert` branch | **In progress** — the values are browser-decoded, the repaired element and its remediation ancestors are inspected with browser-equivalent accessibility semantics, and `inert` is a hiding form. The harmless `role="presentation"` ancestor (Chromium keeps the image with role `image`) is not blanket-refused |
+| 15-M5 | Medium | Removal of `autofocus` | a remediation that dropped `autofocus` from the button moved Chromium's `document.activeElement` from `BUTTON#target` to `BODY` | the focusability comparison rejects only a loss of keyboard focusability; it does not compare the presence of `autofocus` | **In progress** — `autofocus` is compared before and after the fix and its removal is refused |
+
+### Reviewer's gate suite
+
+| Check | Result |
+|---|---|
+| Recovered fourth- through fourteenth-review payloads | PASS — 185/185 recovered assertions across eight matrices and route harnesses, plus the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
+| New equivalent-path writer / Chromium harness | 19 candidates — 17 writable, 2 controls correctly refused with 0 fixes and 0 writes, 16 harmful writable candidates with a Chromium geometry / computed-style / accessibility-tree / `127.0.0.1` observable |
+| New equivalent-path route harness | 11/11 representative harmful cases passed — every case returned `200 success:true`, applied one source fix, created the branch and the pull request and wrote both audit events |
+| New legitimate-behaviour harness | 29/29 passed |
+| Reviewer's gate suite | PASS — source-only typecheck 0, lint 0, vitest 53 files / 902/902, coverage 68.88/61.78/72.06/70.74, build 0, Playwright 79 (77 passed, 2 flaky, 0 failed), `npm audit` Critical 0 / High 0 (15 moderate) |
+| Tracked-file secret scan | PASS — 781 tracked files; one AWS-key-shaped **documentation placeholder** (path and category only, value never printed) and no live credential |
+
+### Gate status
+
+The sixth through fourteenth review closures are shipped (`d16797c`); the
+fifteenth review returned **NOT READY** (High 4, Medium 5) and all nine of its
+findings are in closure. The **release gate is still closed**: it opens only when
+a **sixteenth independent review** returns READY (Critical 0, High 0) against the
+fifteenth-review closure tree.
+
 ## Fourteenth independent security review (2026-11-24) — closure shipped
 
 **Verdict: NOT READY — Critical 0, High 4, Medium 6, Low 0.** The READY gate

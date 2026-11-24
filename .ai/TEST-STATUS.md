@@ -1,6 +1,27 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-24 (fourteenth-review closure)
+Last run: 2026-11-24 (fifteenth independent security review)
+
+## Fifteenth independent security review evidence
+
+| Check | Result |
+|---|---|
+| Fifteenth independent security review | **NOT READY — Critical 0, High 4, Medium 5, Low 0** against the closure tree `d16797c` (checkout `2da3e00`, baseline `08ab9ef`); the reviewer's own artifact is `.ai/SECURITY-REVIEW-15.md` |
+| Recovered fourth- through fourteenth-review payloads | PASS — 185/185 recovered assertions across eight matrices and route harnesses (the prior/legitimate matrix 118/118, the ninth 42/42, the tenth 19/19, the eleventh 37/37 + 9/9, the twelfth 26/26 + 8/8, the thirteenth 21/21, the fourteenth 23/23) |
+| Pre-closure eleventh-review harnesses (recovered) | FAIL **as expected** — 12 failed + 5 passed and 2 failed + 7 passed: the failures assert that the eleventh-review vulnerabilities still exist, so they confirm the closure rather than report a regression |
+| New equivalent-path writer / Chromium harness | 19 candidates — 17 writable, 2 controls correctly refused with 0 fixes and 0 writes, 16 harmful writable candidates with a Chromium geometry / computed-style / accessibility-tree / `127.0.0.1` observable |
+| New equivalent-path real-route harness | 11/11 representative harmful cases passed — every case returned `200 success:true`, applied one source fix, created the branch and the pull request and wrote both audit events |
+| New legitimate-behaviour harness | 29/29 passed |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0, no diagnostics |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npx vitest run --coverage` | PASS — 53 files, 902/902 tests |
+| Coverage | PASS — statements 68.88% (threshold 55) · branches 61.78% (50) · functions 72.06% (58) · lines 70.74% (57) |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS with retries — 79 tests, 77 passed, 2 flaky, 0 failed (the dashboard axe check and the authenticated landing CTA passed on the retry) |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories) |
+| `npm audit --omit=dev --audit-level=high` | PASS — exit 0, 5 moderate transitive advisories, 0 high / 0 critical |
+| Tracked-file secret scan | PASS — 781 tracked files; one AWS-key-shaped **documentation placeholder** in `.openclaw/skills/document-generate/SKILL.md` (path and category only, value never printed) and no live credential |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
 
 ## Fourteenth-review closure evidence
 
