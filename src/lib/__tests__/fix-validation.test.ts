@@ -88,6 +88,81 @@ describe('validateFixForRule: image-alt and the accessibility tree (14-M6)', () 
   });
 });
 
+describe('validateFixForRule: image-alt and the browser hiding semantics (15-M4)', () => {
+  it('15-M4a rejects a fix that hides the image with an encoded aria-hidden', () => {
+    // The browser decodes the value before it reads it: the image leaves the
+    // accessibility tree exactly like `aria-hidden="true"` does.
+    const r = validateFixForRule(
+      'image-alt',
+      '<img id="target" src="x" alt="Photo" aria-hidden="&#116;rue">',
+      '<img id="target" src="x">'
+    );
+    expect(r.valid).toBe(false);
+    expect(r.reason).toContain('accessibility tree');
+  });
+
+  it('15-M4b rejects a fix that hides the image with an encoded presentation role', () => {
+    const r = validateFixForRule(
+      'image-alt',
+      '<img id="target" src="x" alt="Photo" role="&#112;resentation">',
+      '<img id="target" src="x">'
+    );
+    expect(r.valid).toBe(false);
+    expect(r.reason).toContain('accessibility tree');
+  });
+
+  it('15-M4c rejects a fix that hides the image in an aria-hidden ancestor', () => {
+    // The browser applies the semantics of the ancestor to the child.
+    const r = validateFixForRule(
+      'image-alt',
+      '<div aria-hidden="true"><img id="target" src="x" alt="Photo"></div>',
+      '<img id="target" src="x">'
+    );
+    expect(r.valid).toBe(false);
+    expect(r.reason).toContain('accessibility tree');
+  });
+
+  it('15-M4d rejects a fix that makes the image inert', () => {
+    const r = validateFixForRule(
+      'image-alt',
+      '<img id="target" src="x" alt="Photo" inert>',
+      '<img id="target" src="x">'
+    );
+    expect(r.valid).toBe(false);
+    expect(r.reason).toContain('accessibility tree');
+  });
+
+  it('15-M4e accepts a fix whose presentation ancestor keeps the image in the tree', () => {
+    // Chromium keeps the image with the role `image` inside a presentational
+    // ancestor, so the ancestor is not a hiding form.
+    const r = validateFixForRule(
+      'image-alt',
+      '<div role="presentation"><img id="target" src="x" alt="Photo"></div>',
+      '<img id="target" src="x">'
+    );
+    expect(r.valid).toBe(true);
+  });
+
+  it('15-M4f accepts a fix that keeps a decorative image decorative', () => {
+    const r = validateFixForRule(
+      'image-alt',
+      '<img id="target" src="x" alt="" aria-hidden="true">',
+      '<img id="target" src="x" alt="">'
+    );
+    expect(r.valid).toBe(true);
+  });
+
+  it('15-M4g accepts a fix whose sibling is hidden but the image is not', () => {
+    // The hidden element is not an ancestor of the image.
+    const r = validateFixForRule(
+      'image-alt',
+      '<span aria-hidden="true">x</span><img id="target" src="x" alt="Photo">',
+      '<img id="target" src="x">'
+    );
+    expect(r.valid).toBe(true);
+  });
+});
+
 describe('validateFixForRule: button-name (14-M1)', () => {
   it('14-M1a accepts a native button that keeps its tag', () => {
     const r = validateFixForRule(

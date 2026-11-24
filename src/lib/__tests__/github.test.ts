@@ -1953,6 +1953,236 @@ describe('the fourteenth review regressions', () => {
   });
 });
 
+describe('the fifteenth review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix(
+    remediationCode = '<img id="target" src="x" alt="Photo">',
+    elementHtml = '<img id="target" src="x">'
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml,
+        remediationCode,
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  }
+
+  it('15-H1a: does not patch an element a script activates through a prototype getAttribute call', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(Element.prototype.getAttribute.call(img,'alt'))img.classList.add('overlay')});</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('15-H1b: does not patch an element a script activates through an optional attribute call', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(img.getAttribute?.('alt'))img.classList.add('overlay')});</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('15-H1c: does not patch an element a script activates through a computed method name', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(img['get'+'Attribute']('alt'))img.classList.add('overlay')});</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('15-H1d: writes a fix when the script reads an unrelated attribute', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(img.getAttribute('src'))img.classList.add('active')});</script></body></html>`
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('15-H1e: does not patch an element when the script reads an attribute through an unresolved method', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>const method='getAttribute';document.querySelectorAll('img').forEach(function(img){if(img[method]('alt'))img.classList.add('overlay')});</script></body></html>`
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('15-H2a: does not patch an element a script activates through a dataset bracket read', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(img.dataset['state']==='active')img.classList.add('overlay')});</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(
+      await planAltFix('<img id="target" src="x" alt="Photo" data-state="active">')
+    );
+  });
+
+  it('15-H2b: does not patch an element a script activates through Reflect.get on a dataset', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(Reflect.get(img.dataset,'state')==='active')img.classList.add('overlay')});</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(
+      await planAltFix('<img id="target" src="x" alt="Photo" data-state="active">')
+    );
+  });
+
+  it('15-H2c: writes a fix when the script reads an unrelated reflected property', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(Reflect.get(img,'src'))img.classList.add('active')});</script></body></html>`
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('15-H3a: does not patch an element whose new id repository runtime looks up', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img src="x"><script>document.getElementById('activated').classList.add('overlay');</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(
+      await planAltFix('<img id="activated" src="x" alt="Photo">', '<img src="x">')
+    );
+  });
+
+  it('15-H3b: writes a fix when repository runtime does not name the introduced id', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img src="x"><script>document.querySelectorAll('img').forEach(function(img){if(img.getAttribute('src'))img.classList.add('active')});</script></body></html>`
+    );
+
+    await expectWritten(
+      await planAltFix('<img id="activated" src="x" alt="Photo">', '<img src="x">')
+    );
+  });
+
+  it('15-H3c: writes a fix when the patched element keeps its id', async () => {
+    tree(['index.html']);
+    fileContent('index.html', '<html><body><img id="target" src="x"></body></html>');
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('15-H4a: does not patch an element when runtime changes the document base through an indexed collection', async () => {
+    tree(['index.html', 'theme.bin', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><base id="base"><script>document.querySelectorAll(\'base\')[0].href="/sub/";</script><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('theme.bin', 'img{color:red}');
+    fileContent(
+      'sub/theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('15-H4b: does not patch an element when runtime changes the document base through a tag collection', async () => {
+    tree(['index.html', 'theme.bin', 'sub/theme.bin']);
+    fileContent(
+      'index.html',
+      '<html><head><base id="base"><script>document.getElementsByTagName(\'base\')[0].href="/sub/";</script><link rel="stylesheet" href="theme.bin"></head><body><img id="target" src="x"></body></html>'
+    );
+    fileContent('theme.bin', 'img{color:red}');
+    fileContent(
+      'sub/theme.bin',
+      '[alt]{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('15-H4c: writes a fix when runtime changes another element through an indexed collection', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><head><base id="base" href="/sub/"></head><body><a id="other" href="/">Other</a><img id="target" src="x"><script>document.querySelectorAll('a')[0].href="/elsewhere/";</script></body></html>`
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('15-H4d: writes a fix when the document has no base element', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><head><script>document.querySelectorAll('base')[0].href="/sub/";</script></head><body><img id="target" src="x"></body></html>`
+    );
+
+    await expectWritten(await planAltFix());
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -49,6 +49,8 @@ export interface CssContext {
    * animation. The frames matter only when an element animates with them.
    */
   keyframes: Map<string, CssKeyframe[]>;
+  /** The `src` descriptors of every `@font-face`, by font family. */
+  fontFaces: Map<string, string[]>;
 }
 
 /** The parts of an element a CSS selector can name. */
@@ -416,7 +418,7 @@ function readBlockBody(css: string, from: number): { body: string; end: number }
 const CONDITIONAL_AT_RULES = /^@(media|supports|layer|container|scope|document|starting-style)\b/i;
 
 /** The at-rules that only define values and never select an element. */
-const VALUE_AT_RULES = /^@(charset|namespace|font-face|page|counter-style|font-feature-values|property|font-palette-values|view-transition)\b/i;
+const VALUE_AT_RULES = /^@(charset|namespace|page|counter-style|font-feature-values|property|font-palette-values|view-transition)\b/i;
 
 /** The at-rules of a preprocessor: their content cannot be judged statically. */
 const PREPROCESSOR_AT_RULES = /^@(mixin|include|extend|function|use|forward|each|for|while|if|else|debug|warn|error|return)\b/i;
@@ -430,7 +432,13 @@ const PREPROCESSOR_AT_RULES = /^@(mixin|include|extend|function|use|forward|each
  * selector without `&` is a descendant of the parent.
  */
 export function collectCssRules(css: string): CssContext {
-  const context: CssContext = { rules: [], unprovable: [], imports: [], keyframes: new Map() };
+  const context: CssContext = {
+    rules: [],
+    unprovable: [],
+    imports: [],
+    keyframes: new Map(),
+    fontFaces: new Map(),
+  };
   collectInto(stripCssComments(css), null, context);
   return context;
 }
@@ -452,6 +460,11 @@ function collectInto(css: string, parentSelector: string | null, context: CssCon
 
       if (PREPROCESSOR_AT_RULES.test(name)) {
         context.unprovable.push(`the stylesheet uses the preprocessor at-rule ${name}`);
+        continue;
+      }
+
+      if (/^@font-face\b/i.test(name)) {
+        collectFontFace(block.body, context);
         continue;
       }
 
@@ -497,6 +510,23 @@ function collectInto(css: string, parentSelector: string | null, context: CssCon
     const selector = parentSelector ? flattenSelector(parentSelector, prelude) : prelude;
     collectBody(selector, block.body, context);
   }
+}
+
+/** Collect the family and source descriptors of one `@font-face`. */
+function collectFontFace(body: string, context: CssContext): void {
+  const declarations = parseDeclarations(body);
+  const familyDeclaration = declarations.find(declaration => declaration.property === 'font-family');
+  const family = familyDeclaration ? fontFamilyNameOf(familyDeclaration.value) : null;
+
+  if (!family) {
+    context.unprovable.push('the stylesheet defines a font face without a readable font family');
+    return;
+  }
+
+  const sources = context.fontFaces.get(family) ?? [];
+  const source = declarations.find(declaration => declaration.property === 'src');
+  if (source) sources.push(source.value);
+  context.fontFaces.set(family, sources);
 }
 
 /** A rule nested inside the body of another rule (CSS nesting). */
@@ -1329,10 +1359,15 @@ function compoundActivatedByFix(compound: string, changes: ElementChanges): bool
     );
   };
 
+  const requirementMayBecomeMatching = (candidate: SelectorRequirements): boolean => {
+    if (positiveRequirementActivated(candidate)) return true;
+    if (candidate.alternatives.some(requirementMayBecomeMatching)) return true;
+    return candidate.negated.some(positiveRequirementRemoved);
+  };
+
   if (requirements.opaqueFunctional) return 'unprovable';
   if (requirements.functionalAlternatives.some(functionalRequirementMayChange)) return 'unprovable';
-  if (positiveRequirementActivated(requirements)) return true;
-  return requirements.negated.some(positiveRequirementRemoved);
+  return requirementMayBecomeMatching(requirements);
 }
 
 /**
@@ -1395,6 +1430,64 @@ function resourceState(
   const resolved = resolveCustomProperties(value, definitions);
   if (resolved.includes('var(')) return 'unknown';
   return carriesResource(resolved) ? 'present' : 'absent';
+}
+
+/** The normalized name of one font family. */
+function fontFamilyNameOf(value: string): string | null {
+  const family = value.trim();
+  if (!family || family.includes('var(')) return null;
+
+  if (
+    (family.startsWith('"') && family.endsWith('"')) ||
+    (family.startsWith("'") && family.endsWith("'"))
+  ) {
+    return family.slice(1, -1).trim().toLowerCase() || null;
+  }
+
+  if (family.includes(',')) return null;
+  return family.toLowerCase();
+}
+
+/** Whether a font-face source loads a resource or cannot be resolved. */
+function fontSourceState(
+  value: string,
+  definitions: Map<string, string>
+): 'present' | 'absent' | 'unknown' {
+  const resolved = resolveCustomProperties(value, definitions);
+  if (!resolved.trim() || resolved.includes('var(')) return 'unknown';
+  if (carriesResource(resolved)) return 'present';
+  if (/^local\s*\([\s\S]*\)$/i.test(resolved.trim())) return 'absent';
+  return 'unknown';
+}
+
+/** Whether a font-family selects a font-face that loads a resource. */
+function fontFamilyResourceState(
+  value: string,
+  definitions: Map<string, string>,
+  fontFaces: Map<string, string[]>
+): 'present' | 'absent' | 'unknown' {
+  const resolved = resolveCustomProperties(value, definitions);
+  if (!resolved.trim()) return 'unknown';
+
+  let unknown = false;
+  for (const part of splitTopLevel(resolved, ',')) {
+    const family = fontFamilyNameOf(part);
+    if (!family) {
+      unknown = true;
+      continue;
+    }
+
+    const sources = fontFaces.get(family);
+    if (!sources) continue;
+
+    for (const source of sources) {
+      const state = fontSourceState(source, definitions);
+      if (state === 'present') return 'present';
+      if (state === 'unknown') unknown = true;
+    }
+  }
+
+  return unknown ? 'unknown' : 'absent';
 }
 
 /**
@@ -1461,8 +1554,14 @@ const LOGICAL_INSET_EDGES: Record<string, 'top' | 'bottom' | 'left' | 'right'> =
 function isZeroAlpha(value: string): boolean {
   const alpha = value.trim();
   const number = alpha.endsWith('%') ? alpha.slice(0, -1) : alpha;
-  return /^(?:0(?:\.0+)?|\.0+)$/.test(number);
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(number)) return false;
+  return Number(number) === 0;
 }
+
+/** The colour functions whose comma or slash alpha the analyser reads. */
+const COLOR_FUNCTIONS = new Set([
+  'rgb', 'rgba', 'hsl', 'hsla', 'hwb', 'oklch', 'oklab', 'lab', 'lch', 'color',
+]);
 
 /**
  * True when a colour value makes the text invisible.
@@ -1471,31 +1570,26 @@ function isZeroAlpha(value: string): boolean {
  * stays in the document, so only the colour tells the user that it is there.
  */
 export function isTransparentColor(value: string): boolean {
-  const normalized = value.replace(/\s+/g, '').toLowerCase();
+  const normalized = value.trim().toLowerCase();
   if (normalized === 'transparent') return true;
 
   // A hex colour with an alpha of zero is transparent: `#0000` and `#00000000`.
   if (/^#[0-9a-f]{4}$/.test(normalized)) return normalized[4] === '0';
   if (/^#[0-9a-f]{8}$/.test(normalized)) return normalized.slice(7) === '00';
 
-  const functional = /^(?:rgba|hsla)\(([^)]*)\)$/.exec(normalized);
-  if (functional) {
-    const parts = (functional[1] ?? '').split(',');
-    if (parts.length < 4) return false;
-    return isZeroAlpha(parts[3] ?? '');
-  }
+  const functional = /^([a-z-]+)\((.*)\)$/.exec(normalized);
+  if (!functional || !COLOR_FUNCTIONS.has(functional[1] ?? '')) return false;
 
-  // The modern syntax uses a slash before the alpha: `rgb(0 0 0 / 0%)`.
-  // The function name is not fixed: oklch(), oklab(), lab(), lch() and color()
-  // use the same alpha grammar.
-  const modern = /^[a-z-]+\((.*)\)$/.exec(normalized);
-  if (modern) {
-    const body = modern[1] ?? '';
-    const slash = body.lastIndexOf('/');
-    return slash !== -1 && isZeroAlpha(body.slice(slash + 1));
-  }
+  const body = functional[2] ?? '';
+  const commaParts = splitTopLevel(body, ',');
+  const slashParts = splitTopLevel(body, '/');
 
-  return false;
+  // Legacy syntax puts the alpha in the fourth comma-separated component.
+  // Modern syntax puts it after a top-level slash. Both forms are valid for
+  // rgb(), rgba(), hsl() and hsla(); the other colour functions use slash.
+  const alpha =
+    commaParts.length === 4 ? commaParts[3] : slashParts.length === 2 ? slashParts[1] : null;
+  return alpha !== null && isZeroAlpha(alpha);
 }
 
 /** The custom properties a set of declarations defines. */
@@ -3601,6 +3695,19 @@ export function destinationCssHarm(
             }
             if (resource === 'unknown') {
               return 'the repository stylesheet cannot be judged: an activated resource depends on a custom property the analyser cannot resolve';
+            }
+
+            if (declaration.property !== 'font-family') continue;
+            const fontResource = fontFamilyResourceState(
+              declaration.value,
+              ruleDefinitions,
+              context.fontFaces
+            );
+            if (fontResource === 'present') {
+              return 'the repository stylesheet can activate a customer-side request';
+            }
+            if (fontResource === 'unknown') {
+              return 'the repository stylesheet cannot be judged: an activated font family or resource cannot be resolved';
             }
           }
         }

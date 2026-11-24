@@ -1305,3 +1305,138 @@ describe('destination CSS: the fourteenth review regressions', () => {
     ).toBeNull();
   });
 });
+
+describe('destination CSS: the fifteenth review regressions', () => {
+  const ORIGINAL = '<button id="target">Save</button>';
+  const PATCHED = '<button id="target" aria-label="Save">Save</button>';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('15-M1a treats every zero-alpha colour grammar as transparent', () => {
+    expect(harm('[aria-label]{color:rgba(0 0 0 / 0)}')).toContain('hide');
+
+    for (const color of [
+      'rgb(0 0 0 / 0)',
+      'rgba(0,0,0,0)',
+      'hsl(0 0% 0% / 0)',
+      'hsla(0,0%,0%,0)',
+      'oklch(0.5 0.1 200 / 0)',
+      'oklab(0.5 0.1 0.1 / 0)',
+      'lab(50% 0 0 / 0)',
+      'lch(50% 30 200 / 0)',
+      'color(srgb 0 0 0 / 0)',
+    ]) {
+      expect(harm(`[aria-label]{color:${color}}`)).toContain('hide');
+    }
+  });
+
+  it('15-M1b keeps opaque colour grammars harmless', () => {
+    for (const color of [
+      'rgb(0 0 0 / 1)',
+      'rgba(0,0,0,1)',
+      'hsl(0 0% 0% / 1)',
+      'hsla(0,0%,0%,1)',
+      'oklch(0.5 0.1 200 / 1)',
+      'oklab(0.5 0.1 0.1 / 1)',
+      'lab(50% 0 0 / 1)',
+      'lch(50% 30 200 / 1)',
+      'color(srgb 0 0 0 / 1)',
+    ]) {
+      expect(harm(`[aria-label]{color:${color}}`)).toBeNull();
+    }
+  });
+
+  it('15-M1c keeps a non-zero alpha harmless', () => {
+    expect(harm('[aria-label]{color:rgba(0 0 0 / 0.5)}')).toBeNull();
+    expect(harm('[aria-label]{color:rgba(0,0,0,0.5)}')).toBeNull();
+  });
+
+  it('15-M1d keeps a transparent colour the fix does not activate harmless', () => {
+    expect(harm('.other{color:rgba(0 0 0 / 0)}')).toBeNull();
+  });
+
+  it('15-M2a judges a class removal through a nested negation', () => {
+    const result = harm(
+      'button:is(:not(.armed)){background-image:url(/pixel)}',
+      '<button id="target" class="armed">Save</button>',
+      PATCHED
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('15-M2b keeps an unrelated class removal harmless', () => {
+    const result = harm(
+      'button:is(:not(.armed)){background-image:url(/pixel)}',
+      '<button id="target" class="armed other">Save</button>',
+      '<button id="target" class="armed" aria-label="Save">Save</button>'
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('15-M2c judges a changed attribute value through a nested negation', () => {
+    const result = harm(
+      'button:is(:not([data-state="active"])){background-image:url(/pixel)}',
+      '<button id="target" data-state="active">Save</button>',
+      '<button id="target" data-state="safe" aria-label="Save">Save</button>'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('15-M2d propagates a removal through where and nested alternatives', () => {
+    expect(
+      harm(
+        'button:where(:not(.armed)){background-image:url(/pixel)}',
+        '<button id="target" class="armed">Save</button>',
+        PATCHED
+      )
+    ).toContain('customer-side request');
+    expect(
+      harm(
+        'button:not(:is(.armed)){background-image:url(/pixel)}',
+        '<button id="target" class="armed">Save</button>',
+        PATCHED
+      )
+    ).toContain('customer-side request');
+  });
+
+  it('15-M3a judges the resource of an activated font face', () => {
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/font)} button[aria-label]{font-family:Evil}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('15-M3b keeps a font family without a resource harmless', () => {
+    expect(
+      harm(
+        '@font-face{font-family:Evil;src:local(Evil)} button[aria-label]{font-family:Evil}'
+      )
+    ).toBeNull();
+    expect(
+      harm('@font-face{font-family:Evil} button[aria-label]{font-family:Evil}')
+    ).toBeNull();
+  });
+
+  it('15-M3c keeps a custom property without a font resource harmless', () => {
+    expect(
+      harm(':root{--brand:Arial} button[aria-label]{font-family:var(--brand)}')
+    ).toBeNull();
+  });
+
+  it('15-M3d refuses an unreadable or unresolved font family or resource', () => {
+    expect(
+      harm('@font-face{src:url(/font)} button[aria-label]{font-family:Evil}')
+    ).toContain('cannot be judged');
+    expect(
+      harm(
+        '@font-face{font-family:Evil;src:var(--missing)} button[aria-label]{font-family:Evil}'
+      )
+    ).toContain('cannot be judged');
+  });
+});

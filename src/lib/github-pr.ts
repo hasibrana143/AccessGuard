@@ -763,6 +763,16 @@ export function validateRemediation(
           reason: 'remediation code removes the keyboard focusability of the patched element',
         };
       }
+
+      // The initial focus is part of the behaviour of the page: a remediation
+      // that drops `autofocus` moves the focus to the body, so the user loses
+      // the element the page itself put in focus.
+      if (target && 'autofocus' in original.attrs && !('autofocus' in target.attrs)) {
+        return {
+          valid: false,
+          reason: 'remediation code removes the autofocus of the patched element',
+        };
+      }
     }
   }
 

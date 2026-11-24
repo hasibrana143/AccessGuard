@@ -170,6 +170,33 @@ describe('validateRemediation', () => {
     expect(result.valid).toBe(true);
   });
 
+  it('15-M5a rejects a remediation that removes the autofocus of the patched element', () => {
+    // The page put the element in focus; the fix drops `autofocus`, so the
+    // focus moves to the body and the user loses the initial focus target.
+    const result = validateRemediation(
+      '<button id="target" aria-label="Save"><span aria-hidden="true">x</span></button>',
+      '<button id="target" autofocus><span aria-hidden="true">x</span></button>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('autofocus');
+  });
+
+  it('15-M5b accepts a remediation that keeps the autofocus', () => {
+    const result = validateRemediation(
+      '<button id="target" autofocus aria-label="Save"><span aria-hidden="true">x</span></button>',
+      '<button id="target" autofocus><span aria-hidden="true">x</span></button>'
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it('15-M5c accepts a remediation that adds the autofocus', () => {
+    const result = validateRemediation(
+      '<button id="target" autofocus aria-label="Save"><span aria-hidden="true">x</span></button>',
+      '<button id="target"><span aria-hidden="true">x</span></button>'
+    );
+    expect(result.valid).toBe(true);
+  });
+
   it('rejects script tag injection', () => {
     const result = validateRemediation('<div><script>alert(1)</script></div>');
     expect(result.valid).toBe(false);

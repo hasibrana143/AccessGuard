@@ -466,20 +466,11 @@ const RUNTIME_STYLE_PATTERN =
 
 /** Reads that can gate an element mutation at runtime. */
 const RUNTIME_STATE_READ_PATTERN =
-  /\b(?:hasAttribute|getAttribute|getAttributeNames|getAttributeNode|toggleAttribute)\s*\(|\bgetNamedItem\s*\(|\bReflect\s*\.\s*(?:get|getOwnPropertyDescriptor)\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
+  /\bgetAttributeNames\s*\(|\bgetNamedItem\s*\(|\bReflect\s*\.\s*(?:get|getOwnPropertyDescriptor)\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
 
 /** Reads of every attribute, which can react to any attribute the fix adds. */
 const RUNTIME_GENERIC_STATE_READ_PATTERN =
   /\bgetAttributeNames\s*\(|\bhasAttributes\s*\(|\.\s*attributes\b(?!\s*\.\s*getNamedItem\s*\()/i;
-
-/**
- * The attribute-name reads of a script.
- *
- * The name of the attribute a script reads is the first argument of the call.
- * A name that the script builds at runtime may be the attribute the fix adds.
- */
-const ATTRIBUTE_NAME_READ_PATTERN =
-  /\b(?:hasAttribute|getAttribute|getAttributeNode|toggleAttribute)\s*\(\s*([^)]*)\)|\.getNamedItem\s*\(\s*([^)]*)\)/gi;
 
 /**
  * The string a concatenation of string literals evaluates to, or null.
@@ -534,16 +525,125 @@ function resolveStringExpression(expression: string): string | null {
   return out || null;
 }
 
-/** The attribute names a script reads, and the ones it cannot resolve. */
-function attributeNameReads(content: string): { name: string | null }[] {
+/** The DOM methods that read an attribute by name. */
+function isAttributeReadMethod(name: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    lower === 'hasattribute' ||
+    lower === 'getattribute' ||
+    lower === 'getattributenode' ||
+    lower === 'toggleattribute' ||
+    lower === 'getnameditem'
+  );
+}
+
+/**
+ * The members of a callee expression, and the computed ones it cannot resolve.
+ *
+ * A call in the middle of the expression contributes no member: the arguments
+ * of `querySelectorAll('img')` are not members of the callee.
+ */
+function calleeMembers(callee: string): { name: string | null; computed: boolean }[] {
+  const members: { name: string | null; computed: boolean }[] = [];
+  let i = 0;
+
+  while (i < callee.length) {
+    const character = callee[i] as string;
+
+    if (/\s/.test(character)) {
+      i++;
+      continue;
+    }
+
+    if (character === '.') {
+      i++;
+      while (i < callee.length && /\s/.test(callee[i] as string)) i++;
+      const member = /^[A-Za-z_$][\w$]*/.exec(callee.slice(i));
+      if (!member) break;
+      members.push({ name: member[0], computed: false });
+      i += member[0].length;
+      continue;
+    }
+
+    if (character === '[') {
+      const end = callee.indexOf(']', i);
+      if (end === -1) break;
+      const resolved = resolveStringExpression(callee.slice(i + 1, end).trim());
+      members.push({ name: resolved, computed: resolved === null });
+      i = end + 1;
+      continue;
+    }
+
+    if (character === '(') {
+      const end = callee.indexOf(')', i);
+      if (end === -1) break;
+      i = end + 1;
+      continue;
+    }
+
+    const member = /^[A-Za-z_$][\w$]*/.exec(callee.slice(i));
+    if (!member) break;
+    members.push({ name: member[0], computed: false });
+    i += member[0].length;
+  }
+
+  return members;
+}
+
+/** A method call and the receiver it is called on. */
+const METHOD_CALL_PATTERN =
+  /([A-Za-z_$][\w$]*(?:\s*(?:\.\s*[A-Za-z_$][\w$]*|\([^()\n]*\)|\[[^\]]*\]))*)\s*(?:\?\.\s*)?\(/g;
+
+/**
+ * The attribute names a script reads through a DOM call, and the ones it
+ * cannot resolve.
+ *
+ * The spelling of the call does not matter: `img.getAttribute('alt')`,
+ * `img.getAttribute?.('alt')`, `img['get'+'Attribute']('alt')` and
+ * `Element.prototype.getAttribute.call(img,'alt')` all read the `alt`
+ * attribute of the image. A method name or an attribute name the analyser
+ * cannot resolve is a generic state read.
+ */
+function attributeReadCalls(content: string): { name: string | null }[] {
   const reads: { name: string | null }[] = [];
 
-  for (const match of content.matchAll(ATTRIBUTE_NAME_READ_PATTERN)) {
-    const argument = (match[1] ?? match[2] ?? '').trim();
-    reads.push({ name: resolveStringExpression(argument) });
+  for (const match of content.matchAll(METHOD_CALL_PATTERN)) {
+    const members = calleeMembers(match[1] ?? '');
+    if (members.length === 0) continue;
+
+    let method = members[members.length - 1] as { name: string | null; computed: boolean };
+    let args = readCallArguments(content, match.index + match[0].length);
+
+    // `fn.call(receiver, argument)` and `fn.apply(receiver, [argument])` call
+    // `fn` with the receiver as the first argument.
+    if (method.name !== null && (method.name === 'call' || method.name === 'apply') && members.length >= 2) {
+      method = members[members.length - 2] as { name: string | null; computed: boolean };
+      if (method.name === 'apply') {
+        const list = args && args.length > 1 ? args[1] : null;
+        const first = list === null ? null : /^\s*\[([^\]]*)\]/.exec(list)?.[1] ?? null;
+        args = first === null ? null : [first];
+      } else {
+        args = args ? args.slice(1) : null;
+      }
+    }
+
+    if (method.name === null) {
+      // A computed method name may be an attribute read.
+      if (method.computed) reads.push({ name: null });
+      continue;
+    }
+    if (!isAttributeReadMethod(method.name)) continue;
+
+    const argument = args && args.length > 0 ? args[0] : null;
+    reads.push({ name: argument === null ? null : resolveStringExpression(argument.trim()) });
   }
 
   return reads;
+}
+
+/** The attribute names a script reads, and the ones it cannot resolve. */
+function attributeNameReads(content: string): { name: string | null }[] {
+  return attributeReadCalls(content);
 }
 
 /** A computed property read such as `element["al"+"t"]`. */
@@ -604,12 +704,19 @@ const REFLECT_PROPERTY_READ_PATTERN =
 
 /** The property names a Reflect reader reads, and the ones it cannot resolve. */
 function reflectPropertyNameReads(content: string): { name: string | null }[] {
-  const reads: { name: string | null }[] = [];
+  return reflectPropertyReads(content).map(read => ({ name: read.name }));
+}
+
+/** A Reflect property read and the receiver it reads from. */
+function reflectPropertyReads(content: string): { receiver: string; name: string | null }[] {
+  const reads: { receiver: string; name: string | null }[] = [];
 
   for (const match of content.matchAll(REFLECT_PROPERTY_READ_PATTERN)) {
     const args = readCallArguments(content, match.index + match[0].length);
+    const receiver = args && args.length > 0 ? (args[0] ?? '').trim() : '';
     const expression = args && args.length > 1 ? args[1] : null;
     reads.push({
+      receiver,
       name: expression === null ? null : resolveStringExpression(expression.trim()),
     });
   }
@@ -623,12 +730,21 @@ const SELECTOR_READ_PATTERN =
 
 /** The property names a script reads, and the ones it cannot resolve. */
 function propertyNameReads(content: string): { name: string | null }[] {
-  const reads: { name: string | null }[] = [];
+  return computedPropertyReads(content).map(read => ({ name: read.name }));
+}
+
+/** A computed property read and the object it reads from. */
+function computedPropertyReads(content: string): { object: string; name: string | null }[] {
+  const reads: { object: string; name: string | null }[] = [];
 
   for (const match of content.matchAll(COMPUTED_PROPERTY_READ_PATTERN)) {
     const expression = (match[1] ?? '').trim();
     if (/^\d+$/.test(expression)) continue;
-    reads.push({ name: resolveStringExpression(expression) });
+    const bracket = match[0].indexOf('[');
+    reads.push({
+      object: bracket === -1 ? '' : match[0].slice(0, bracket).trim(),
+      name: resolveStringExpression(expression),
+    });
   }
 
   return reads;
@@ -715,11 +831,23 @@ function scriptRefersToElementId(content: string, id: string): boolean {
 
 /** Assignments to the `href` property of an element. */
 const HREF_PROPERTY_ASSIGNMENT_PATTERN =
-  /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*(?:\s*\([^()\n]*\))?)\s*(?:\.\s*href\b|\[\s*['"`]href['"`]\s*\])\s*(?:\*\*=|<<=|>>=|\|\|=|&&=|\?\?=|\+=|-=|\*=|\/=|%=|=(?![=>]))/gi;
+  /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*(?:\s*\([^()\n]*\))?(?:\s*\[\s*[^\]\n]*\s*\])?)\s*(?:\.\s*href\b|\[\s*['"`]href['"`]\s*\])\s*(?:\*\*=|<<=|>>=|\|\|=|&&=|\?\?=|\+=|-=|\*=|\/=|%=|=(?![=>]))/gi;
 
 /** Calls that set an attribute by name. */
 const SET_ATTRIBUTE_PATTERN =
-  /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*(?:\s*\([^()\n]*\))?)\s*\.\s*setAttribute\s*\(/gi;
+  /([A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)*(?:\s*\([^()\n]*\))?(?:\s*\[\s*[^\]\n]*\s*\])?)\s*\.\s*setAttribute\s*\(/gi;
+
+/**
+ * The collection an indexed receiver reads from, and the index it reads.
+ *
+ * `document.querySelectorAll('base')[0]` reads the first base element of the
+ * collection, so the collection decides which element the receiver is.
+ */
+function indexedReceiver(receiver: string): { collection: string; index: string } | null {
+  const match = /^(.*?)\s*\[\s*([^\]]*)\s*\]$/.exec(receiver.trim());
+  if (!match) return null;
+  return { collection: (match[1] ?? '').trim(), index: (match[2] ?? '').trim() };
+}
 
 /** True when a selector can name a base element. */
 function selectorNamesBase(selector: string, baseIds: Set<string>): boolean {
@@ -824,6 +952,15 @@ function receiverMayBeBase(
   variables: { base: Set<string>; other: Set<string> }
 ): boolean {
   const normalized = receiver.trim();
+
+  // An indexed receiver reads an element of a collection: the collection
+  // decides which element it is, and the analyser cannot know that the index
+  // picks the base element.
+  const indexed = indexedReceiver(normalized);
+  if (indexed) {
+    return receiverMayBeBase(indexed.collection, baseIds, variables);
+  }
+
   if (variables.base.has(normalized)) return true;
   if (variables.other.has(normalized)) return false;
   if (/^(?:window|document)\.location$/i.test(normalized)) return false;
@@ -933,6 +1070,40 @@ function attributePropertyAliases(name: string): string[] {
   return aliases;
 }
 
+/** The attribute a dataset key reflects. */
+function attributeOfDatasetKey(key: string): string {
+  return `data-${key.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()}`;
+}
+
+/**
+ * True when a script reads a `data-*` attribute through the dataset.
+ *
+ * `dataset.state`, `dataset['state']` and `Reflect.get(el.dataset,'state')`
+ * all read the `data-state` attribute.
+ */
+function scriptReadsDatasetAttribute(content: string, names: Set<string>): boolean {
+  const wanted = new Set(
+    [...names]
+      .filter(name => name.toLowerCase().startsWith('data-'))
+      .map(name => name.toLowerCase())
+  );
+  if (wanted.size === 0) return false;
+
+  for (const read of computedPropertyReads(content)) {
+    if (!/\bdataset\s*$/i.test(read.object)) continue;
+    if (read.name === null) continue;
+    if (wanted.has(attributeOfDatasetKey(read.name).toLowerCase())) return true;
+  }
+
+  for (const read of reflectPropertyReads(content)) {
+    if (!/\.\s*dataset\s*$/i.test(read.receiver)) continue;
+    if (read.name === null) continue;
+    if (wanted.has(attributeOfDatasetKey(read.name).toLowerCase())) return true;
+  }
+
+  return false;
+}
+
 /**
  * True when a script reads an attribute through the DOM property that
  * reflects it.
@@ -958,7 +1129,7 @@ function scriptReadsAttributeProperty(content: string, names: Set<string>): bool
     }
   }
 
-  for (const read of reflectPropertyNameReads(content)) {
+  for (const read of reflectPropertyReads(content)) {
     if (read.name === null) continue;
     const propertyName = read.name.toLowerCase();
     for (const name of names) {
@@ -968,7 +1139,7 @@ function scriptReadsAttributeProperty(content: string, names: Set<string>): bool
     }
   }
 
-  return false;
+  return scriptReadsDatasetAttribute(content, names);
 }
 
 /**
@@ -1233,7 +1404,7 @@ export async function planRepositoryFixes(
       // even without a state read, so the scripts are kept for the check
       // that decides whether the fix activates them.
       runtimeMutationScripts.push(content);
-      if (RUNTIME_STATE_READ_PATTERN.test(content)) {
+      if (RUNTIME_STATE_READ_PATTERN.test(content) || attributeReadCalls(content).length > 0) {
         conditionalMutationScripts.push(content);
       }
       if (selectorNameReads(content).length > 0) {
@@ -1410,8 +1581,12 @@ export async function planRepositoryFixes(
       // verification browser.
       const introducedIds = new Set<string>();
       const introducedAttributes = new Set<string>();
-      for (const element of patchedElements.slice(1)) {
+      for (const element of patchedElements) {
+        // A new id on the patched target is an introduced id too: the script
+        // finds the element by that id only after the fix.
         if (element.id && element.id !== originalElement.id) introducedIds.add(element.id);
+      }
+      for (const element of patchedElements.slice(1)) {
         for (const name of element.attributes.keys()) {
           // The id is judged by the id check above, which needs the literal
           // id in a selector and not a property read.

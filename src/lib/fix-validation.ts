@@ -3,7 +3,12 @@
 // complementing the syntax/safety checks in github-pr.ts.
 
 import { liveTagStarts } from '@/lib/ast-patch';
-import { canonicalizeUri, parseHtmlTags } from '@/lib/html-attributes';
+import {
+  canonicalizeUri,
+  decodeHtmlEntities,
+  parseHtmlTags,
+  parseTagAttributes,
+} from '@/lib/html-attributes';
 
 export interface FixValidationResult {
   valid: boolean;
@@ -149,9 +154,138 @@ function checkColorContrast(html: string): FixValidationResult {
 
 /** True when the attributes hide the element from the accessibility tree. */
 function hidesFromAccessibilityTree(attrs: Attributes): boolean {
-  if ((attrs['aria-hidden'] ?? '').trim().toLowerCase() === 'true') return true;
-  const role = (attrs['role'] ?? '').trim().toLowerCase();
-  return role === 'presentation' || role === 'none';
+  // The browser decodes the value before it reads it: `aria-hidden="&#116;rue"`
+  // is `aria-hidden="true"`.
+  if (browserValue(attrs['aria-hidden']) === 'true') return true;
+  const role = browserValue(attrs['role']);
+  if (role === 'presentation' || role === 'none') return true;
+  // `inert` is a boolean attribute: any value makes it inert.
+  return 'inert' in attrs;
+}
+
+/**
+ * The value of an attribute as the browser reads it.
+ *
+ * A numeric entity is decoded before the value is compared, so
+ * `aria-hidden="&#116;rue"` hides the element exactly like `aria-hidden="true"`.
+ */
+function browserValue(value: string | undefined): string {
+  if (value === undefined) return '';
+  return decodeHtmlEntities(value).trim().toLowerCase();
+}
+
+/** Elements that never have children, so they never open an ancestor. */
+const VOID_ELEMENTS = new Set([
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+  'link', 'meta', 'param', 'source', 'track', 'wbr',
+]);
+
+/**
+ * Elements whose content the browser never reads as markup.
+ *
+ * The content of a script, a style or a template is text or inert content, so
+ * a tag inside it does not open an ancestor.
+ */
+const OPAQUE_CONTENT_ELEMENTS = new Set([
+  'script', 'style', 'textarea', 'title', 'xmp', 'plaintext', 'noscript',
+  'template', 'object', 'applet', 'frameset',
+]);
+
+/** The offset of the `>` that closes the tag starting at `start`. */
+function findTagEnd(html: string, start: number): number {
+  let i = start + 1;
+  let quote: string | null = null;
+  while (i < html.length) {
+    const ch = html[i] as string;
+    if (quote) {
+      if (ch === quote) quote = null;
+    } else if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === '>') {
+      return i;
+    }
+    i++;
+  }
+  return html.length;
+}
+
+/**
+ * The attributes of the elements that contain the first live `tagName`.
+ *
+ * A remediation may wrap the element it repairs in an ancestor that hides it
+ * from the accessibility tree, and the browser applies the ancestor's
+ * semantics to the child.
+ */
+function ancestorAttributes(html: string, tagName: string): Attributes[] {
+  const live = liveTagStarts(html);
+  const stack: Attributes[] = [];
+  let i = 0;
+
+  while (i < html.length) {
+    const lt = html.indexOf('<', i);
+    if (lt === -1) break;
+
+    // A comment, a doctype or a markup declaration is not markup.
+    if (html.startsWith('<!--', lt) || html.startsWith('<!', lt) || html.startsWith('<?', lt)) {
+      const end = html.indexOf('>', lt);
+      i = end === -1 ? html.length : end + 1;
+      continue;
+    }
+
+    const close = findTagEnd(html, lt);
+    const inner = html.slice(lt + 1, close);
+    const nameMatch = /^\/?\s*([a-zA-Z][^\s/>]*)/.exec(inner);
+    if (!nameMatch) {
+      i = close + 1;
+      continue;
+    }
+    const name = nameMatch[1].toLowerCase();
+
+    if (inner.trimStart().startsWith('/')) {
+      stack.pop();
+      i = close + 1;
+      continue;
+    }
+
+    // The content of an opaque element is not markup, so nothing inside it
+    // opens an ancestor and no end tag inside it closes one.
+    if (OPAQUE_CONTENT_ELEMENTS.has(name)) {
+      const end = html.toLowerCase().indexOf(`</${name}`, close + 1);
+      i = end === -1 ? html.length : end;
+      continue;
+    }
+
+    if (!live.has(lt)) {
+      i = close + 1;
+      continue;
+    }
+
+    if (name === tagName) return [...stack];
+
+    if (!VOID_ELEMENTS.has(name) && !/\/\s*$/.test(inner)) {
+      const attrs: Attributes = {};
+      for (const attribute of parseTagAttributes(inner.slice(nameMatch[0].length))) {
+        if (!(attribute.name in attrs)) attrs[attribute.name] = attribute.value;
+      }
+      stack.push(attrs);
+    }
+    i = close + 1;
+  }
+
+  return [];
+}
+
+/**
+ * True when an ancestor of the element hides it from the accessibility tree.
+ *
+ * Only `aria-hidden` and `inert` hide a subtree. A `role="presentation"`
+ * ancestor does not: Chromium keeps the image with the role `image`.
+ */
+function hiddenByAncestor(html: string, tagName: string): boolean {
+  return ancestorAttributes(html, tagName).some(attrs => {
+    if (browserValue(attrs['aria-hidden']) === 'true') return true;
+    return 'inert' in attrs;
+  });
 }
 
 /** True when the image is decorative: it carries no content of its own. */
@@ -273,8 +407,9 @@ export function validateFixForRule(
       // An image that is hidden from the accessibility tree passes the axe rule
       // because the rule no longer sees the image. A remediation may only do
       // that to an image the customer already marked as decorative: hiding the
-      // very image it claims to repair is not a repair.
-      if (hidesFromAccessibilityTree(img)) {
+      // very image it claims to repair is not a repair. The same holds when the
+      // remediation wraps the image in an ancestor that hides the subtree.
+      if (hidesFromAccessibilityTree(img) || hiddenByAncestor(code, 'img')) {
         if (originalElementHtml) {
           const originalImg = liveTagAttributes(originalElementHtml, 'img');
           if (originalImg && !isDecorativeImage(originalImg)) {
