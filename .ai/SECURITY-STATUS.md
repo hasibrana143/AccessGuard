@@ -18,10 +18,10 @@ Last verification: 2026-11-26
 | Production deployment | NOT CLAIMED — the Vercel build/deploy steps were skipped because the credentials are absent |
 | Strix autonomous pentest | **NOT RUN** — no provider credit or usable model is available, so no Strix evidence is claimed for this cycle |
 | Seventeenth independent review | **NOT READY — Critical 0, High 1, Medium 1** (`.ai/SECURITY-REVIEW-17.md`); both root causes are closed at their root cause in the shipped source (`5e30641`) |
-| Eighteenth independent review | **NOT READY — Critical 0, High 1, Medium 1, Low 1** (`.ai/SECURITY-REVIEW-18.md`); the three findings are being closed at their root cause |
+| Eighteenth independent review | **NOT READY — Critical 0, High 1, Medium 1, Low 1** (`.ai/SECURITY-REVIEW-18.md`); **all three findings are closed at their root cause** in the shipped source (`b16dafd`) |
 | Nineteenth independent review | **PENDING** — the release gate opens only when it returns READY (Critical 0, High 0) |
 
-## Eighteenth independent security review (2026-11-26) — closure in progress
+## Eighteenth independent security review (2026-11-26) — closure shipped
 
 **Verdict: NOT READY — Critical 0, High 1, Medium 1, Low 1.** The READY gate requires
 Critical 0 and High 0. The reviewer's own artifact is `.ai/SECURITY-REVIEW-18.md`
@@ -35,9 +35,19 @@ claimed**. The reviewer re-ran the recovered prior matrices: **209/209** and the
 
 | ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
 |---|---|---|---|---|---|
-| 18-H1 | **High** | The mutation side of the repository runtime reader | Ten spellings reached the customer page: `Element.prototype.setAttribute.call/apply(img,…)`, `Reflect.set(img,'className',…)`, a bound `setAttribute` alias, a bound `classList.add` alias, `img.remove()`, `img.parentNode.removeChild(img)`, `document.write(…)` and `img.alt=''` — each applied 1 fix, wrote `index.html` and opened a pull request through the real route (HTTP 200, `github_pr_intent` / `github_pr_created`); Chromium measured a `1280×720` fixed takeover (`z-index: 2147483647`), the patched element deleted (1 → 0 images) and the alternative text emptied | `runtimeMutations()` is still a **closed list of spellings**: the write side has no `.call`/`.apply` unwrapping (the read side has), no element removal, no IDL/dataset property writes, no alias and no reflective write — so the script enters **none** of the four runtime lists and every planner gate is skipped | **IN PROGRESS** — the closure decides by reachability and effect instead of by spelling: an element-binding analysis tells whether a receiver can be an element, any write through such a binding is a write (property assignment, indexed assignment, `delete`, a method call that is not a known pure read, a bound alias, `Reflect.set`/`Reflect.apply`, a `.call`/`.apply` invocation), a script that reads what the fix adds and then writes is refused, and a script that neutralises or destroys the fix (writes the added attribute or class, removes or replaces the patched element, replaces the document) is refused |
-| 18-M1 | **Medium** | The activated custom property of the font activation chain | `[aria-label]{--f:Evil} button{font-family:var(--f)}` was judged harmless and written; the local `127.0.0.1` listener received `GET /evil-font` after the merge and nothing before it | the activation is evaluated **per rule**: the custom property an activated rule defines is not merged into the definitions the consuming rule resolves against, and a custom-property definition is not treated as carrying the value it defines | **IN PROGRESS** — the custom properties an activated rule defines become part of the patched element's effective custom properties, every rule that applies to the element resolves its `var()` references against them, and the activation check follows the chain `--f` → `font-family` → `@font-face` |
-| 18-L1 | **Low** | A fail-closed false positive | An unrelated computed method call (`fns[0]()`, `fns[i]()`) made the writer refuse every fix of the repository; `fns['0']()` stayed writable | an unresolved computed member made **every** script a dynamic mutator, whatever the receiver was | **IN PROGRESS** — a computed member with a resolvable literal (string or numeric) resolves to its text, and an unresolved computed member on a receiver that is not an element no longer makes the script a mutator |
+| 18-H1 | **High** | The mutation side of the repository runtime reader | Ten spellings reached the customer page: `Element.prototype.setAttribute.call/apply(img,…)`, `Reflect.set(img,'className',…)`, a bound `setAttribute` alias, a bound `classList.add` alias, `img.remove()`, `img.parentNode.removeChild(img)`, `document.write(…)` and `img.alt=''` — each applied 1 fix, wrote `index.html` and opened a pull request through the real route (HTTP 200, `github_pr_intent` / `github_pr_created`); Chromium measured a `1280×720` fixed takeover (`z-index: 2147483647`), the patched element deleted (1 → 0 images) and the alternative text emptied | `runtimeMutations()` is still a **closed list of spellings**: the write side has no `.call`/`.apply` unwrapping (the read side has), no element removal, no IDL/dataset property writes, no alias and no reflective write — so the script enters **none** of the four runtime lists and every planner gate is skipped | **CLOSED** — the write side is now the **inverse image of the read side**: `elementBindings()` decides whether a receiver **can be an element** (a selection call, `createElement`, `Element.prototype`, a callback parameter of an iteration over an element collection, an assignment or destructuring from such an expression, `event.target` / `event.currentTarget`), and `scriptWrites()` collects every **write** — a property assignment, an indexed assignment, a `delete`, a method call through a member chain, a call of a bound alias, `Reflect.set` / `Reflect.apply` on an element and a `.call` / `.apply` invocation (the mutation target is the first argument, as the read side unwraps it). Only the **reads** are a list: `PURE_READ_METHODS` names the DOM methods that only read and **a method that is not in the list is treated as a write**, so an unknown runtime fails closed. `scriptReactsToFix()` refuses a fix when a script reads the attribute the fix adds (or reads the state generically) and then writes to the page. `scriptNeutralisesFix()` refuses a fix when a script writes the attribute or the class the fix adds, removes or replaces the patched element, or replaces the page — the neutralisation by **name**, the destruction by **reach**, so a script that removes every `p` does not refuse a fix on an image. Regressions `18-H1a`–`18-H1m` |
+| 18-M1 | **Medium** | The activated custom property of the font activation chain | `[aria-label]{--f:Evil} button{font-family:var(--f)}` was judged harmless and written; the local `127.0.0.1` listener received `GET /evil-font` after the merge and nothing before it | the activation is evaluated **per rule**: the custom property an activated rule defines is not merged into the definitions the consuming rule resolves against, and a custom-property definition is not treated as carrying the value it defines | **CLOSED** — the custom properties an activated rule defines become part of the patched element's **effective custom properties**, every rule that applies to the element resolves its `var()` references against them, and `declarationHarm()` — the single judgement path the activated-rule loop also uses — judges the resolved value exactly like a declared value. The chain `--f` → `font-family` → `@font-face` → customer-side resource is followed, the `font` shorthand alike, and a value the analyser cannot resolve stays unprovable (`cannot be judged`), never absent. Regressions `18-M1a`–`18-M1f` (destination) and `18-M1c`–`18-M1f` (writer, 0 fixes / 0 writes) |
+| 18-L1 | **Low** | A fail-closed false positive | An unrelated computed method call (`fns[0]()`, `fns[i]()`) made the writer refuse every fix of the repository; `fns['0']()` stayed writable | an unresolved computed member made **every** script a dynamic mutator, whatever the receiver was | **CLOSED** — `resolveMemberName()` resolves a **numeric** literal as well (`fns[0]` names the member `0`), and an unresolved computed member is a write **only when its receiver can be an element**. An unrelated call on a plain object or an array is harmless again. Regressions `18-L1a`–`18-L1b` |
+
+The fails-before proof, run three times by the CTO: with only `src/lib/github.ts`
+reverted, **12 of the 16 writer regressions fail** and the four benign twins pass; with
+only `src/lib/css-context.ts` reverted, **6 of the destination regressions** and **2 of
+the writer regressions** fail while their benign twins pass; with both fixes restored
+all 20 pass. The gate suite that backed the push: source-only typecheck 0, lint 0
+(0 errors, 0 warnings), vitest 53 files / **1017 tests**, coverage
+70.84 / 63.37 / 74.1 / 73.08 (thresholds 55 / 50 / 58 / 57), `next build` green
+(116 static pages), Playwright chromium **79/79**, `npm audit --audit-level=high`
+Critical 0 / High 0 (15 moderate advisories in the development tooling chain).
 
 ## Seventeenth independent security review (2026-11-26) — closure shipped
 
@@ -120,10 +130,11 @@ eleven findings below are **newly found equivalent paths**.
 ### Gate status
 
 The sixth through seventeenth review closures are shipped; the eighteenth review
-returned **NOT READY** (High 1, Medium 1, Low 1) and **its three findings are being
-closed at their root cause**. The **release gate is still closed**: it opens only
-when a **nineteenth independent review** returns READY (Critical 0, High 0) against
-the eighteenth-review closure tree.
+returned **NOT READY** (High 1, Medium 1, Low 1) and **all three of its findings are
+now closed at their root cause** in the eighteenth-review closure tree (`b16dafd`).
+The **release gate is still closed**: it opens only when a **nineteenth independent
+review** returns READY (Critical 0, High 0) against the eighteenth-review closure
+tree.
 
 ### Sixteenth-review closure evidence
 

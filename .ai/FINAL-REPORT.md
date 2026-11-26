@@ -17,11 +17,20 @@ The V23 release gate remains closed while the **eighteenth** independent securit
 
 The eighteenth independent security review (`.ai/SECURITY-REVIEW-18.md`) returned **NOT READY — Critical 0, High 1, Medium 1, Low 1**:
 
-- **18-H1 (High)** — `runtimeMutations()` is still a closed list of spellings, so ten equivalent mutations (`Element.prototype.setAttribute.call/apply`, `Reflect.set`, a bound `setAttribute`/`classList.add` alias, `img.remove()`, `img.parentNode.removeChild(img)`, `document.write(…)` and `img.alt=''`) reached the customer page. Chromium measured a `1280×720` fixed takeover, the patched element deleted and the alternative text emptied; the real route wrote `index.html` and opened a pull request.
+- **18-H1 (High)** — `runtimeMutations()` was still a closed list of spellings, so ten equivalent mutations (`Element.prototype.setAttribute.call/apply`, `Reflect.set`, a bound `setAttribute`/`classList.add` alias, `img.remove()`, `img.parentNode.removeChild(img)`, `document.write(…)` and `img.alt=''`) reached the customer page. Chromium measured a `1280×720` fixed takeover, the patched element deleted and the alternative text emptied; the real route wrote `index.html` and opened a pull request.
 - **18-M1 (Medium)** — `[aria-label]{--f:Evil} button{font-family:var(--f)}`: the activated custom property was not followed into the rule that consumes it, so the customer browser requested `GET /evil-font` after the merge.
 - **18-L1 (Low)** — an unrelated computed call (`fns[0]()`, `fns[i]()`) refused every fix of the repository.
 
-The closure decides by reachability and effect instead of by spelling, follows the activated custom property into the consuming rule, and scopes the computed-member rule to element receivers.
+**All three are now closed at their root cause** in `b16dafd`:
+
+- the writer decides by **reach and effect**, not by a spelling — an element-binding analysis tells whether a receiver can be an element, and every write through such a binding is a write (property assignment, indexed assignment, `delete`, a method call that is not a known pure read, a bound alias, `Reflect.set` / `Reflect.apply`, a `.call` / `.apply` invocation);
+- a script that **neutralises or destroys** the fix is refused — by name for the attribute or the class the fix adds, by reach for the removal or the replacement of the patched element, and for the replacement of the page;
+- the **activated custom property** joins the definitions every rule that applies to the element resolves against, so the chain `--f` → `font-family` → `@font-face` → customer-side resource is followed;
+- an unrelated computed call no longer refuses every fix.
+
+20 permanent regressions and the fails-before proof, run three times (12, 6 and 2 failures) with every benign twin passing before and after. Gate suite: source-only typecheck 0 · lint 0 errors and 0 warnings · vitest 53 files / **1017 tests** · coverage 70.84 / 63.37 / 74.1 / 73.08 (thresholds 55 / 50 / 58 / 57) · build 0 (116 static pages) · Playwright chromium **79/79** · `npm audit` 0 high / 0 critical (15 moderate, dev-tooling only).
+
+**The release gate is still closed**: it opens only when a fresh **nineteenth independent review** returns READY (Critical 0, High 0) against this closure tree.
 
 ## Current verification (2026-11-26 — seventeenth-review closure)
 

@@ -524,6 +524,30 @@ static pages), `npx playwright test --project=chromium` 79/79 with 0 failed,
 Strix was **not** run for this cycle: every configured provider refuses the run
 (quota / EOL model / no credits), so no Strix result is claimed.
 
+## The eighteenth-review closure (2026-11-26)
+
+The closure of the eighteenth-review findings ships as five commits, in the order the
+volume definition of done asks for:
+
+| Commit | Layer | Content |
+|---|---|---|
+| `96a33fa` | state | the eighteenth independent review recorded — the reviewer's own artifact `.ai/SECURITY-REVIEW-18.md` |
+| `b16dafd` | security | the three eighteenth-review findings closed at their root cause, with 20 permanent regressions (the runtime reader decides by reach and effect, the neutralisation and destruction gates, the activated custom property chain and the computed-member boundary) |
+| `6462784` | ai | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
+| this commit | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
+| the releases commit | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
+
+The gate suite that backed the push, run by the CTO on the shipped tree:
+`npx tsc -p tsconfig.check.json --noEmit` 0, `npm run lint` 0 (0 errors, 0 warnings),
+`npx vitest run --coverage` 53 files / 1017 tests, coverage
+70.84 / 63.37 / 74.1 / 73.08 (thresholds 55 / 50 / 58 / 57), `npm run build` 0 (116
+static pages), `npx playwright test --project=chromium` 79/79 with 0 failed,
+`npm audit --audit-level=high` Critical 0 / High 0, plus the fails-before proof at
+12, 6 and 2 failures with every benign-boundary twin passing before and after.
+
+Strix was **not** run for this cycle: every configured provider refuses the run
+(quota / EOL model / no credits), so no Strix result is claimed.
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the

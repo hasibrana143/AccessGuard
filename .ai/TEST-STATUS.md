@@ -2,6 +2,34 @@
 
 Last run: 2026-11-26 (eighteenth-review closure)
 
+## Eighteenth-review closure evidence (2026-11-26)
+
+The closure of the eighteenth review's three findings ships in `b16dafd` (source and
+tests) with 20 permanent regressions — 16 in `src/lib/__tests__/github.test.ts` and 14
+in `src/lib/__tests__/css-context.test.ts`, 10 harmful and 10 benign-boundary cases.
+
+The fails-before proof, run by the CTO on the shipped tree:
+
+| Reverted source | Suite | Result |
+|---|---|---|
+| `src/lib/github.ts` | `github.test.ts -t "18-"` | **12 failed**, 4 passed — the four that pass are the benign twins |
+| `src/lib/css-context.ts` | `css-context.test.ts -t "eighteenth"` | **6 failed**, 4 passed — the four that pass are the benign twins |
+| `src/lib/css-context.ts` | `github.test.ts -t "18-M1"` | **2 failed**, 2 passed — the two that pass are the benign twins |
+
+The gate suite that backed the push, run by the CTO on the shipped tree:
+
+| Gate | Command | Exit code | Evidence |
+|---|---:|---:|---|
+| Source-only typecheck | `npx tsc -p tsconfig.check.json --noEmit` | **0** | no diagnostics |
+| Lint | `npm run lint` | **0** | eslint reported no error and no warning |
+| Unit suite + coverage gate | `npx vitest run --coverage` | **0** | 53 test files, **1017 tests passed**, 0 failed; coverage 70.84 % statements / 63.37 % branches / 74.1 % functions / 73.08 % lines against the 55 / 50 / 58 / 57 thresholds |
+| Standalone build | `npm run build` | **0** | Next.js 16.4.6, compiled in 7.9 s, TypeScript in 9.8 s, **116 static pages** generated, the `public` and `.next/static` copy step completed |
+| Chromium E2E | `npx playwright test --project=chromium` | **0** | **79 passed** (3.9 min), 0 failed, 0 skipped |
+| Dependency audit | `npm audit --audit-level=high` | **0** | **0 high / 0 critical**; 15 moderate advisories remain, all in the development tooling chain (`vitest` / `@vitest/mocker`, `fast-copy`, `glob` / `minimatch` through `@sentry/nextjs` and the ESLint parser) — none in the shipped runtime path |
+
+No Strix result is claimed for this cycle: every configured provider refuses the run
+(quota / EOL model / no credits).
+
 ## Eighteenth independent security review evidence (2026-11-26)
 
 The reviewer's own gate suite on the reviewed tree (`53e2af0`, identical source to `24db2a1`): source-only typecheck 0 · lint 0 errors · vitest 53 files / **987 passed** · coverage 70.4 / 63.13 / 73.41 / 72.53 against 55 / 50 / 58 / 57 · build 0 (116 static pages) · Playwright chromium **79 passed** · `npm audit` 0 high / 0 critical (15 moderate, dev-tooling only).
