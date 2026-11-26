@@ -21,7 +21,7 @@ The shipped tree at `a02ba63` matches `origin/main`. Source-only typecheck, lint
 
 | Scope | Evidence-based estimate | What controls it |
 |---|---|---|
-| **V23 release-ready** | **Same day if the seventeenth review returns READY**; if it returns NOT READY, one more closure round (~1 focused agent day, matching the eight review→closure cycles already completed on 2026-11-23/24) followed by a re-review | The seventeenth review verdict only |
+| **V23 release-ready** | **Same day if the eighteenth review returns READY**; if it returns NOT READY, one more closure round (~1 focused agent day, matching the nine review→closure cycles already completed on 2026-11-23/26) followed by a re-review | The eighteenth review verdict only |
 | **Production deployment** | Within hours of the gate opening | Owner approval + the missing Vercel credentials (the Deploy workflow currently skips every Vercel step) |
 | **`.ai/TASKS.md` P1/P2 (16 open items)** | **~8–12 weeks of focused agent time** for the code-complete set | SOC 2 audit, 3 design partners / 2 case studies, the mobile-scanning partner and annual billing / Stripe Tax depend on external parties and run on their own clock |
 | **`ROADMAP.md` 18-month plan (41 stories: 14 PLG, 15 ENT, 12 PLT)** | **Quarters for the code-heavy part, and not fully agent-completable at all** | It is written for a 25–39 FTE team with a $3.8M Year-1 budget; the insurance binder, expert-network staffing, partner LOIs and the FedRAMP 3PAO cannot be delivered by an agent |

@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Current phase | **SECURITY FIX LOOP — V23 seventeenth-review closure shipped, eighteenth review pending** 🟡 |
-| Current task | Close the seventeenth review's two findings (17-H1 runtime mutation vocabulary, 17-M1 `@font-face` descriptor order) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) |
+| Current task | Run the eighteenth independent security review of the seventeenth-review closure tree; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
 | Status | AMBER — the seventeenth independent review returned **NOT READY (High 1, Medium 1)**; both root causes are now closed at their root cause with 15 permanent regressions, and every gate is green. The release gate stays closed until an **eighteenth** independent review returns READY |
 | Blocked | The release gate stays closed until the **eighteenth** independent review returns READY; Strix autonomous pentest remains unavailable — every provider refuses the run (quota / EOL model / no credits), so no Strix evidence exists for this cycle |
@@ -31,7 +31,7 @@
 | `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories); `npm audit --omit=dev --audit-level=high` exits 0 with 5 moderate advisories |
 | Environment note | The local dev database had lost its `default-org` seed (the API suites then answered `401`); `npm run db:seed` restored it and the suites are green. The seed is a dev fixture — no schema, migration or production data changed |
 | Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
-| Release gate | CLOSED — opens only when a **seventeenth** independent review returns READY (Critical 0, High 0) |
+| Release gate | CLOSED — opens only when the **eighteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-24, fifteenth-review closure)
 

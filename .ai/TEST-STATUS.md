@@ -16,6 +16,7 @@ Last run: 2026-11-26 (seventeenth-review closure)
 | `npm audit --audit-level=high --json` | PASS — exit 0, Critical 0 / High 0 (15 moderate advisories) |
 | Fails-before proof | PASS — with only the two source fixes reverted and the new regressions kept, **10 of the 15 new tests fail** (the six harmful mutation spellings, the dynamic mutation form, the computed method name, the unreadable method name and the duplicate font family) and the five benign-boundary tests pass; with the fixes restored all 15 pass |
 | Seventeenth-review closure | `src/lib/github.ts` (the runtime mutation reader), `src/lib/css-context.ts` (the `@font-face` reader), `src/lib/__tests__/github.test.ts` (11 regressions), `src/lib/__tests__/css-context.test.ts` (4 regressions) |
+| CI on `53e2af0` | PASS — CI (45810724743) and Docker (45810724518, multi-arch build + Trivy HIGH/CRITICAL filter + SBOM attest) succeeded; the Deploy workflow (45810724689) and the AccessGuard Scan workflow (45810724600) completed with their documented secret-gated skips, so no deployment and no self-scan are claimed |
 
 ## Current HEAD verification
 

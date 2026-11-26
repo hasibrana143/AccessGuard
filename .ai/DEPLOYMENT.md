@@ -491,6 +491,18 @@ Strix was **not** run for this cycle: every configured provider refuses the run
 
 ## The seventeenth-review closure run (2026-11-26)
 
+All four workflows are green on `53e2af0` (the seventeenth-review closure tree):
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45810724743 | CI | ✅ success — lint, source-only typecheck, vitest + coverage, `next build`, `npm audit`, Playwright |
+| 45810724518 | Docker | ✅ success — the multi-arch image builds, the Trivy step passes with the CRITICAL/HIGH filter, the SARIF upload and the Syft SBOM attest are green |
+| 45810724689 | Deploy | ✅ success — **skipped with a notice**: `HAS_VERCEL_CREDS: false`, so the Vercel secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) are not configured and nothing was deployed |
+| 45810724600 | AccessGuard Scan | ✅ success — **skipped with a notice**: `ACCESSGUARD_API_KEY` / `ACCESSGUARD_PROJECT_ID` are not configured, so the VPAT report and the self-scan did not run |
+
+The two skips are the documented secret-gated behaviour, not a coverage result:
+neither the deployment nor the self-scan is claimed as evidence for this cycle.
+
 The closure of the seventeenth-review findings ships as five commits, in the order the
 volume definition of done asks for:
 

@@ -14,13 +14,13 @@ Last verification: 2026-11-26
 | Production build | PASS — exit 0, 116 static pages |
 | Browser E2E | PASS with one retry — 78 passed, 1 flaky, 0 failed |
 | `npm audit --audit-level=high` | PASS — Critical 0 / High 0 (15 moderate advisories) |
-| CI security gates | PASS — CI and Docker workflows succeeded on `a02ba63`; the AccessGuard Scan workflow succeeded |
+| CI security gates | PASS — the CI and Docker workflows succeeded on `53e2af0` (runs 45810724743 and 45810724518); the AccessGuard Scan workflow succeeded with its documented secret-gated skip |
 | Production deployment | NOT CLAIMED — the Vercel build/deploy steps were skipped because the credentials are absent |
 | Strix autonomous pentest | **NOT RUN** — no provider credit or usable model is available, so no Strix evidence is claimed for this cycle |
-| Seventeenth independent review | **NOT READY — Critical 0, High 1, Medium 1** (`.ai/SECURITY-REVIEW-17.md`); both root causes are closed in the working tree |
+| Seventeenth independent review | **NOT READY — Critical 0, High 1, Medium 1** (`.ai/SECURITY-REVIEW-17.md`); both root causes are closed at their root cause in the shipped source (`5e30641`) |
 | Eighteenth independent review | **PENDING** — the release gate opens only when it returns READY (Critical 0, High 0) |
 
-## Seventeenth independent security review (2026-11-26) — closure in the working tree
+## Seventeenth independent security review (2026-11-26) — closure shipped
 
 **Verdict: NOT READY — Critical 0, High 1, Medium 1, Low 0.** The READY gate requires
 Critical 0 and High 0. The reviewer's own artifact is `.ai/SECURITY-REVIEW-17.md`
@@ -100,11 +100,11 @@ eleven findings below are **newly found equivalent paths**.
 
 ### Gate status
 
-The sixth through sixteenth review closures are shipped; the sixteenth review
-returned **NOT READY** (High 7, Medium 4) and **all eleven of its findings are
-now closed at their root cause** in the sixteenth-review closure tree. The
-**release gate is still closed**: it opens only when a **seventeenth independent
-review** returns READY (Critical 0, High 0) against the sixteenth-review closure
+The sixth through seventeenth review closures are shipped; the seventeenth review
+returned **NOT READY** (High 1, Medium 1) and **both of its findings are now closed
+at their root cause** in the seventeenth-review closure tree (`5e30641`). The
+**release gate is still closed**: it opens only when an **eighteenth independent
+review** returns READY (Critical 0, High 0) against the seventeenth-review closure
 tree.
 
 ### Sixteenth-review closure evidence
