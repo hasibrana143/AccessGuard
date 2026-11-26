@@ -421,7 +421,15 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   and the rules the seventeenth review found and the analyser used to miss (the
   **effective `font-family` of a duplicated `@font-face`** — the last declaration wins,
   as in the browser — and a **family table that could not be read completely**, where a
-  family without a readable face is unknown rather than absent).
+  family without a readable face is unknown rather than absent),
+  and the rules the eighteenth review found and the analyser used to miss (the
+  **custom property an activated rule defines**, followed into the rule that
+  **consumes** it — `font-family` and the `font` shorthand alike — so the chain
+  `--f` → `font-family` → `@font-face` → customer-side resource is judged; the
+  **order independence** of the face and the **activated rule inside a media block**;
+  and the **custom property the remediation declares inline**, while a family without
+  a face, a property no rule of the element consumes and a global property the fix
+  does not activate stay harmless).
 - `src/lib/__tests__/fix-verification.test.ts` — gate semantics, the
   check-before-render order, the browser isolation (no HTTP, no WebSocket), the
   visible-text verdict, the rendered-element verdict (a hidden element, transparent
@@ -461,7 +469,18 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   per-property inline style assignments, the class-name compound, the `Attr.value`
   write, the markup replacement and the object assignment — through the shared
   member-chain reader, and a **method name or a written attribute name the reader
-  cannot resolve** fails closed like a generic state read).
+  cannot resolve** fails closed like a generic state read),
+  and the behaviour the eighteenth review found and the writer used to miss (the
+  **runtime reader decides by reach and effect, not by a spelling** — the prototype
+  `.call` and `.apply` mutation, the reflective write, the bound method alias, the
+  bound class-list alias, the removal of the patched element, the removal through its
+  parent, the page replacement and the **IDL attribute write** that empties the
+  alternative text the fix adds; the **neutralisation and the destruction** of the
+  fix by name and by reach; and the **unrelated computed call** on a plain array,
+  whose literal and unknown index no longer refuse every fix of the repository),
+  and the **writer-level refusals of the activated custom property** that loads a
+  font family or a font shorthand, with the global property and the family without a
+  face staying writable.
 - `src/lib/__tests__/audit-retry.test.ts` — the audit write is retried before a
   missing trail is reported.
 - `src/app/api/github/create-pr/route.test.ts` — the PR route: no PR without verified

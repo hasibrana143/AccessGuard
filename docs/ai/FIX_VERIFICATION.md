@@ -475,3 +475,106 @@ benign-boundary tests pass; with the fixes restored all 15 pass. Gate suite: lin
 source-only typecheck 0, vitest 53 files / 987 tests, coverage 70.4/63.12/73.41/72.53,
 `next build` green (116 static pages), Playwright 79/79, `npm audit` Critical 0 /
 High 0.
+
+## 11. The eighteenth-review closure (V23)
+
+The eighteenth independent security review found **three** equivalent paths the writer
+did not model. The first one is the important one: the seventeenth-review closure
+replaced a closed list of five mutation spellings with a richer reader, but the new
+reader was **still a closed list** — so ten equivalent mutations reached the customer
+page. A vocabulary can never be complete, so this closure changes the question the
+writer asks.
+
+### 11.1 The runtime reader decides by reach and effect, not by a spelling
+
+`runtimeMutations()` in `src/lib/github.ts` knew the attribute-writing methods, the
+class-list and style writers, the element mutation methods, `Object.assign(…)`, the
+`Attr.value` write and a few property assignments. Everything else was invisible:
+
+| Spelling the review reproduced | What the script does |
+|---|---|
+| `Element.prototype.setAttribute.call(img,…)` / `.apply(img,…)` | writes the `class` attribute |
+| `Reflect.set(img,'className',…)` | writes the `class` attribute |
+| `var set = img.setAttribute.bind(img); set('class','overlay')` | writes the `class` attribute |
+| `var add = img.classList.add.bind(img.classList); add('overlay')` | writes the `class` attribute |
+| `img.remove()` / `img.parentNode.removeChild(img)` | deletes the patched element |
+| `document.write('<div class="overlay" …>')` | replaces the page |
+| `img.alt = ''` | empties the alternative text the fix adds |
+
+The write side is now the **inverse image of the read side**. The read side already
+unwrapped `.call` / `.apply` and read a member chain; the write side reads the same
+shapes and asks a structural question instead of naming a method.
+
+- `elementBindings()` decides whether a receiver **can be an element**: a selection
+  call (`querySelector`, `querySelectorAll`, `getElementById`, `getElementsBy*`),
+  `document.createElement(…)`, `Element.prototype`, a callback parameter of an
+  iteration over an element collection, an assignment or a destructuring from such an
+  expression, and `event.target` / `event.currentTarget`.
+- `scriptWrites()` collects every **write**: a property assignment, an indexed
+  assignment, a `delete`, a method call through a member chain, a call of a bound
+  alias, `Reflect.set` / `Reflect.apply` on an element and a `.call` / `.apply`
+  invocation (the mutation target is the first argument, exactly as the read side
+  unwraps it).
+- Only the **reads** are a list. `PURE_READ_METHODS` names the DOM methods that only
+  read; **a method that is not in the list is treated as a write**, so an unknown
+  runtime fails closed.
+- `scriptReactsToFix()` refuses a fix when a script reads the attribute the fix adds
+  (or reads the state of the page generically) and then writes to the page. The
+  mutation is invisible to the isolated verification browser.
+
+### 11.2 A script that neutralises or destroys the fix is refused
+
+`scriptNeutralisesFix()` judges the **effect**, not the spelling:
+
+- a write of the attribute or of the class the fix adds — by a property assignment, a
+  `delete`, an attribute method whose name argument resolves to it, a `Reflect.set`,
+  an `Attr.value` write, a `dataset` key or a class-list method;
+- a write whose **name the analyser cannot read** may be the attribute the fix adds,
+  so it fails closed;
+- the **destruction** of the patched element (`remove()`, `removeChild()`,
+  `replaceChild()`, `replaceWith()`, an `innerHTML` / `outerHTML` write) — decided by
+  **reach**, so a script that removes every `p` does not refuse a fix on an image;
+- the **replacement of the page** (`document.write(…)`, `document.open(…)`, an
+  `innerHTML` write on `document.body` or `document.documentElement`).
+
+### 11.3 An unrelated computed call no longer refuses every fix
+
+`calleeMembers()` resolved a computed member only when its content was a string
+literal, so `fns[0]()` and `fns[i]()` both read as "a mutation the analyser cannot
+follow" and the writer refused **every** fix of the repository — a fail-closed false
+positive. `resolveMemberName()` now resolves a **numeric** literal as well (`fns[0]`
+names the member `0`), and an unresolved computed member is a write **only when its
+receiver can be an element**. An unrelated call on a plain object or an array is
+harmless again.
+
+### 11.4 The activated custom property reaches the rule that consumes it
+
+`[aria-label]{--f:Evil} button{font-family:var(--f)}` was judged harmless: the
+activated rule **defines** the property and a different rule **consumes** it, so the
+value only exists once the fix lands. The custom properties an activated rule defines
+now become part of the patched element's **effective custom properties**, and every
+rule that applies to the element resolves its `var()` references against them. The
+resolved value is judged exactly like a declared value, so the chain
+`--f` → `font-family` → `@font-face` → customer-side resource is followed.
+
+`declarationHarm()` is the single place that judges a set of declarations, so the
+activated-rule path and the consumer path cannot drift. A value the analyser cannot
+resolve stays **unprovable** (`cannot be judged`), never absent, and a custom
+property that no rule on the element consumes stays harmless.
+
+### 11.5 The evidence
+
+20 permanent regressions (16 in `github.test.ts`, 14 in `css-context.test.ts` — 10
+harmful and 10 benign-boundary cases) and the fails-before proof, run twice:
+
+| Reverted source | Result |
+|---|---|
+| `src/lib/github.ts` | **12 failed**, 4 passed — the four that pass are the benign twins, which must stay writable |
+| `src/lib/css-context.ts` (destination suite) | **6 failed**, 4 passed — the four that pass are the benign twins |
+| `src/lib/css-context.ts` (writer suite, `18-M1c`–`18-M1f`) | **2 failed**, 2 passed — the two that pass are the benign twins |
+
+With the fixes restored all tests pass. Gate suite: source-only typecheck 0, lint 0
+(0 errors, 0 warnings), vitest 53 files / **1017 tests**, coverage
+70.84 / 63.37 / 74.1 / 73.08 (thresholds 55 / 50 / 58 / 57), `next build` green
+(116 static pages), Playwright chromium **79/79**, `npm audit --audit-level=high`
+Critical 0 / High 0 (15 moderate advisories, all in the development tooling chain).
