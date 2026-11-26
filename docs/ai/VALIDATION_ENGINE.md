@@ -417,7 +417,11 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   the **family of an activated `font` shorthand**, the **effective `src` of a
   duplicated `@font-face`** — the last declaration wins, as in the browser — and the
   **control-state transition** a fix creates (`:enabled` / `:disabled`), while the
-  user-interaction pseudo-classes `:hover` and `:focus-within` stay harmless).
+  user-interaction pseudo-classes `:hover` and `:focus-within` stay harmless),
+  and the rules the seventeenth review found and the analyser used to miss (the
+  **effective `font-family` of a duplicated `@font-face`** — the last declaration wins,
+  as in the browser — and a **family table that could not be read completely**, where a
+  family without a readable face is unknown rather than absent).
 - `src/lib/__tests__/fix-verification.test.ts` — gate semantics, the
   check-before-render order, the browser isolation (no HTTP, no WebSocket), the
   visible-text verdict, the rendered-element verdict (a hidden element, transparent
@@ -451,7 +455,13 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   dataset reads; an **introduced id the runtime builds at runtime**; a **literal
   runtime selector that names an introduced element** by its tag, id, class or
   attribute; the **alternate base-`href` mutations** (`setAttributeNS(...)` and an
-  `Attr.value` write) and the **base the runtime creates**).
+  `Attr.value` write) and the **base the runtime creates**),
+  and the behaviour the seventeenth review found and the writer used to miss (every
+  **statically resolvable DOM mutation** — `setAttributeNS`, the whole and the
+  per-property inline style assignments, the class-name compound, the `Attr.value`
+  write, the markup replacement and the object assignment — through the shared
+  member-chain reader, and a **method name or a written attribute name the reader
+  cannot resolve** fails closed like a generic state read).
 - `src/lib/__tests__/audit-retry.test.ts` — the audit write is retried before a
   missing trail is reported.
 - `src/app/api/github/create-pr/route.test.ts` — the PR route: no PR without verified

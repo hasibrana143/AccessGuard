@@ -421,3 +421,57 @@ run), the recovered prior matrices 118/118 and 192/192, the route run 24 passed 
 the two intentional pre-closure failures, and the fails-before proof: 14 harmful
 Scope A cases and 7 harmful Scope B cases fail on the pre-closure tree while every
 benign twin passes before and after.
+
+## 10. The seventeenth-review closure (V23)
+
+The seventeenth independent security review found **two equivalent paths** the writer
+did not model. Both are reached **after** the fix lands, in the customer's own
+browser: the rule-level axe run never sees them.
+
+### 10.1 Every statically resolvable DOM mutation is a mutation
+
+The runtime reader knew five spellings of a DOM mutation. The review reproduced six
+equivalent spellings that reached the customer page:
+
+| Spelling | What the script writes |
+|---|---|
+| `img.setAttributeNS(null,'class','overlay')` | the `class` attribute |
+| `img.style = 'position:fixed;…'` | the whole inline style |
+| `img.className += ' overlay'` | the `class` attribute |
+| `img.attributes.class.value = 'overlay'` | the `class` attribute |
+| `img.outerHTML = '<span class="overlay"></span>'` | the markup of the element |
+| `Object.assign(img.style, { position:'fixed', … })` | the inline style |
+
+`runtimeMutations()` in `src/lib/github.ts` reads the mutations through the same
+member-chain parser (`calleeMembers()`) the state reads use, so a dot, an optional
+dot, a computed and an optional computed member are one chain —
+`img['setAttribute']('class','overlay')` is the mutation it is. `writtenAttributeName()`
+resolves the written attribute **once** and is shared with the document-base reader,
+so `setAttributeNS` has one implementation.
+
+The reader fails **closed**: a method name or a written attribute name it cannot
+resolve is a **dynamic** mutation, because the script may write the attribute the fix
+adds. Such a repository is refused exactly like a generic state read.
+
+### 10.2 Every `@font-face` descriptor follows the CSS declaration order
+
+The browser keeps the **last** declaration of a face, for every descriptor. The
+reader kept the **first** `font-family` and the **last** `src`, so a face that
+declared its family twice disappeared from the family table: the activated family
+resolved to "no face" and its customer-side `GET` was judged harmless.
+
+Every descriptor now follows the declaration order. `CssContext.fontFacesComplete`
+records whether the family table could be read completely: a family with no readable
+face is **unknown** rather than **absent**, so the activated-rule resource check fails
+closed.
+
+### 10.3 The evidence
+
+15 permanent regressions (11 in `github.test.ts`, 4 in `css-context.test.ts`) and the
+fails-before proof: with only the two source fixes reverted, 10 of the 15 new tests
+fail (the six harmful spellings, the dynamic mutation form, the computed method name,
+the unreadable method name and the duplicate font family) and the five
+benign-boundary tests pass; with the fixes restored all 15 pass. Gate suite: lint 0,
+source-only typecheck 0, vitest 53 files / 987 tests, coverage 70.4/63.12/73.41/72.53,
+`next build` green (116 static pages), Playwright 79/79, `npm audit` Critical 0 /
+High 0.
