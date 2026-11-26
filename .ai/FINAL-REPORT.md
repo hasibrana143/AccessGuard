@@ -11,7 +11,7 @@ The seventeenth independent review (`.ai/SECURITY-REVIEW-17.md`) returned **NOT 
 
 The fails-before proof: with only the two source fixes reverted and the new regressions kept, **10 of the 15 new tests fail** (the six harmful mutation spellings, the dynamic mutation form, the computed method name, the unreadable method name and the duplicate font family) and the five benign-boundary tests pass; with the fixes restored all 15 pass. Source-only typecheck, lint, the 987-test unit/integration suite, the coverage gates (70.4 / 63.12 / 73.41 / 72.53 against 55 / 50 / 58 / 57), the standalone build (116 static pages), the 79-test Chromium suite (79 passed, 0 flaky) and `npm audit --audit-level=high` (Critical 0, High 0) all pass.
 
-The V23 release gate remains closed while the **eighteenth** independent security review runs. It opens only on READY (Critical 0, High 0). The longer 18-month PLG/enterprise/platform roadmap remains separate future scope.
+The V23 release gate remains closed while the **nineteenth** independent security review runs. It opens only on READY (Critical 0, High 0). The longer 18-month PLG/enterprise/platform roadmap remains separate future scope.
 
 ## Current verification (2026-11-26 — eighteenth review)
 
@@ -32,9 +32,9 @@ The eighteenth independent security review (`.ai/SECURITY-REVIEW-18.md`) returne
 
 **The release gate is still closed**: it opens only when a fresh **nineteenth independent review** returns READY (Critical 0, High 0) against this closure tree.
 
-## Current verification (2026-11-26 — seventeenth-review closure)
+## Current shipped tree (2026-11-26)
 
-The shipped tree at `a02ba63` matches `origin/main`. Source-only typecheck, lint, the 972-test unit/integration suite, the coverage gates, the standalone build, the 79-test Chromium suite and `npm audit --audit-level=high` all pass; the CI, Docker, AccessGuard Scan and Deploy workflows also completed successfully on that head. The Deploy workflow skipped every Vercel build/deploy step because the Vercel credentials are absent, so no production deployment is claimed.
+The shipped tree at `b16dafd` (source) / `032559e` (state) matches `origin/main`. Source-only typecheck, lint, the 1017-test unit/integration suite, the coverage gates, the standalone build, the 79-test Chromium suite and `npm audit --audit-level=high` all pass; the CI, Docker, AccessGuard Scan and Deploy workflows also completed successfully on that head. The Deploy workflow skipped every Vercel build/deploy step because the Vercel credentials are absent, so no production deployment is claimed.
 
 ## Completion forecast (2026-11-26)
 
@@ -48,7 +48,7 @@ The shipped tree at `a02ba63` matches `origin/main`. Source-only typecheck, lint
 ## What shipped
 
 The four P0 "make the product true" gaps from `.ai/PRODUCT-CRITIQUE-DEEP.md` are closed.
-The first V23 cut was reviewed twelve times: the first review found seven more defects
+The first V23 cut was reviewed **eighteen times**: the first review found seven more defects
 (3 reproduced P0 defects, 3 High, 4 Medium, 1 Low), the **re-review of that hardening
 found 2 High, 7 Medium, 1 Low**, the **third review found 2 High, 5 Medium**, the
 **fourth review found 3 High, 9 Medium**, the **fifth review of that closure found
@@ -153,6 +153,23 @@ still-open spelling — the optional **computed** member `img['dataset']?.['stat
 — which is closed and locked down by the regressions `16-H1d` and `16-H1e`. The
 gate opens only when a **seventeenth independent review** returns READY (Critical
 0, High 0).
+The **seventeenth review** then reproduced **two more equivalent paths** — the
+**runtime mutation vocabulary** (six spellings the reader did not model) and the
+**`@font-face` descriptor order** (the browser keeps the last descriptor, the reader
+kept the first). **Both are now fixed at their root cause, with a permanent
+regression each** (15 regressions; the fails-before proof: 10 of the 15 new tests
+fail on the pre-closure tree and the five benign-boundary tests pass). The
+**eighteenth review** then showed that the seventeenth closure was **still a closed
+list** — ten more spellings reached the customer page
+(`Element.prototype.setAttribute.call/apply`, `Reflect.set`, a bound method alias, a
+bound class-list alias, `remove()`, `removeChild()`, `document.write()` and the IDL
+attribute write `img.alt=''`) — and that the **activated custom property** of a font
+activation chain was not followed into the rule that consumes it, while an unrelated
+computed call refused every fix of the repository. **All three are now fixed at
+their root cause** (20 regressions; the fails-before proof, run three times: 12, 6
+and 2 failures) — the writer now decides by **reach and effect**, not by a spelling.
+The gate opens only when a **nineteenth independent review** returns READY (Critical
+0, High 0).
 
 | Gap (before) | Now | Evidence |
 |---|---|---|
@@ -160,6 +177,34 @@ gate opens only when a **seventeenth independent review** returns READY (Critica
 | Fixes were exact-string replacements of axe DOM HTML into source files | JSX/JS is located through a real AST (TypeScript compiler API) and patched at AST-derived offsets; occurrence-aware per rule **and** per element; placeholder and no-op rejection; the patched file is re-parsed and the patch discarded if it breaks | `src/lib/ast-patch.ts`, `src/lib/__tests__/ast-patch.test.ts`, `src/lib/__tests__/github-pr.test.ts` |
 | Nothing re-ran axe on a patched page | axe is re-run on the remediation snippet for the rule it targets; only verified fixes open a PR; no browser means no PR (fail closed) | `src/lib/fix-verification.ts`, `src/app/api/github/create-pr/route.ts` |
 | The VPAT PDF declared untested criteria out of scope | The PDF reuses `generateVPATData`: `not-evaluated`, per-criterion remarks, draft label on cover and footer | `src/app/api/reports/vpat/route.tsx`, `src/lib/__tests__/vpat-generator.test.ts` |
+
+### Eighteenth independent security review (2026-11-26)
+
+> The verdict was NOT READY — Critical 0, High 1, Medium 1, Low 1 — against tree
+> `24db2a1`. **All three findings are closed** in the eighteenth-review closure tree
+> `b16dafd` (the dispositions are in `.ai/SECURITY-STATUS.md`; the reviewer's own
+> artifact is `.ai/SECURITY-REVIEW-18.md`).
+> The release gate opens only when a **nineteenth independent review** returns READY.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 18-H1 — the runtime mutation reader was still a closed list of spellings | High | `Element.prototype.setAttribute.call/apply`, `Reflect.set`, a bound `setAttribute` alias, a bound `classList.add` alias, `remove()`, `removeChild()`, `document.write()` and `img.alt=''` each applied 1 fix, wrote `index.html` and opened a pull request through the real route; Chromium measured a `1280×720` fixed takeover (`z-index: 2147483647`), the patched element deleted (1 → 0 images) and the alternative text emptied | **Closed** — the write side is now the **inverse image of the read side**: `elementBindings()` decides whether a receiver **can be an element**, `scriptWrites()` collects every **write** (property assignment, indexed assignment, `delete`, a method call through a member chain, a bound alias, `Reflect.set` / `Reflect.apply`, a `.call` / `.apply` invocation), only the **reads** are a list (`PURE_READ_METHODS` — a method that is not in it is a write, so an unknown runtime fails closed), `scriptReactsToFix()` refuses a fix when a script reads what the fix adds and then writes, and `scriptNeutralisesFix()` refuses a fix when a script writes the attribute or the class the fix adds, removes or replaces the patched element, or replaces the page — by **name** for the neutralisation, by **reach** for the destruction. Regressions `18-H1a`–`18-H1m` |
+| 18-M1 — the activated custom property was not followed into the rule that consumes it | Medium | `[aria-label]{--f:Evil} button{font-family:var(--f)}` was judged harmless and written; the local `127.0.0.1` listener received `GET /evil-font` after the merge and nothing before it | **Closed** — the custom properties an activated rule defines become part of the patched element's **effective custom properties**, every rule that applies to the element resolves its `var()` references against them, and `declarationHarm()` — the single judgement path the activated-rule loop also uses — judges the resolved value exactly like a declared value. A value the analyser cannot resolve stays unprovable, never absent. Regressions `18-M1a`–`18-M1f` (destination) and `18-M1c`–`18-M1f` (writer, 0 fixes / 0 writes) |
+| 18-L1 — an unrelated computed method call refused every fix of the repository | Low | `fns[0]()` and `fns[i]()` made the writer refuse every fix; `fns['0']()` stayed writable | **Closed** — `resolveMemberName()` resolves a **numeric** literal as well, and an unresolved computed member is a write **only when its receiver can be an element**. Regressions `18-L1a`–`18-L1b` |
+
+### Seventeenth independent security review (2026-11-26)
+
+> The verdict was NOT READY — Critical 0, High 1, Medium 1, Low 0 — against tree
+> `8604c32`. **Both findings are closed** in the seventeenth-review closure tree
+> `5e30641` (the dispositions are in `.ai/SECURITY-STATUS.md`; the reviewer's own
+> artifact is `.ai/SECURITY-REVIEW-17.md`).
+> The release gate opened only for the eighteenth independent review, which returned
+> NOT READY — see the section above.
+
+| Finding | Severity | Reproduced unsafe result | Status |
+|---|---|---|---|
+| 17-H1 — the runtime mutation vocabulary was a closed list of five spellings | High | `setAttributeNS`, `element.style =`, `className +=`, `attributes.<name>.value =`, `outerHTML =` and `Object.assign(element.style, …)` each applied 1 fix, wrote `index.html` and opened a pull request; Chromium measured a `1280×720` fixed takeover | **Closed** — `runtimeMutations()` reads every statically resolvable mutation through the shared member-chain reader and a written name the analyser cannot read fails closed. (The eighteenth review later showed this reader was still a closed list of *other* spellings — the eighteenth closure replaced it with the reachability-and-effect model.) Regressions `17-H1a`–`17-H1k` |
+| 17-M1 — the `@font-face` reader kept the first `font-family` descriptor | Medium | a face that declared its family twice vanished from the family table, so its customer-side `GET /evil-font` was judged harmless and written | **Closed** — every descriptor follows the CSS declaration order and `CssContext.fontFacesComplete` reports an incomplete family table as `unknown`, never `absent`. Regressions `17-M1a`–`17-M1d` |
 
 ### Sixteenth independent security review (2026-11-24)
 
