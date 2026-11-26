@@ -525,6 +525,20 @@ function resolveStringExpression(expression: string): string | null {
   return out || null;
 }
 
+/**
+ * The name of a computed member: a string literal or a number.
+ *
+ * `fns[0]` names the member `0` and `fns['0']` names the same member, so an
+ * unrelated computed call is neither a DOM write nor a name the analyser
+ * cannot read.
+ */
+function resolveMemberName(expression: string): string | null {
+  const resolved = resolveStringExpression(expression);
+  if (resolved !== null) return resolved;
+  const trimmed = expression.trim();
+  return /^\d+$/.test(trimmed) ? trimmed : null;
+}
+
 /** The DOM methods that read an attribute by name. */
 function isAttributeReadMethod(name: string): boolean {
   const lower = name.toLowerCase();
@@ -581,7 +595,7 @@ function calleeMembers(callee: string): { name: string | null; computed: boolean
     if (character === '[') {
       const end = callee.indexOf(']', i);
       if (end === -1) break;
-      const resolved = resolveStringExpression(callee.slice(i + 1, end).trim());
+      const resolved = resolveMemberName(callee.slice(i + 1, end).trim());
       members.push({ name: resolved, computed: resolved === null });
       i = end + 1;
       continue;
@@ -686,6 +700,16 @@ const COMPUTED_PROPERTY_READ_PATTERN = /\b[A-Za-z_$][\w$]*\s*(?:\?\.)?\s*\[\s*([
  * analyser has to read. A call it cannot read stays unresolved.
  */
 function readCallArguments(source: string, from: number): string[] | null {
+  return callSpan(source, from)?.args ?? null;
+}
+
+/**
+ * The arguments of a call and the position after it.
+ *
+ * The position is what a member chain needs: the call of a chain is one
+ * segment of it, and the chain continues after it.
+ */
+function callSpan(source: string, from: number): { args: string[]; end: number } | null {
   const args: string[] = [];
   let start = from;
   let depth = 0;
@@ -714,7 +738,7 @@ function readCallArguments(source: string, from: number): string[] | null {
       if (depth === 0) {
         if (character !== ')') return null;
         args.push(source.slice(start, i));
-        return args;
+        return { args, end: i + 1 };
       }
       depth--;
       continue;
@@ -1022,7 +1046,7 @@ interface RuntimeMutation {
  * it cannot follow, and a mutation whose written name it cannot read may write
  * the attribute the fix adds: both fail closed like a generic state read.
  */
-function runtimeMutations(content: string): RuntimeMutation {
+function runtimeMutations(content: string, bindings: ElementBindings): RuntimeMutation {
   let mutates = false;
   let dynamic = false;
 
@@ -1036,9 +1060,14 @@ function runtimeMutations(content: string): RuntimeMutation {
 
     if (method.name === null) {
       // A computed method name may be a DOM mutation the analyser cannot
-      // follow: the script fails closed when it reads state as well.
-      mutates = true;
-      dynamic = true;
+      // follow: the script fails closed when it reads state as well. A
+      // computed call on a receiver that cannot be an element (`fns[i]()`)
+      // mutates nothing the fix adds.
+      const chain = members.slice(0, -1).map(member => ({ name: member.name, args: null }));
+      if (chainObject(chain, bindings).kind === 'element') {
+        mutates = true;
+        dynamic = true;
+      }
       continue;
     }
 
@@ -1102,6 +1131,767 @@ function runtimeMutations(content: string): RuntimeMutation {
   }
 
   return { mutates, dynamic };
+}
+
+/**
+ * The DOM methods that only read.
+ *
+ * A method that is not in the list is treated as a write: the analyser fails
+ * closed on a runtime it cannot follow. The attribute readers the file
+ * already knows (`isAttributeReadMethod`) are pure reads too, and a property
+ * getter such as `textContent` is a read because only an assignment writes.
+ */
+const PURE_READ_METHODS = new Set([
+  'getboundingclientrect',
+  'getclientrects',
+  'closest',
+  'matches',
+  'contains',
+  'comparedocumentposition',
+  'isequalnode',
+  'getanimations',
+  'getcomputedstyle',
+  'queryselector',
+  'queryselectorall',
+  'getelementsbytagname',
+  'getelementsbyclassname',
+  'getelementbyid',
+  'getpropertyvalue',
+  'getpropertypriority',
+  'hasattributes',
+  'getattributenames',
+]);
+
+/** True when a method only reads. */
+function isPureReadMethod(name: string): boolean {
+  return isAttributeReadMethod(name) || PURE_READ_METHODS.has(name.toLowerCase());
+}
+
+/** The methods that remove the element they are called on. */
+const DESTROYING_METHODS = new Set(['remove', 'removechild', 'replacechild', 'replacewith']);
+
+/** The properties that replace the markup of the element they are written to. */
+const DESTROYING_PROPERTIES = new Set(['innerhtml', 'outerhtml']);
+
+/** The methods that write the class list of an element. */
+const CLASS_LIST_METHODS = new Set(['add', 'remove', 'toggle', 'replace']);
+
+/**
+ * What a write may reach: the ids, tags and classes it selects.
+ *
+ * The reach is what tells a write of the patched element apart from a write
+ * of another element: a script that removes every `img` destroys the fix, a
+ * script that removes every `p` does not.
+ */
+interface ElementReach {
+  ids: Set<string>;
+  tags: Set<string>;
+  classes: Set<string>;
+  /** True when the reach cannot be read. */
+  any: boolean;
+}
+
+/** The reach of an element the analyser cannot name. */
+function unknownReach(): ElementReach {
+  return { ids: new Set(), tags: new Set(), classes: new Set(), any: true };
+}
+
+/** The reach of a selector: the element it names, or the elements it may name. */
+function selectorReach(selector: string): ElementReach {
+  const subject = selectorSubject(selector);
+  const tag = /^([A-Za-z][\w-]*)/.exec(subject)?.[1]?.toLowerCase() ?? null;
+  const id = /#([A-Za-z_][\w-]*)/.exec(subject)?.[1] ?? null;
+  const reach: ElementReach = { ids: new Set(), tags: new Set(), classes: new Set(), any: false };
+
+  if (id) reach.ids.add(id);
+  if (tag) reach.tags.add(tag);
+  for (const name of selectorClasses(subject)) reach.classes.add(name);
+  if (reach.ids.size === 0 && reach.tags.size === 0 && reach.classes.size === 0) reach.any = true;
+
+  return reach;
+}
+
+/** One segment of a member chain. */
+interface ChainSegment {
+  /** The member name, when the analyser can read it. */
+  name: string | null;
+  /** The arguments of the call, when the segment is a call. */
+  args: string[] | null;
+}
+
+/** The segments of a member chain. */
+function parseChain(text: string): ChainSegment[] {
+  const segments: ChainSegment[] = [];
+  let i = 0;
+
+  while (i < text.length) {
+    const character = text[i] as string;
+
+    if (/\s/.test(character)) {
+      i++;
+      continue;
+    }
+
+    if (character === '?') {
+      // An optional access: `?.member` and `?.[member]` read the same member.
+      i++;
+      while (i < text.length && /\s/.test(text[i] as string)) i++;
+      if (text[i] === '.') i++;
+      continue;
+    }
+
+    if (character === '.') {
+      i++;
+      while (i < text.length && /\s/.test(text[i] as string)) i++;
+      const member = /^[A-Za-z_$][\w$]*/.exec(text.slice(i));
+      if (!member) break;
+      segments.push({ name: member[0], args: null });
+      i += member[0].length;
+      continue;
+    }
+
+    if (character === '[') {
+      const end = text.indexOf(']', i);
+      if (end === -1) break;
+      segments.push({ name: resolveMemberName(text.slice(i + 1, end).trim()), args: null });
+      i = end + 1;
+      continue;
+    }
+
+    if (character === '(') {
+      const call = callSpan(text, i + 1);
+      if (!call) break;
+      const last = segments[segments.length - 1];
+      if (last) last.args = call.args;
+      i = call.end;
+      continue;
+    }
+
+    const identifier = /^[A-Za-z_$][\w$]*/.exec(text.slice(i));
+    if (!identifier) break;
+    segments.push({ name: identifier[0], args: null });
+    i += identifier[0].length;
+  }
+
+  return segments;
+}
+
+/** The object a chain reads. */
+interface ChainObject {
+  kind: 'document' | 'element' | 'other';
+  reach: ElementReach | null;
+}
+
+/** The object a call on the document returns. */
+function documentCallObject(name: string | null, args: string[]): ChainObject {
+  const argument = args[0] ? resolveStringExpression(args[0].trim()) : null;
+
+  if (name === 'queryselector' || name === 'queryselectorall') {
+    return { kind: 'element', reach: argument === null ? unknownReach() : selectorReach(argument) };
+  }
+  if (name === 'getelementbyid') {
+    return {
+      kind: 'element',
+      reach:
+        argument === null
+          ? unknownReach()
+          : { ids: new Set([argument]), tags: new Set(), classes: new Set(), any: false },
+    };
+  }
+  if (name === 'getelementsbytagname') {
+    return {
+      kind: 'element',
+      reach:
+        argument === null
+          ? unknownReach()
+          : { ids: new Set(), tags: new Set([argument.toLowerCase()]), classes: new Set(), any: false },
+    };
+  }
+  if (name === 'getelementsbyclassname') {
+    return {
+      kind: 'element',
+      reach:
+        argument === null
+          ? unknownReach()
+          : { ids: new Set(), tags: new Set(), classes: new Set([argument]), any: false },
+    };
+  }
+  if (name === 'createelement') {
+    return {
+      kind: 'element',
+      reach:
+        argument === null
+          ? unknownReach()
+          : { ids: new Set(), tags: new Set([argument.toLowerCase()]), classes: new Set(), any: false },
+    };
+  }
+
+  return { kind: 'other', reach: null };
+}
+
+/**
+ * The object a chain reads, and what it may reach.
+ *
+ * The chain is read from its root: a selection call produces an element, a
+ * member of an element stays element-ish, and everything else is an object
+ * the analyser knows nothing about.
+ */
+function chainObject(segments: ChainSegment[], bindings: ElementBindings): ChainObject {
+  let object: ChainObject = { kind: 'other', reach: null };
+  let first = true;
+
+  for (const segment of segments) {
+    const name = segment.name?.toLowerCase() ?? null;
+
+    if (first) {
+      first = false;
+      if (name === 'document') {
+        object = { kind: 'document', reach: null };
+      } else if (name && bindings.elements.has(name)) {
+        object = { kind: 'element', reach: bindings.elements.get(name) ?? null };
+      } else if (name && /^(?:html[a-z]*)?element$/.test(name)) {
+        // `Element.prototype` and `HTMLImageElement.prototype` are elements.
+        object = { kind: 'element', reach: unknownReach() };
+      } else {
+        object = { kind: 'other', reach: null };
+      }
+      continue;
+    }
+
+    if (segment.args === null) {
+      // A member of the current object.
+      if (
+        object.kind === 'document' &&
+        (name === 'body' || name === 'head' || name === 'documentelement')
+      ) {
+        object = { kind: 'element', reach: unknownReach() };
+      }
+      continue;
+    }
+
+    // A call on the current object.
+    if (object.kind === 'document') {
+      object = documentCallObject(name, segment.args);
+      continue;
+    }
+    if (object.kind === 'element') {
+      if (name === 'queryselector' || name === 'queryselectorall') {
+        const selector = segment.args[0]
+          ? resolveStringExpression(segment.args[0].trim())
+          : null;
+        object = {
+          kind: 'element',
+          reach: selector === null ? unknownReach() : selectorReach(selector),
+        };
+      }
+      continue;
+    }
+    object = { kind: 'other', reach: null };
+  }
+
+  return object;
+}
+
+/** The elements a script can reach, by the variables that hold them. */
+interface ElementBindings {
+  /** The variables that hold an element, and what they may reach. */
+  elements: Map<string, ElementReach>;
+  /** The variables that hold a method bound to an element. */
+  bound: Set<string>;
+}
+
+/** A variable assigned an expression. */
+const VARIABLE_ASSIGNMENT_PATTERN =
+  /(?:\b(?:const|let|var)\s+)?\b([A-Za-z_$][\w$]*)\s*=(?!=)\s*([^;\n]+)/g;
+
+/** A variable destructured from an expression. */
+const DESTRUCTURING_PATTERN =
+  /\b(?:const|let|var)\s*\{([^}]*)\}\s*=(?!=)\s*([^;\n]+)/g;
+
+/** A chain the analyser reads, with the calls it may hold. */
+const CHAIN_SOURCE = `[A-Za-z_$][\\w$]*(?:${MEMBER_ACCESS_SOURCE}|\\s*\\([^()\\n]*\\))*`;
+
+/** A callback parameter of an iteration over a collection. */
+const ITERATION_CALLBACK_PATTERN = new RegExp(
+  `(${CHAIN_SOURCE})\\s*\\.\\s*(?:forEach|map|filter|some|every|find|findIndex|flatMap)\\s*\\(\\s*` +
+    `(?:function\\s*(?:\\*\\s*)?(?:\\(\\s*)?([A-Za-z_$][\\w$]*)|` +
+    `\\(\\s*([A-Za-z_$][\\w$]*)\\s*\\)\\s*=>|([A-Za-z_$][\\w$]*)\\s*=>)`,
+  'g'
+);
+
+/**
+ * The reach of an expression, when it can be an element.
+ *
+ * A selection call, a created element, an event target, a variable that
+ * holds an element and a member of such a variable are elements.
+ */
+function expressionReach(expression: string, bindings: ElementBindings): ElementReach | null {
+  const trimmed = expression.trim();
+  if (!trimmed) return null;
+
+  // A bound method keeps the reach of the element it is bound to.
+  const bind = /\.\s*bind\s*\(/.exec(trimmed);
+  if (bind) return expressionReach(trimmed.slice(0, bind.index), bindings);
+
+  // A plain variable.
+  if (/^[A-Za-z_$][\w$]*$/.test(trimmed)) return bindings.elements.get(trimmed) ?? null;
+
+  // The target of an event is an element.
+  if (/\.\s*(?:currentTarget|target)$/.test(trimmed)) return unknownReach();
+
+  const object = chainObject(parseChain(trimmed), bindings);
+  return object.kind === 'element' ? object.reach : null;
+}
+
+/**
+ * The elements a script can reach, by the variables that hold them.
+ *
+ * The bindings are read until they stop changing: an assignment may use a
+ * variable an earlier assignment bound.
+ */
+function elementBindings(content: string): ElementBindings {
+  const bindings: ElementBindings = { elements: new Map(), bound: new Set() };
+
+  for (let round = 0; round < 3; round++) {
+    let changed = false;
+
+    // The parameter of a callback over a collection of elements is an element.
+    for (const match of content.matchAll(ITERATION_CALLBACK_PATTERN)) {
+      const parameter = match[2] ?? match[3] ?? match[4] ?? '';
+      if (!parameter || bindings.elements.has(parameter)) continue;
+      const reach = expressionReach(match[1] ?? '', bindings);
+      if (!reach) continue;
+      bindings.elements.set(parameter, reach);
+      changed = true;
+    }
+
+    for (const match of content.matchAll(VARIABLE_ASSIGNMENT_PATTERN)) {
+      const name = match[1] ?? '';
+      const expression = match[2] ?? '';
+      if (!name || bindings.elements.has(name)) continue;
+      const reach = expressionReach(expression, bindings);
+      if (!reach) continue;
+      bindings.elements.set(name, reach);
+      if (/\.\s*bind\s*\(/.test(expression)) bindings.bound.add(name);
+      changed = true;
+    }
+
+    // A destructured member of an element is an element too.
+    for (const match of content.matchAll(DESTRUCTURING_PATTERN)) {
+      const reach = expressionReach(match[2] ?? '', bindings);
+      if (!reach) continue;
+      for (const raw of (match[1] ?? '').split(',')) {
+        const name = raw.split(':')[0]?.split('=')[0]?.trim() ?? '';
+        if (!/^[A-Za-z_$][\w$]*$/.test(name) || bindings.elements.has(name)) continue;
+        bindings.elements.set(name, reach);
+        changed = true;
+      }
+    }
+
+    if (!changed) break;
+  }
+
+  return bindings;
+}
+
+/** A write a script performs. */
+interface ScriptWrite {
+  /** The property or method the write names, when the analyser can read it. */
+  property: string | null;
+  /** The attribute the write names, when it names one. */
+  attribute: string | null;
+  /** True when the write names an attribute through a DOM call. */
+  attributeMethod: boolean;
+  /** True when the write may reach an element. */
+  element: boolean;
+  /** What the write may reach. */
+  reach: ElementReach | null;
+  /** True when the write removes the element or its content. */
+  destroys: boolean;
+  /** True when the write replaces the page. */
+  page: boolean;
+  /** The class names a class list write names. */
+  classes: (string | null)[];
+  /** The class list method the write calls, when it calls one. */
+  classMethod: string | null;
+}
+
+/** An assignment to a property or an indexed member. */
+const ASSIGNMENT_WRITE_PATTERN = new RegExp(
+  `(${CHAIN_SOURCE})\\s*${ASSIGNMENT_OPERATOR_SOURCE}`,
+  'g'
+);
+
+/** A deletion of a property. */
+const DELETE_WRITE_PATTERN = new RegExp(`\\bdelete\\s+(${CHAIN_SOURCE})`, 'g');
+
+/** True when an assignment is a declaration. */
+function isDeclaration(content: string, index: number): boolean {
+  return /\b(?:const|let|var)\s+$/.test(content.slice(Math.max(0, index - 12), index));
+}
+
+/** The attribute a property write names. */
+function attributeOfProperty(property: string): string {
+  const lower = property.toLowerCase();
+  if (lower === 'classname') return 'class';
+  if (lower === 'htmlfor') return 'for';
+  return lower;
+}
+
+/** True when a chain writes the page itself. */
+function isPageChain(segments: ChainSegment[]): boolean {
+  if (segments.length < 2) return false;
+  if (segments[0]?.name?.toLowerCase() !== 'document') return false;
+  const last = segments[segments.length - 1]?.name?.toLowerCase() ?? '';
+  return last === 'body' || last === 'documentelement';
+}
+
+/** The elements of an array literal. */
+function literalArguments(text: string): string[] {
+  const match = /^\s*\[([^\]]*)\]\s*$/.exec(text);
+  if (!match) return [];
+  return (match[1] ?? '')
+    .split(',')
+    .map(part => part.trim())
+    .filter(part => part.length > 0);
+}
+
+/** A write whose target the analyser cannot read. */
+function unresolvedWrite(reach: ElementReach | null): ScriptWrite {
+  return {
+    property: null,
+    attribute: null,
+    attributeMethod: false,
+    element: true,
+    reach,
+    destroys: false,
+    page: false,
+    classes: [],
+    classMethod: null,
+  };
+}
+
+/** The write of a method call. */
+function methodWrite(
+  method: string,
+  receiver: ChainSegment[],
+  reach: ElementReach | null,
+  args: string[]
+): ScriptWrite {
+  const lower = method.toLowerCase();
+  const attributeMethod = ATTRIBUTE_WRITING_METHODS.has(lower);
+  const attribute = attributeMethod ? writtenAttributeName(method, args) : null;
+
+  // A class list write names the classes it writes.
+  const classes: (string | null)[] = [];
+  let classMethod: string | null = null;
+  if (receiver[receiver.length - 1]?.name?.toLowerCase() === 'classlist' && CLASS_LIST_METHODS.has(lower)) {
+    classMethod = lower;
+    const names = lower === 'toggle' || lower === 'replace' ? args.slice(0, 1) : args;
+    for (const name of names) classes.push(resolveStringExpression(name.trim()));
+  }
+
+  return {
+    property: method,
+    attribute,
+    attributeMethod,
+    element: true,
+    reach,
+    destroys: DESTROYING_METHODS.has(lower),
+    page: false,
+    classes,
+    classMethod,
+  };
+}
+
+/** The write of a property assignment or a deletion. */
+function chainWrite(chain: string, bindings: ElementBindings): ScriptWrite | null {
+  const segments = parseChain(chain);
+  // A variable is not an element: only a property of an element is.
+  if (segments.length < 2) return null;
+
+  const property = segments[segments.length - 1]?.name ?? null;
+  const receiver = segments.slice(0, -1);
+  const object = chainObject(receiver, bindings);
+  if (object.kind !== 'element') return null;
+
+  // `element.attributes.name.value = '…'` writes the attribute.
+  let attribute = property === null ? null : attributeOfProperty(property);
+  const attributeNode =
+    receiver.length >= 2 && receiver[receiver.length - 2]?.name?.toLowerCase() === 'attributes';
+  if (attributeNode) attribute = receiver[receiver.length - 1]?.name ?? null;
+
+  // `element.dataset.name = '…'` writes the `data-name` attribute.
+  if (
+    receiver.length >= 1 &&
+    receiver[receiver.length - 1]?.name?.toLowerCase() === 'dataset' &&
+    property !== null
+  ) {
+    attribute = attributeOfDatasetKey(property);
+  }
+
+  return {
+    property,
+    attribute,
+    attributeMethod: false,
+    element: true,
+    reach: object.reach,
+    destroys: property !== null && DESTROYING_PROPERTIES.has(property.toLowerCase()),
+    page: isPageChain(receiver),
+    classes: [],
+    classMethod: null,
+  };
+}
+
+/**
+ * The writes a script performs.
+ *
+ * The write side is general: a property assignment, an indexed assignment, a
+ * deletion, a method call, a call of a bound alias, a reflective write and a
+ * `.call` or `.apply` invocation. Only the reads are a list: a method that
+ * only reads does not write, and every other method is treated as a write.
+ */
+function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[] {
+  const writes: ScriptWrite[] = [];
+
+  // A property assignment or a deletion.
+  for (const match of content.matchAll(ASSIGNMENT_WRITE_PATTERN)) {
+    if (isDeclaration(content, match.index)) continue;
+    const write = chainWrite(match[1] ?? '', bindings);
+    if (write) writes.push(write);
+  }
+
+  for (const match of content.matchAll(DELETE_WRITE_PATTERN)) {
+    const write = chainWrite(match[1] ?? '', bindings);
+    if (write) writes.push(write);
+  }
+
+  // A method call.
+  for (const match of content.matchAll(METHOD_CALL_PATTERN)) {
+    const segments = parseChain(match[1] ?? '');
+    if (segments.length === 0) continue;
+
+    const args = readCallArguments(content, match.index + match[0].length) ?? [];
+    const method = segments[segments.length - 1] as ChainSegment;
+    const receiver = segments.slice(0, -1);
+    const methodName = method.name?.toLowerCase() ?? null;
+
+    // A call of a bound alias: `set('class','overlay')`.
+    if (segments.length === 1 && method.name && bindings.bound.has(method.name)) {
+      writes.push({
+        property: null,
+        attribute: null,
+        attributeMethod: false,
+        element: true,
+        reach: bindings.elements.get(method.name) ?? unknownReach(),
+        destroys: false,
+        page: false,
+        classes: [],
+        classMethod: null,
+      });
+      continue;
+    }
+
+    // `Reflect.set(target, property, value)` and `Reflect.apply(fn, target, args)`.
+    if (receiver.length === 1 && receiver[0]?.name?.toLowerCase() === 'reflect') {
+      if (methodName !== 'set' && methodName !== 'apply') continue;
+      const target = methodName === 'set' ? args[0] ?? '' : args[1] ?? '';
+      const object = chainObject(parseChain(target), bindings);
+      if (object.kind !== 'element') continue;
+      const property =
+        methodName === 'set' && args[1] ? resolveStringExpression(args[1].trim()) : null;
+      writes.push({
+        property,
+        attribute: property === null ? null : attributeOfProperty(property),
+        attributeMethod: false,
+        element: true,
+        reach: object.reach,
+        destroys: false,
+        page: false,
+        classes: [],
+        classMethod: null,
+      });
+      continue;
+    }
+
+    // `fn.call(target, ...)` and `fn.apply(target, [...])` call `fn` with the
+    // target as its receiver.
+    if ((methodName === 'call' || methodName === 'apply') && receiver.length > 0) {
+      const called = receiver[receiver.length - 1] as ChainSegment;
+      const object = chainObject(parseChain(args[0] ?? ''), bindings);
+      if (object.kind !== 'element') continue;
+      if (called.name === null) {
+        // The called method cannot be read: it is a write the analyser
+        // cannot follow.
+        writes.push(unresolvedWrite(object.reach));
+        continue;
+      }
+      if (isPureReadMethod(called.name)) continue;
+      const calledArgs =
+        methodName === 'apply' ? literalArguments(args[1] ?? '') : args.slice(1);
+      writes.push(methodWrite(called.name, receiver, object.reach, calledArgs));
+      continue;
+    }
+
+    // `document.write(...)` and `document.open(...)` replace the page.
+    if (
+      receiver.length === 1 &&
+      receiver[0]?.name?.toLowerCase() === 'document' &&
+      (methodName === 'write' || methodName === 'writeln' || methodName === 'open')
+    ) {
+      writes.push({
+        property: method.name,
+        attribute: null,
+        attributeMethod: false,
+        element: false,
+        reach: null,
+        destroys: false,
+        page: true,
+        classes: [],
+        classMethod: null,
+      });
+      continue;
+    }
+
+    // A computed method name may be a DOM mutation the analyser cannot
+    // follow: it is a write when the receiver can be an element.
+    if (method.name === null) {
+      const object = chainObject(receiver, bindings);
+      if (object.kind === 'element') writes.push(unresolvedWrite(object.reach));
+      continue;
+    }
+
+    if (isPureReadMethod(method.name)) continue;
+
+    const object = chainObject(receiver, bindings);
+    if (object.kind !== 'element') continue;
+    writes.push(methodWrite(method.name, receiver, object.reach, args));
+  }
+
+  return writes;
+}
+
+/** A script and the writes it performs. */
+interface RuntimeScript {
+  content: string;
+  writes: ScriptWrite[];
+}
+
+/**
+ * True when a script reads the state of the page generically.
+ *
+ * A generic read reacts to every attribute the fix adds: the analyser cannot
+ * tell which one the runtime waits for.
+ */
+function scriptReadsGenericState(content: string): boolean {
+  return (
+    RUNTIME_GENERIC_STATE_READ_PATTERN.test(content) ||
+    scriptReadsDynamicAttribute(content) ||
+    scriptReadsDynamicProperty(content) ||
+    scriptReadsDynamicSelector(content)
+  );
+}
+
+/**
+ * True when a script reads one of the attributes the fix adds.
+ *
+ * The read may be a DOM call (`img.getAttribute('alt')`), a property
+ * (`img.alt`), a reflected read (`Reflect.get(img,'alt')`), a dataset key or
+ * a selector that names the attribute.
+ */
+function scriptReadsFixAttribute(content: string, names: Set<string>): boolean {
+  const wanted = new Set([...names].map(name => name.toLowerCase()));
+
+  for (const read of attributeReadCalls(content)) {
+    if (read.name !== null && wanted.has(read.name.toLowerCase())) return true;
+  }
+
+  return (
+    scriptReadsAttributeProperty(content, names) || scriptSelectorNamesAttribute(content, names)
+  );
+}
+
+/**
+ * True when the runtime reacts to the fix.
+ *
+ * A script that reads the attribute the fix adds (or reads the state of the
+ * page generically) and then writes to the page reacts to the fix: what it
+ * does is invisible to the isolated verification browser.
+ */
+function scriptReactsToFix(script: RuntimeScript, readsFixState: boolean): boolean {
+  if (!readsFixState) return false;
+  return script.writes.some(write => write.element || write.page);
+}
+
+/** True when a reach may include an element. */
+function reachMayInclude(
+  reach: ElementReach | null,
+  element: { tag: string; id: string | null; classes: Set<string> }
+): boolean {
+  if (!reach || reach.any) return true;
+  if (reach.ids.size > 0 && !(element.id !== null && reach.ids.has(element.id))) return false;
+  if (
+    reach.classes.size > 0 &&
+    ![...reach.classes].some(name => element.classes.has(name))
+  ) {
+    return false;
+  }
+  if (reach.tags.size > 0 && !reach.tags.has(element.tag.toLowerCase())) return false;
+  return true;
+}
+
+/**
+ * True when the runtime neutralises or destroys the fix.
+ *
+ * The neutralisation is decided by name: a write of the attribute or of the
+ * class the fix adds removes it, whatever the spelling of the write is. The
+ * destruction is decided by reach: a write that removes the patched element
+ * or that replaces the page removes the fix with it.
+ */
+function scriptNeutralisesFix(
+  script: RuntimeScript,
+  added: Set<string>,
+  addedClasses: Set<string>,
+  patched: { tag: string; id: string | null; classes: Set<string> }
+): boolean {
+  const addedNames = new Set([...added].map(name => name.toLowerCase()));
+
+  for (const write of script.writes) {
+    // The page itself is replaced: the fix does not survive.
+    if (write.page) return true;
+
+    if (!write.element) continue;
+
+    // The patched element is removed: the fix does not survive.
+    if (write.destroys && reachMayInclude(write.reach, patched)) return true;
+
+    if (addedNames.size === 0 && addedClasses.size === 0) continue;
+
+    // The attribute the fix adds is written or removed.
+    if (write.attributeMethod) {
+      // A name the analyser cannot read may be the attribute the fix adds.
+      if (write.attribute === null) return true;
+      if (addedNames.has(write.attribute.toLowerCase())) return true;
+      continue;
+    }
+    if (write.attribute !== null && addedNames.has(write.attribute.toLowerCase())) return true;
+
+    // A class the fix adds is removed.
+    if (addedClasses.size > 0) {
+      if (write.property !== null && write.property.toLowerCase() === 'classname') return true;
+      for (const name of write.classes) {
+        if (name === null) {
+          // A class name the analyser cannot read may be the class the fix
+          // adds. `add` cannot remove it.
+          if (write.classMethod !== 'add') return true;
+          continue;
+        }
+        if (addedClasses.has(name)) return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /** Service workers can deliver stylesheet bytes after the static scan. */
@@ -1825,6 +2615,9 @@ export async function planRepositoryFixes(
   const conditionalMutationScripts: string[] = [];
   const selectorMutationScripts: string[] = [];
   const genericStateReadMutationScripts: string[] = [];
+  // The scripts that write to the page, by the spelling of the write. The
+  // writer decides by reach and effect, not by a list of DOM methods.
+  const runtimeWriteScripts: RuntimeScript[] = [];
 
   const addCssSource = (path: string, css: string): void => {
     if (cssPaths.has(path)) return;
@@ -1849,7 +2642,8 @@ export async function planRepositoryFixes(
     if (CSS_IN_JS_PATTERN.test(content)) {
       styleProblems.push(`the script ${sourcePath} builds CSS at runtime, which the analyser cannot resolve`);
     }
-    const mutation = runtimeMutations(content);
+    const bindings = elementBindings(content);
+    const mutation = runtimeMutations(content, bindings);
     if (mutation.mutates) {
       // A script that mutates an element can take the patched element over
       // even without a state read, so the scripts are kept for the check
@@ -1879,6 +2673,13 @@ export async function planRepositoryFixes(
         // generic state read.
         genericStateReadMutationScripts.push(content);
       }
+    }
+
+    // The writes of the script, whatever their spelling: the writer decides
+    // by reach and effect, so a write the analyser cannot follow fails closed.
+    const writes = scriptWrites(content, bindings);
+    if (writes.length > 0) {
+      runtimeWriteScripts.push({ content, writes });
     }
   };
 
@@ -2093,12 +2894,47 @@ export async function planRepositoryFixes(
       for (const [name, value] of patchedElement.attributes) {
         if (originalElement.attributes.get(name) !== value) added.add(name);
       }
+      // The classes the fix adds: a write of the class list removes them.
+      const addedClasses = new Set<string>();
+      for (const name of patchedElement.classes) {
+        if (!originalElement.classes.has(name)) addedClasses.add(name);
+      }
       if (
         added.size > 0 &&
         (conditionalMutationScripts.some(content => scriptNamesAttribute(content, added)) ||
           selectorMutationScripts.some(content => scriptSelectorNamesAttribute(content, added)) ||
           runtimeMutationScripts.some(content => scriptReadsAttributeProperty(content, added)) ||
           genericStateReadMutationScripts.length > 0)
+      ) {
+        pendingFixIds.delete(violation.id);
+        refusedFixIds.add(violation.id);
+        continue;
+      }
+
+      // The runtime reacts to the fix: it reads the attribute the fix adds (or
+      // the state of the page generically) and then writes to the page. The
+      // write is judged by reach and effect, not by a list of DOM methods.
+      if (
+        added.size > 0 &&
+        runtimeWriteScripts.some(script =>
+          scriptReactsToFix(
+            script,
+            scriptReadsFixAttribute(script.content, added) ||
+              scriptReadsGenericState(script.content)
+          )
+        )
+      ) {
+        pendingFixIds.delete(violation.id);
+        refusedFixIds.add(violation.id);
+        continue;
+      }
+
+      // The runtime neutralises the fix: it writes the attribute or the class
+      // the fix adds, or it destroys the patched element or the page.
+      if (
+        runtimeWriteScripts.some(script =>
+          scriptNeutralisesFix(script, added, addedClasses, patchedElement)
+        )
       ) {
         pendingFixIds.delete(violation.id);
         refusedFixIds.add(violation.id);
@@ -2113,7 +2949,14 @@ export async function planRepositoryFixes(
           runtimeMutationScripts.some(content =>
             scriptSelectorNamesAttribute(content, introducedAttributes)
           ) ||
-          genericStateReadMutationScripts.length > 0)
+          genericStateReadMutationScripts.length > 0 ||
+          runtimeWriteScripts.some(script =>
+            scriptReactsToFix(
+              script,
+              scriptReadsIntroducedAttribute(script.content, introducedAttributes) ||
+                scriptReadsGenericState(script.content)
+            )
+          ))
       ) {
         pendingFixIds.delete(violation.id);
         refusedFixIds.add(violation.id);

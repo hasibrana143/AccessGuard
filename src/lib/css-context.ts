@@ -1673,6 +1673,47 @@ function fontFamilyResourceState(
 }
 
 /**
+ * The reason a set of declarations loads a resource in the customer browser,
+ * or null when it does not.
+ *
+ * A declaration that carries a resource is judged like a declared value: the
+ * custom properties it reads are resolved against the definitions that reach
+ * the element, and a value the analyser cannot resolve is unprovable.
+ */
+function declarationHarm(
+  declarations: Declaration[],
+  definitions: Map<string, string>,
+  fontFaces: Map<string, string[]>,
+  fontFacesComplete: boolean
+): string | null {
+  for (const declaration of declarations) {
+    const resource = resourceState(declaration.value, definitions);
+    if (resource === 'present') {
+      return 'the repository stylesheet can activate a customer-side request';
+    }
+    if (resource === 'unknown') {
+      return 'the repository stylesheet cannot be judged: an activated resource depends on a custom property the analyser cannot resolve';
+    }
+
+    if (declaration.property !== 'font-family' && declaration.property !== 'font') continue;
+    const family = activatedFontFamily(declaration, definitions);
+    if (family === null) {
+      return 'the repository stylesheet cannot be judged: an activated font family or resource cannot be resolved';
+    }
+    if (family === '') continue;
+    const fontResource = fontFamilyResourceState(family, definitions, fontFaces, fontFacesComplete);
+    if (fontResource === 'present') {
+      return 'the repository stylesheet can activate a customer-side request';
+    }
+    if (fontResource === 'unknown') {
+      return 'the repository stylesheet cannot be judged: an activated font family or resource cannot be resolved';
+    }
+  }
+
+  return null;
+}
+
+/**
  * The edges an `inset` shorthand sets.
  *
  * The browser assigns the values of the shorthand the way it assigns the
@@ -1923,6 +1964,19 @@ function resolveCustomProperties(value: string, definitions: Map<string, string>
     if (!replaced) break;
   }
   return resolved;
+}
+
+/**
+ * True when a value reads one of the given custom properties.
+ *
+ * The `var()` references of a value decide which custom properties it needs:
+ * a declaration that reads none of them keeps the value it had.
+ */
+function consumesCustomProperty(value: string, names: Map<string, string>): boolean {
+  for (const match of value.matchAll(/var\(\s*(--[\w-]+)/g)) {
+    if (names.has(match[1] ?? '')) return true;
+  }
+  return false;
 }
 
 /**
@@ -3951,6 +4005,10 @@ export function destinationCssHarm(
     // destination is unprovable.
     const changes = changesBetween(before, element);
 
+    // The custom properties the fix introduces: the ones an activated rule
+    // defines and the ones the remediation's inline style declares.
+    const introducedDefinitions = new Map<string, string>();
+
     if (
       changes.attributes.size > 0 ||
       changes.classes.size > 0 ||
@@ -3983,41 +4041,62 @@ export function destinationCssHarm(
           }
 
           const declarations = parseDeclarations(rule.declarations);
+          // The custom properties the activated rule defines become part of
+          // the effective custom properties of the patched element.
+          for (const [name, value] of customPropertyDefinitions(declarations)) {
+            introducedDefinitions.set(name, value);
+          }
           const ruleDefinitions = new Map(resourceDefinitions);
           for (const [name, value] of customPropertyDefinitions(declarations)) {
             ruleDefinitions.set(name, value);
           }
-          for (const declaration of declarations) {
-            const resource = resourceState(declaration.value, ruleDefinitions);
-            if (resource === 'present') {
-              return 'the repository stylesheet can activate a customer-side request';
-            }
-            if (resource === 'unknown') {
-              return 'the repository stylesheet cannot be judged: an activated resource depends on a custom property the analyser cannot resolve';
-            }
-
-            if (declaration.property !== 'font-family' && declaration.property !== 'font') {
-              continue;
-            }
-            const family = activatedFontFamily(declaration, ruleDefinitions);
-            if (family === null) {
-              return 'the repository stylesheet cannot be judged: an activated font family or resource cannot be resolved';
-            }
-            if (family === '') continue;
-            const fontResource = fontFamilyResourceState(
-              family,
-              ruleDefinitions,
-              context.fontFaces,
-              context.fontFacesComplete
-            );
-            if (fontResource === 'present') {
-              return 'the repository stylesheet can activate a customer-side request';
-            }
-            if (fontResource === 'unknown') {
-              return 'the repository stylesheet cannot be judged: an activated font family or resource cannot be resolved';
-            }
-          }
+          const harm = declarationHarm(
+            declarations,
+            ruleDefinitions,
+            context.fontFaces,
+            context.fontFacesComplete
+          );
+          if (harm) return harm;
         }
+      }
+    }
+
+    for (const [name, value] of customPropertyDefinitions(inline.declarations)) {
+      introducedDefinitions.set(name, value);
+    }
+
+    // The rules that apply to the patched element resolve their `var()`
+    // references against the effective custom properties of the element: its
+    // own definitions, the global ones, the ones the activated rules define
+    // and the ones the remediation declares. The resolved value of a
+    // declaration that reads one of them is judged like a declared value.
+    if (introducedDefinitions.size > 0) {
+      const effectiveDefinitions = new Map(resourceDefinitions);
+      for (const [name, value] of introducedDefinitions) {
+        effectiveDefinitions.set(name, value);
+      }
+
+      for (const rule of afterRules) {
+        const declarations = parseDeclarations(rule.declarations);
+        // A declaration that reads no introduced custom property keeps the
+        // value it had before the fix.
+        const consumed = declarations.filter(declaration =>
+          consumesCustomProperty(declaration.value, introducedDefinitions)
+        );
+        if (consumed.length === 0) continue;
+
+        const ruleDefinitions = new Map(effectiveDefinitions);
+        for (const [name, value] of customPropertyDefinitions(declarations)) {
+          ruleDefinitions.set(name, value);
+        }
+
+        const harm = declarationHarm(
+          consumed,
+          ruleDefinitions,
+          context.fontFaces,
+          context.fontFacesComplete
+        );
+        if (harm) return harm;
       }
     }
 

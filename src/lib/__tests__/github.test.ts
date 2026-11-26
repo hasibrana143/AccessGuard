@@ -2611,6 +2611,232 @@ describe('the seventeenth review regressions', () => {
   });
 });
 
+describe('the eighteenth review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix(
+    remediationCode = '<img id="target" src="x" alt="Photo">',
+    elementHtml = '<img id="target" src="x">'
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml,
+        remediationCode,
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  }
+
+  /** A repository whose runtime code is the given script. */
+  function runtimeRepository(script: string) {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>${script}</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+  }
+
+  /**
+   * A repository whose script reacts to a state read on the patched image.
+   *
+   * The read is the expression the script tests and the mutation the one it
+   * runs when the read succeeds.
+   */
+  function conditionalRepository(mutation: string) {
+    runtimeRepository(
+      `document.querySelectorAll('img').forEach(function(img){if(img.getAttribute('alt'))${mutation}})`
+    );
+  }
+
+  it('18-H1a: does not patch an element a script takes over through a prototype call', async () => {
+    conditionalRepository("Element.prototype.setAttribute.call(img,'class','overlay')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-H1b: does not patch an element a script takes over through a prototype apply', async () => {
+    conditionalRepository("Element.prototype.setAttribute.apply(img,['class','overlay'])");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-H1c: does not patch an element a script takes over through a reflective write', async () => {
+    conditionalRepository("Reflect.set(img,'className','overlay')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-H1d: does not patch an element a script takes over through a bound method', async () => {
+    conditionalRepository("{var set=img.setAttribute.bind(img);set('class','overlay')}");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-H1m: does not patch an element a script takes over through a bound class list method', async () => {
+    conditionalRepository("{var add=img.classList.add.bind(img.classList);add('overlay')}");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-H1e: does not patch an element a script removes', async () => {
+    conditionalRepository('img.remove()');
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-H1f: does not patch an element a script removes through its parent', async () => {
+    conditionalRepository('img.parentNode.removeChild(img)');
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-H1j: does not patch an element a script replaces the page for', async () => {
+    conditionalRepository(
+      "document.write('<div class=\"overlay\" style=\"position:fixed;inset:0;width:100vw;height:100vh\"></div>')"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-H1h: does not patch an element a script empties the alternative text of', async () => {
+    conditionalRepository("img.alt=''");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-H1i: does not patch an element a script empties the text of', async () => {
+    conditionalRepository("img.textContent=''");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('18-L1a: writes a fix when the script calls a computed member of a literal index', async () => {
+    runtimeRepository('var fns = [function () {}]; var i = 0; fns[0]();');
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('18-L1b: writes a fix when the script calls a computed member of an unknown index', async () => {
+    runtimeRepository('var fns = [function () {}]; var i = 0; fns[i]();');
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('18-C1a: writes a fix when the script mutates an element it does not select', async () => {
+    runtimeRepository(
+      "document.querySelectorAll('img').forEach(function(img){if(img.getAttribute('src'))document.querySelector('.card').classList.add('overlay')})"
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('18-C1b: writes a fix when the script reads an unrelated attribute and mutates the element', async () => {
+    runtimeRepository(
+      "document.querySelectorAll('img').forEach(function(img){if(img.getAttribute('src'))img.classList.add('active')})"
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('18-C1c: writes a fix when the script mutates nothing', async () => {
+    runtimeRepository("console.log('hello');");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('18-C1d: writes a fix when the script creates an element of its own', async () => {
+    runtimeRepository("const s=document.createElement('span');s.className='active';");
+
+    await expectWritten(await planAltFix());
+  });
+
+  /**
+   * A repository whose stylesheet carries the given declarations.
+   */
+  function fontRepository(styles: string) {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><head><style>${styles}</style></head><body><button id="target">Save</button></body></html>`
+    );
+  }
+
+  async function planButtonFix() {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'button-name',
+        elementHtml: '<button id="target">Save</button>',
+        remediationCode: '<button id="target" aria-label="Save">Save</button>',
+      },
+    ]);
+  }
+
+  it('18-M1c: does not write a fix whose activated custom property loads a font family', async () => {
+    // The rule that defines the family only starts matching when the fix adds
+    // the attribute and the rule that consumes it already matched: the font
+    // the customer browser loads is the one the fix activates.
+    fontRepository(
+      '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:Evil} button{font-family:var(--f)}'
+    );
+
+    await expectRefused(await planButtonFix());
+  });
+
+  it('18-M1d: does not write a fix whose activated custom property loads a font shorthand', async () => {
+    fontRepository(
+      '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:16px Evil} button{font:var(--f)}'
+    );
+
+    await expectRefused(await planButtonFix());
+  });
+
+  it('18-M1e: writes a fix when the custom property is already defined before the fix', async () => {
+    // The family was resolved before the fix: the request is the customer's
+    // own, not one the fix introduces.
+    fontRepository(
+      '@font-face{font-family:Evil;src:url(/evil-font)} :root{--f:Evil} button{font-family:var(--f)}'
+    );
+
+    await expectWritten(await planButtonFix());
+  });
+
+  it('18-M1f: writes a fix when the activated family names no face', async () => {
+    // Nothing is loaded, so no request follows the fix.
+    fontRepository('[aria-label]{--f:Local} button{font-family:var(--f)}');
+
+    await expectWritten(await planButtonFix());
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();

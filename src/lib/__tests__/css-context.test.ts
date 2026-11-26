@@ -1571,3 +1571,102 @@ describe('the seventeenth review regressions', () => {
     );
   });
 });
+
+describe('the eighteenth review regressions', () => {
+  const ORIGINAL = '<button id="target">Save</button>';
+  const PATCHED = '<button id="target" aria-label="Save">Save</button>';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('18-M1a follows an activated custom property into the font family of another rule', () => {
+    // The rule that defines the family only starts matching when the fix adds
+    // the attribute, and the rule that consumes it already matched: the font
+    // the customer browser loads is the one the fix activates.
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:Evil} button{font-family:var(--f)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('18-M1a follows an activated custom property into the font shorthand of another rule', () => {
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:16px Evil} button{font:var(--f)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('18-M1a keeps a family without a font face harmless', () => {
+    // The family names no face, so nothing is loaded and no request follows.
+    expect(harm('[aria-label]{--f:Local} button{font-family:var(--f)}')).toBeNull();
+    expect(
+      harm('@font-face{font-family:Evil;src:local(Evil)} [aria-label]{--f:Evil} button{font-family:var(--f)}')
+    ).toBeNull();
+  });
+
+  it('18-M1a keeps a custom property no rule of the element consumes harmless', () => {
+    // The activated property is never read: it cannot change the element.
+    expect(
+      harm(
+        '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:Evil} button{color:red}'
+      )
+    ).toBeNull();
+  });
+
+  it('18-M1a keeps a global custom property the fix does not activate harmless', () => {
+    // The family was already resolved before the fix: the request is the
+    // customer's own, not one the fix introduces.
+    expect(
+      harm(
+        '@font-face{font-family:Evil;src:url(/evil-font)} :root{--f:Evil} button{font-family:var(--f)}'
+      )
+    ).toBeNull();
+  });
+
+  it('18-M1a refuses a custom property whose value it cannot resolve', () => {
+    // The family stays unknown: the destination is unprovable, never harmless.
+    const result = harm('[aria-label]{--f:var(--missing)} button{font-family:var(--f)}');
+
+    expect(result).toContain('cannot be judged');
+    expect(result).not.toBeNull();
+  });
+
+  it('18-M1a reads the font face declared before the rules', () => {
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:Evil} button{font-family:var(--f)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('18-M1a reads the font face declared after the rules', () => {
+    const result = harm(
+      '[aria-label]{--f:Evil} button{font-family:var(--f)} @font-face{font-family:Evil;src:url(/evil-font)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('18-M1a reads the activated rule inside a media block', () => {
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} @media screen{[aria-label]{--f:Evil}} button{font-family:var(--f)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('18-M1b follows the custom property the remediation declares itself', () => {
+    // The remediation's inline style is part of the effective style: the
+    // family it supplies reaches the rule that consumes it.
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} button{font-family:var(--f)}',
+      ORIGINAL,
+      '<button id="target" aria-label="Save" style="--f:Evil">Save</button>'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+});
