@@ -1,6 +1,12 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-26 (seventeenth-review closure)
+Last run: 2026-11-26 (eighteenth-review closure)
+
+## Eighteenth independent security review evidence (2026-11-26)
+
+The reviewer's own gate suite on the reviewed tree (`53e2af0`, identical source to `24db2a1`): source-only typecheck 0 · lint 0 errors · vitest 53 files / **987 passed** · coverage 70.4 / 63.13 / 73.41 / 72.53 against 55 / 50 / 58 / 57 · build 0 (116 static pages) · Playwright chromium **79 passed** · `npm audit` 0 high / 0 critical (15 moderate, dev-tooling only).
+
+The reviewer's own matrices: the recovered prior matrices **209/209**, the recovered 118-assertion matrix **118/118**, the eighteenth-review matrix **39 cases (12 failed, 27 passed)** and an **11-case Chromium proof harness** (all passed). The seventeenth closure's six spellings and the 17-M1 / 16-M2 / 16-M3 font cases were verified closed. No Strix result is claimed — the run was skipped.
 
 ## Current verification (2026-11-26 — seventeenth-review closure)
 

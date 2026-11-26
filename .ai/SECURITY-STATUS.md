@@ -18,7 +18,26 @@ Last verification: 2026-11-26
 | Production deployment | NOT CLAIMED — the Vercel build/deploy steps were skipped because the credentials are absent |
 | Strix autonomous pentest | **NOT RUN** — no provider credit or usable model is available, so no Strix evidence is claimed for this cycle |
 | Seventeenth independent review | **NOT READY — Critical 0, High 1, Medium 1** (`.ai/SECURITY-REVIEW-17.md`); both root causes are closed at their root cause in the shipped source (`5e30641`) |
-| Eighteenth independent review | **PENDING** — the release gate opens only when it returns READY (Critical 0, High 0) |
+| Eighteenth independent review | **NOT READY — Critical 0, High 1, Medium 1, Low 1** (`.ai/SECURITY-REVIEW-18.md`); the three findings are being closed at their root cause |
+| Nineteenth independent review | **PENDING** — the release gate opens only when it returns READY (Critical 0, High 0) |
+
+## Eighteenth independent security review (2026-11-26) — closure in progress
+
+**Verdict: NOT READY — Critical 0, High 1, Medium 1, Low 1.** The READY gate requires
+Critical 0 and High 0. The reviewer's own artifact is `.ai/SECURITY-REVIEW-18.md`
+(report only — it changed no shipped source, test, dependency, CI, environment or
+existing `.ai/` file). Every reproduction used local synthetic repositories, a mocked
+GitHub transport, local Chromium and listeners bound to `127.0.0.1`; no production,
+public, third-party or live-GitHub target was touched, and **no Strix result is
+claimed**. The reviewer re-ran the recovered prior matrices: **209/209** and the
+118-assertion matrix at **118/118**, and the eighteenth-review matrix ran **39 cases
+(12 failed, 27 passed)** with an 11-case Chromium proof harness.
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 18-H1 | **High** | The mutation side of the repository runtime reader | Ten spellings reached the customer page: `Element.prototype.setAttribute.call/apply(img,…)`, `Reflect.set(img,'className',…)`, a bound `setAttribute` alias, a bound `classList.add` alias, `img.remove()`, `img.parentNode.removeChild(img)`, `document.write(…)` and `img.alt=''` — each applied 1 fix, wrote `index.html` and opened a pull request through the real route (HTTP 200, `github_pr_intent` / `github_pr_created`); Chromium measured a `1280×720` fixed takeover (`z-index: 2147483647`), the patched element deleted (1 → 0 images) and the alternative text emptied | `runtimeMutations()` is still a **closed list of spellings**: the write side has no `.call`/`.apply` unwrapping (the read side has), no element removal, no IDL/dataset property writes, no alias and no reflective write — so the script enters **none** of the four runtime lists and every planner gate is skipped | **IN PROGRESS** — the closure decides by reachability and effect instead of by spelling: an element-binding analysis tells whether a receiver can be an element, any write through such a binding is a write (property assignment, indexed assignment, `delete`, a method call that is not a known pure read, a bound alias, `Reflect.set`/`Reflect.apply`, a `.call`/`.apply` invocation), a script that reads what the fix adds and then writes is refused, and a script that neutralises or destroys the fix (writes the added attribute or class, removes or replaces the patched element, replaces the document) is refused |
+| 18-M1 | **Medium** | The activated custom property of the font activation chain | `[aria-label]{--f:Evil} button{font-family:var(--f)}` was judged harmless and written; the local `127.0.0.1` listener received `GET /evil-font` after the merge and nothing before it | the activation is evaluated **per rule**: the custom property an activated rule defines is not merged into the definitions the consuming rule resolves against, and a custom-property definition is not treated as carrying the value it defines | **IN PROGRESS** — the custom properties an activated rule defines become part of the patched element's effective custom properties, every rule that applies to the element resolves its `var()` references against them, and the activation check follows the chain `--f` → `font-family` → `@font-face` |
+| 18-L1 | **Low** | A fail-closed false positive | An unrelated computed method call (`fns[0]()`, `fns[i]()`) made the writer refuse every fix of the repository; `fns['0']()` stayed writable | an unresolved computed member made **every** script a dynamic mutator, whatever the receiver was | **IN PROGRESS** — a computed member with a resolvable literal (string or numeric) resolves to its text, and an unresolved computed member on a receiver that is not an element no longer makes the script a mutator |
 
 ## Seventeenth independent security review (2026-11-26) — closure shipped
 
@@ -100,12 +119,11 @@ eleven findings below are **newly found equivalent paths**.
 
 ### Gate status
 
-The sixth through seventeenth review closures are shipped; the seventeenth review
-returned **NOT READY** (High 1, Medium 1) and **both of its findings are now closed
-at their root cause** in the seventeenth-review closure tree (`5e30641`). The
-**release gate is still closed**: it opens only when an **eighteenth independent
-review** returns READY (Critical 0, High 0) against the seventeenth-review closure
-tree.
+The sixth through seventeenth review closures are shipped; the eighteenth review
+returned **NOT READY** (High 1, Medium 1, Low 1) and **its three findings are being
+closed at their root cause**. The **release gate is still closed**: it opens only
+when a **nineteenth independent review** returns READY (Critical 0, High 0) against
+the eighteenth-review closure tree.
 
 ### Sixteenth-review closure evidence
 

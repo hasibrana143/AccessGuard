@@ -2,12 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 seventeenth-review closure shipped, eighteenth review pending** 🟡 |
-| Current task | Run the eighteenth independent security review of the seventeenth-review closure tree; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 eighteenth-review closure in progress** 🟡 |
+| Current task | Close the eighteenth review's three findings (18-H1 the runtime mutation vocabulary, 18-M1 the activated custom property, 18-L1 the fail-closed false positive) at their root cause, with permanent regressions; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the seventeenth independent review returned **NOT READY (High 1, Medium 1)**; both root causes are now closed at their root cause with 15 permanent regressions, and every gate is green. The release gate stays closed until an **eighteenth** independent review returns READY |
-| Blocked | The release gate stays closed until the **eighteenth** independent review returns READY; Strix autonomous pentest remains unavailable — every provider refuses the run (quota / EOL model / no credits), so no Strix evidence exists for this cycle |
-| Next action | Run the eighteenth independent security review of the seventeenth-review closure tree; if READY, close the V23 release gate and request production-deploy approval. If NOT READY, close each reproduced root cause with a permanent regression and repeat the independent review |
+| Status | AMBER — the eighteenth independent review returned **NOT READY (High 1, Medium 1, Low 1)**: the writer still decides by a closed list of mutation spellings, the activated custom property is not followed into the rule that consumes it, and an unrelated computed call refuses every fix. All three are being closed at their root cause. The release gate stays closed until a **nineteenth** independent review returns READY |
+| Blocked | The release gate stays closed until the **nineteenth** independent review returns READY; Strix autonomous pentest remains unavailable — every provider refuses the run (quota / EOL model / no credits), so no Strix evidence exists for this cycle |
+| Next action | Finish the eighteenth-review closure (the writer's reachability-and-effect analysis, the activated custom property chain, the computed-member false positive) with permanent regressions and the fails-before proof, run the full gate suite, then run the nineteenth independent review; if READY, close the V23 release gate and request production-deploy approval |
 | Last verification | 2026-11-26 — seventeenth-review closure: source-only typecheck 0, lint 0, vitest 53 files/987 tests, coverage 70.4/63.12/73.41/72.53, build 0 (116 static pages), Playwright 79/79 passed (0 flaky), npm audit Critical 0 / High 0 (15 moderate), the fails-before proof 10 of the 15 new regressions failing without the fix |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
@@ -31,7 +31,7 @@
 | `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate toolchain advisories); `npm audit --omit=dev --audit-level=high` exits 0 with 5 moderate advisories |
 | Environment note | The local dev database had lost its `default-org` seed (the API suites then answered `401`); `npm run db:seed` restored it and the suites are green. The seed is a dev fixture — no schema, migration or production data changed |
 | Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
-| Release gate | CLOSED — opens only when the **eighteenth** independent review returns READY (Critical 0, High 0) |
+| Release gate | CLOSED — opens only when the **nineteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-24, fifteenth-review closure)
 
