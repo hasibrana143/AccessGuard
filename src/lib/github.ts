@@ -931,9 +931,178 @@ function scriptReadsDynamicSelector(content: string): boolean {
   );
 }
 
-/** Class, inline-style and attribute mutations the analyser cannot follow. */
-const RUNTIME_MUTATION_PATTERN =
-  /\bclassList\s*\.\s*(?:add|remove|toggle|replace)\s*\(|\bclassName\s*=(?![=>])|\b(?:setAttribute|removeAttribute|toggleAttribute)\s*\(|\.\s*style\s*\.\s*[A-Za-z_$][\w$]*\s*=(?![=>])|\.\s*style\s*\.\s*(?:setProperty\s*\(|cssText\s*=(?![=>]))/i;
+/** An assignment operator, including the compound ones. */
+const ASSIGNMENT_OPERATOR_SOURCE =
+  String.raw`(?:\*\*=|<<=|>>=|\|\|=|&&=|\?\?=|\+=|-=|\*=|\/=|%=|=(?![=>]))`;
+
+/** The DOM methods that write an attribute, and the argument that names it. */
+const ATTRIBUTE_WRITING_METHODS = new Map<string, number>([
+  ['setattribute', 0],
+  ['setattributens', 1],
+  ['removeattribute', 0],
+  ['removeattributens', 1],
+  ['toggleattribute', 0],
+  ['setattributenode', 0],
+  ['removeattributenode', 0],
+]);
+
+/** The class list methods that write a class. */
+const CLASS_LIST_WRITING_METHODS = new Set(['add', 'remove', 'toggle', 'replace']);
+
+/** The inline style methods that write a property. */
+const STYLE_WRITING_METHODS = new Set(['setproperty', 'removeproperty']);
+
+/** The DOM methods that change the markup of an element. */
+const ELEMENT_MUTATION_METHODS = new Set([
+  'after',
+  'append',
+  'appendchild',
+  'before',
+  'insertadjacentelement',
+  'insertadjacenthtml',
+  'insertbefore',
+  'prepend',
+  'replacechildren',
+  'replacechild',
+  'replacewith',
+]);
+
+/** The class name assignments of a script. */
+const CLASS_NAME_ASSIGNMENT_PATTERN = new RegExp(
+  String.raw`\bclassName\s*${ASSIGNMENT_OPERATOR_SOURCE}`,
+  'i'
+);
+
+/** The whole inline style assignments of a script, such as `element.style = '…'`. */
+const STYLE_ASSIGNMENT_PATTERN = new RegExp(
+  String.raw`\.\s*style\s*${ASSIGNMENT_OPERATOR_SOURCE}`,
+  'i'
+);
+
+/** The inline style property assignments of a script, such as `element.style.top = '0'`. */
+const STYLE_PROPERTY_ASSIGNMENT_PATTERN = new RegExp(
+  String.raw`\.\s*style\s*\.\s*[A-Za-z_$][\w$]*\s*${ASSIGNMENT_OPERATOR_SOURCE}`,
+  'i'
+);
+
+/** The markup replacements of a script, such as `element.outerHTML = '…'`. */
+const MARKUP_ASSIGNMENT_PATTERN = new RegExp(
+  String.raw`\.\s*(?:outerHTML|innerHTML)\s*${ASSIGNMENT_OPERATOR_SOURCE}`,
+  'i'
+);
+
+/**
+ * The attribute an attribute-writing call writes.
+ *
+ * The name is an argument of the call: the first one for `setAttribute` and
+ * `removeAttribute`, the second one for the namespaced spellings, because the
+ * namespace comes first. A name the analyser cannot read is null.
+ */
+function writtenAttributeName(method: string, args: string[] | null): string | null {
+  const position = ATTRIBUTE_WRITING_METHODS.get(method.toLowerCase());
+  if (position === undefined) return null;
+  const argument = args && args.length > position ? args[position] : null;
+  return argument === null ? null : resolveStringExpression(argument.trim());
+}
+
+/** A DOM mutation the reader follows. */
+interface RuntimeMutation {
+  /** True when the script mutates an element. */
+  mutates: boolean;
+  /** True when the mutation writes a name the analyser cannot read. */
+  dynamic: boolean;
+}
+
+/**
+ * The DOM mutations a script performs.
+ *
+ * Every statically resolvable spelling counts: the attribute methods, the
+ * class, the inline style, the attribute node, the markup and the object
+ * assignment. A method name the analyser cannot resolve may be a DOM mutation
+ * it cannot follow, and a mutation whose written name it cannot read may write
+ * the attribute the fix adds: both fail closed like a generic state read.
+ */
+function runtimeMutations(content: string): RuntimeMutation {
+  let mutates = false;
+  let dynamic = false;
+
+  for (const match of content.matchAll(METHOD_CALL_PATTERN)) {
+    const members = calleeMembers(match[1] ?? '');
+    if (members.length === 0) continue;
+
+    const method = members[members.length - 1] as { name: string | null; computed: boolean };
+    const receiver = members.length >= 2 ? members[members.length - 2] : null;
+    const args = readCallArguments(content, match.index + match[0].length);
+
+    if (method.name === null) {
+      // A computed method name may be a DOM mutation the analyser cannot
+      // follow: the script fails closed when it reads state as well.
+      mutates = true;
+      dynamic = true;
+      continue;
+    }
+
+    const name = method.name.toLowerCase();
+    const receiverName = receiver?.name?.toLowerCase() ?? null;
+
+    if (ATTRIBUTE_WRITING_METHODS.has(name)) {
+      mutates = true;
+      if (writtenAttributeName(method.name, args) === null) dynamic = true;
+      continue;
+    }
+
+    if (receiverName === 'classlist' && CLASS_LIST_WRITING_METHODS.has(name)) {
+      mutates = true;
+      // `toggle` names the class first and takes the force flag second.
+      const names = args ? (name === 'toggle' ? args.slice(0, 1) : args) : [];
+      if (names.length === 0) {
+        dynamic = true;
+        continue;
+      }
+      for (const className of names) {
+        if (resolveStringExpression(className.trim()) === null) dynamic = true;
+      }
+      continue;
+    }
+
+    if (receiverName === 'style' && STYLE_WRITING_METHODS.has(name)) {
+      mutates = true;
+      const argument = args && args.length > 0 ? args[0] : null;
+      if (argument === null || resolveStringExpression(argument.trim()) === null) dynamic = true;
+      continue;
+    }
+
+    if (ELEMENT_MUTATION_METHODS.has(name)) {
+      mutates = true;
+      continue;
+    }
+
+    if (name === 'assign' && receiverName === 'object') {
+      mutates = true;
+      const source = args && args.length > 1 ? (args[1] ?? '').trim() : '';
+      // The written names are the keys of the object: a literal without a
+      // spread names them, anything else the analyser cannot read.
+      if (!source.startsWith('{') || source.includes('...')) dynamic = true;
+    }
+  }
+
+  for (const match of content.matchAll(ATTRIBUTE_VALUE_ASSIGNMENT_PATTERN)) {
+    mutates = true;
+    const attribute = match[2] ?? match[3] ?? null;
+    if (attribute === null || resolveStringExpression(attribute.trim()) === null) dynamic = true;
+  }
+
+  if (
+    CLASS_NAME_ASSIGNMENT_PATTERN.test(content) ||
+    STYLE_ASSIGNMENT_PATTERN.test(content) ||
+    STYLE_PROPERTY_ASSIGNMENT_PATTERN.test(content) ||
+    MARKUP_ASSIGNMENT_PATTERN.test(content)
+  ) {
+    mutates = true;
+  }
+
+  return { mutates, dynamic };
+}
 
 /** Service workers can deliver stylesheet bytes after the static scan. */
 const SERVICE_WORKER_PATTERN =
@@ -1225,8 +1394,7 @@ function scriptMutatesBaseHref(
 
   for (const match of content.matchAll(SET_ATTRIBUTE_PATTERN)) {
     const args = readCallArguments(content, match.index + match[0].length);
-    const attribute = args && args.length > 0 ? args[0] : null;
-    const name = attribute === null ? null : resolveStringExpression(attribute.trim());
+    const name = writtenAttributeName('setAttribute', args);
     if (name !== null && name.toLowerCase() !== 'href') continue;
     if (receiverMayBeBase(match[1] ?? '', baseIds, variables, runtimeBase)) return true;
   }
@@ -1234,8 +1402,7 @@ function scriptMutatesBaseHref(
   for (const match of content.matchAll(SET_ATTRIBUTE_NS_PATTERN)) {
     const args = readCallArguments(content, match.index + match[0].length);
     // The namespace is the first argument; the attribute name is the second.
-    const attribute = args && args.length > 1 ? args[1] : null;
-    const name = attribute === null ? null : resolveStringExpression(attribute.trim());
+    const name = writtenAttributeName('setAttributeNS', args);
     if (name !== null && name.toLowerCase() !== 'href') continue;
     if (receiverMayBeBase(match[1] ?? '', baseIds, variables, runtimeBase)) return true;
   }
@@ -1682,7 +1849,8 @@ export async function planRepositoryFixes(
     if (CSS_IN_JS_PATTERN.test(content)) {
       styleProblems.push(`the script ${sourcePath} builds CSS at runtime, which the analyser cannot resolve`);
     }
-    if (RUNTIME_MUTATION_PATTERN.test(content)) {
+    const mutation = runtimeMutations(content);
+    if (mutation.mutates) {
       // A script that mutates an element can take the patched element over
       // even without a state read, so the scripts are kept for the check
       // that decides whether the fix activates them.
@@ -1703,6 +1871,12 @@ export async function planRepositoryFixes(
       }
       if (scriptReadsDynamicProperty(content) || scriptReadsDynamicSelector(content)) {
         // A computed property or selector may read the state the fix adds.
+        genericStateReadMutationScripts.push(content);
+      }
+      if (mutation.dynamic) {
+        // The script writes a name the analyser cannot read: the mutation may
+        // write the attribute the fix adds, so the script fails closed like a
+        // generic state read.
         genericStateReadMutationScripts.push(content);
       }
     }

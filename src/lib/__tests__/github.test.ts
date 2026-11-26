@@ -2454,6 +2454,163 @@ describe('the sixteenth review regressions', () => {
   });
 });
 
+describe('the seventeenth review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix(
+    remediationCode = '<img id="target" src="x" alt="Photo">',
+    elementHtml = '<img id="target" src="x">'
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml,
+        remediationCode,
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  }
+
+  /**
+   * A repository whose script reacts to a state read on the patched image.
+   *
+   * The read is the expression the script tests and the mutation the one it
+   * runs when the read succeeds.
+   */
+  function conditionalRepository(read: string, mutation: string) {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>document.querySelectorAll('img').forEach(function(img){if(${read})${mutation}});</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+  }
+
+  it('17-H1a: does not patch an element a script takes over through setAttributeNS', async () => {
+    conditionalRepository(
+      "img.getAttribute('alt')",
+      "img.setAttributeNS(null,'class','overlay');"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('17-H1b: does not patch an element a script takes over through a style assignment', async () => {
+    conditionalRepository(
+      "img.getAttribute('alt')",
+      "img.style='position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f';"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('17-H1c: does not patch an element a script takes over through a class name compound', async () => {
+    conditionalRepository("img.getAttribute('alt')", "img.className+=' overlay';");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('17-H1d: does not patch an element a script takes over through an attribute node', async () => {
+    conditionalRepository("img.getAttribute('alt')", "img.attributes.class.value='overlay';");
+
+    await expectRefused(
+      await planAltFix(
+        '<img id="target" class="base" src="x" alt="Photo">',
+        '<img id="target" class="base" src="x">'
+      )
+    );
+  });
+
+  it('17-H1e: does not patch an element a script takes over through outerHTML', async () => {
+    conditionalRepository(
+      "img.getAttribute('alt')",
+      "img.outerHTML='<span class=\"overlay\"></span>';"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('17-H1f: does not patch an element a script takes over through Object.assign', async () => {
+    conditionalRepository(
+      "img.getAttribute('alt')",
+      "Object.assign(img.style,{position:'fixed',inset:'0',width:'100vw',height:'100vh',zIndex:'2147483647',background:'#f0f'});"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('17-H1g: writes a fix when the script mutates an unrelated element', async () => {
+    conditionalRepository(
+      "img.getAttribute('src')",
+      "document.querySelector('.card').classList.add('overlay');"
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('17-H1h: does not patch an element a script mutates through a name it cannot read', async () => {
+    conditionalRepository("img.getAttribute('src')", "img.setAttribute(name,'overlay');");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('17-H1i: writes a fix when the script mutates nothing', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>console.log('hello');</script></body></html>`
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('17-H1j: does not patch an element a script takes over through a computed method name', async () => {
+    conditionalRepository("img.getAttribute('alt')", "img['setAttribute']('class','overlay');");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('17-H1k: does not patch an element a script takes over through a method name it cannot read', async () => {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>const method='setAttribute';document.querySelectorAll('img').forEach(function(img){if(img.getAttribute('alt'))img[method]('class','overlay')});</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+
+    await expectRefused(await planAltFix());
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();

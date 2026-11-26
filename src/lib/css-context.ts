@@ -51,6 +51,14 @@ export interface CssContext {
   keyframes: Map<string, CssKeyframe[]>;
   /** The `src` descriptors of every `@font-face`, by font family. */
   fontFaces: Map<string, string[]>;
+  /**
+   * Whether every `@font-face` of the stylesheet was read.
+   *
+   * A face whose family the analyser cannot read belongs to a family the
+   * browser may still resolve, so a family without a face is unknown rather
+   * than absent.
+   */
+  fontFacesComplete: boolean;
 }
 
 /** The parts of an element a CSS selector can name. */
@@ -438,6 +446,7 @@ export function collectCssRules(css: string): CssContext {
     imports: [],
     keyframes: new Map(),
     fontFaces: new Map(),
+    fontFacesComplete: true,
   };
   collectInto(stripCssComments(css), null, context);
   return context;
@@ -515,10 +524,18 @@ function collectInto(css: string, parentSelector: string | null, context: CssCon
 /** Collect the family and source descriptors of one `@font-face`. */
 function collectFontFace(body: string, context: CssContext): void {
   const declarations = parseDeclarations(body);
-  const familyDeclaration = declarations.find(declaration => declaration.property === 'font-family');
+  // The browser reads the declaration order: the last descriptor of a face is
+  // the effective one, for the family as well as for the source.
+  const familyDeclarations = declarations.filter(
+    declaration => declaration.property === 'font-family'
+  );
+  const familyDeclaration = familyDeclarations[familyDeclarations.length - 1];
   const family = familyDeclaration ? fontFamilyNameOf(familyDeclaration.value) : null;
 
   if (!family) {
+    // The face may belong to a family the browser resolves and the analyser
+    // cannot, so the family table is incomplete.
+    context.fontFacesComplete = false;
     context.unprovable.push('the stylesheet defines a font face without a readable font family');
     return;
   }
@@ -1623,7 +1640,8 @@ function activatedFontFamily(
 function fontFamilyResourceState(
   value: string,
   definitions: Map<string, string>,
-  fontFaces: Map<string, string[]>
+  fontFaces: Map<string, string[]>,
+  fontFacesComplete: boolean
 ): 'present' | 'absent' | 'unknown' {
   const resolved = resolveCustomProperties(value, definitions);
   if (!resolved.trim()) return 'unknown';
@@ -1637,7 +1655,12 @@ function fontFamilyResourceState(
     }
 
     const sources = fontFaces.get(family);
-    if (!sources) continue;
+    if (!sources) {
+      // A face the analyser could not read may belong to this family, so the
+      // family is unknown rather than absent when the table is incomplete.
+      if (!fontFacesComplete) unknown = true;
+      continue;
+    }
 
     for (const source of sources) {
       const state = fontSourceState(source, definitions);
@@ -3984,7 +4007,8 @@ export function destinationCssHarm(
             const fontResource = fontFamilyResourceState(
               family,
               ruleDefinitions,
-              context.fontFaces
+              context.fontFaces,
+              context.fontFacesComplete
             );
             if (fontResource === 'present') {
               return 'the repository stylesheet can activate a customer-side request';

@@ -1533,3 +1533,41 @@ describe('the sixteenth review regressions', () => {
     expect(harm('button:focus-within{background-image:url(/pixel)}')).toBeNull();
   });
 });
+
+describe('the seventeenth review regressions', () => {
+  const ORIGINAL = '<button id="target">Save</button>';
+  const PATCHED = '<button id="target" aria-label="Save">Save</button>';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('17-M1a judges the effective family of a duplicated font face', () => {
+    // The browser keeps the last descriptor of a face, so the face belongs to
+    // the second family and loads its source.
+    const result = harm(
+      '@font-face{font-family:Decoy;src:local("Arial");font-family:Evil;src:url(/evil-font)} [aria-label]{font-family:Evil}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('17-M1b keeps a font family without a face harmless', () => {
+    expect(harm('@font-face{font-family:Evil;src:local(Evil)} [aria-label]{font-family:Evil}')).toBeNull();
+    expect(harm('[aria-label]{font-family:Evil}')).toBeNull();
+  });
+
+  it('17-M1c keeps the duplicate source of a font face refused', () => {
+    const result = harm(
+      '@font-face{font-family:Evil;src:local("Arial");src:url(/font2)} [aria-label]{font-family:Evil}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('17-M1d refuses a font face whose family cannot be read', () => {
+    expect(harm('@font-face{src:url(/font)} [aria-label]{font-family:Evil}')).toContain(
+      'cannot be judged'
+    );
+  });
+});
