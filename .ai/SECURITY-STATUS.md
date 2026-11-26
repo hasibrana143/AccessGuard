@@ -1,6 +1,47 @@
 # AccessGuard — Security Status
 
-Last verification: 2026-11-24
+Last verification: 2026-11-26
+
+## Current HEAD verification
+
+| Check | Result |
+|---|---|
+| Reviewed tree | `a02ba63` was the reviewed base (identical to `origin/main`); the seventeenth-review closure is committed on top of it — the fix `5e30641`, the docs `4f0a69f` |
+| Source-only typecheck | PASS — exit 0 |
+| Lint | PASS — exit 0, 0 errors |
+| Unit / integration suite | PASS — 53 files, 987/987 tests (15 new seventeenth-review regressions) |
+| Coverage | PASS — 70.4 / 63.12 / 73.41 / 72.53 against 55 / 50 / 58 / 57 |
+| Production build | PASS — exit 0, 116 static pages |
+| Browser E2E | PASS with one retry — 78 passed, 1 flaky, 0 failed |
+| `npm audit --audit-level=high` | PASS — Critical 0 / High 0 (15 moderate advisories) |
+| CI security gates | PASS — CI and Docker workflows succeeded on `a02ba63`; the AccessGuard Scan workflow succeeded |
+| Production deployment | NOT CLAIMED — the Vercel build/deploy steps were skipped because the credentials are absent |
+| Strix autonomous pentest | **NOT RUN** — no provider credit or usable model is available, so no Strix evidence is claimed for this cycle |
+| Seventeenth independent review | **NOT READY — Critical 0, High 1, Medium 1** (`.ai/SECURITY-REVIEW-17.md`); both root causes are closed in the working tree |
+| Eighteenth independent review | **PENDING** — the release gate opens only when it returns READY (Critical 0, High 0) |
+
+## Seventeenth independent security review (2026-11-26) — closure in the working tree
+
+**Verdict: NOT READY — Critical 0, High 1, Medium 1, Low 0.** The READY gate requires
+Critical 0 and High 0. The reviewer's own artifact is `.ai/SECURITY-REVIEW-17.md`
+(report only — it changed no shipped source, test, dependency, CI, environment or
+existing `.ai/` file). Every reproduction used local synthetic repositories, a mocked
+GitHub transport, local Chromium and listeners bound to `127.0.0.1`; no production,
+public, third-party or live-GitHub target was touched, and **no Strix result is
+claimed**. The reviewer re-ran the sixteen sixteenth-review payloads in the unsafe
+direction: **16/16 refused with 0 fixes and 0 writes**, and the benign twins stayed
+writable.
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 17-H1 | **High** | The mutation vocabulary of the repository runtime reader | Six equivalent spellings — `setAttributeNS(null,'class')`, `element.style =`, `className +=`, `attributes.<name>.value =`, `outerHTML =` and `Object.assign(element.style, …)` — were invisible to the reader, so a conditional-takeover script was judged harmless: 1 fix, 1 write, and Chromium measured a `1280×720` fixed takeover (`z-index: 2147483647`). The real create-PR route wrote `index.html` and opened a pull request | `RUNTIME_MUTATION_PATTERN` was a closed list of five spellings; `inspectRuntimeScript()` only entered its analysis block when that pattern matched, so a script that mutated through any other spelling never reached the conditional-mutation gate | **CLOSED** — `runtimeMutations()` in `src/lib/github.ts` reads the DOM mutations through the shared member-chain reader (`METHOD_CALL_PATTERN` + `calleeMembers()`): the attribute methods, the class list, the inline style, the attribute node, the markup and the object assignment. `writtenAttributeName()` resolves the written attribute once and is shared with the document-base reader, so `setAttributeNS` has one implementation. A method name or a written name the analyser cannot read fails closed like a generic state read. Regressions `17-H1a`–`17-H1k` |
+| 17-M1 | **Medium** | The `@font-face` descriptor reader | A face that declares its family twice vanished from the family table, the activated family resolved to "no face", and the customer-side `GET /evil-font` was judged harmless and written | `collectFontFace()` read the family with `declarations.find(...)` (the **first** declaration) while it read the source with the **last** one; the browser keeps the last descriptor of a face | **CLOSED** — `collectFontFace()` applies the CSS declaration order to every descriptor of a face, and `CssContext.fontFacesComplete` records whether the family table could be read completely: a family with no readable face is `unknown` rather than `absent`, so the activated-rule resource check fails closed. Regressions `17-M1a`–`17-M1d` |
+
+The fails-before proof: with the two source fixes reverted and the new regressions
+kept, **10 of the 15 new tests fail** (the six harmful spellings, the dynamic
+mutation form, the computed method name, the unreadable method name and the
+duplicate font family) and the five benign-boundary tests pass; with the fixes
+restored all 15 pass.
 
 ## Sixteenth independent security review (2026-11-24) — closure shipped
 

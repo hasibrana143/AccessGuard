@@ -1,6 +1,30 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + fourteenth-review closure** · Date: 2026-11-24 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + seventeenth-review closure** · Date: 2026-11-26 · Owner: CTO agent
+
+## Current verification (2026-11-26 — seventeenth-review closure)
+
+The seventeenth independent review (`.ai/SECURITY-REVIEW-17.md`) returned **NOT READY — Critical 0, High 1, Medium 1**. Both root causes are closed in the shipped source with 15 permanent regressions:
+
+- **17-H1 (High)** — the repository runtime reader recognised only five DOM mutation spellings, so six equivalent paths (`setAttributeNS`, `element.style =`, `className +=`, `attributes.<name>.value =`, `outerHTML =`, `Object.assign(element.style, …)`) reached the customer page. `runtimeMutations()` now reads every statically resolvable mutation through the shared member-chain reader, and a mutation whose written name it cannot read fails closed.
+- **17-M1 (Medium)** — the `@font-face` reader kept the first `font-family` descriptor while the browser keeps the last, so a face could vanish from the family table and its customer-side request be judged harmless. Every descriptor now follows the CSS declaration order, and an incomplete family table reports `unknown` instead of `absent`.
+
+The fails-before proof: with only the two source fixes reverted and the new regressions kept, **10 of the 15 new tests fail** (the six harmful mutation spellings, the dynamic mutation form, the computed method name, the unreadable method name and the duplicate font family) and the five benign-boundary tests pass; with the fixes restored all 15 pass. Source-only typecheck, lint, the 987-test unit/integration suite, the coverage gates (70.4 / 63.12 / 73.41 / 72.53 against 55 / 50 / 58 / 57), the standalone build (116 static pages), the 79-test Chromium suite (79 passed, 0 flaky) and `npm audit --audit-level=high` (Critical 0, High 0) all pass.
+
+The V23 release gate remains closed while the **eighteenth** independent security review runs. It opens only on READY (Critical 0, High 0). The longer 18-month PLG/enterprise/platform roadmap remains separate future scope.
+
+## Current verification (2026-11-26 — sixteenth-review closure baseline)
+
+The shipped tree at `a02ba63` matches `origin/main`. Source-only typecheck, lint, the 972-test unit/integration suite, the coverage gates, the standalone build, the 79-test Chromium suite and `npm audit --audit-level=high` all pass; the CI, Docker, AccessGuard Scan and Deploy workflows also completed successfully on that head. The Deploy workflow skipped every Vercel build/deploy step because the Vercel credentials are absent, so no production deployment is claimed.
+
+## Completion forecast (2026-11-26)
+
+| Scope | Evidence-based estimate | What controls it |
+|---|---|---|
+| **V23 release-ready** | **Same day if the seventeenth review returns READY**; if it returns NOT READY, one more closure round (~1 focused agent day, matching the eight review→closure cycles already completed on 2026-11-23/24) followed by a re-review | The seventeenth review verdict only |
+| **Production deployment** | Within hours of the gate opening | Owner approval + the missing Vercel credentials (the Deploy workflow currently skips every Vercel step) |
+| **`.ai/TASKS.md` P1/P2 (16 open items)** | **~8–12 weeks of focused agent time** for the code-complete set | SOC 2 audit, 3 design partners / 2 case studies, the mobile-scanning partner and annual billing / Stripe Tax depend on external parties and run on their own clock |
+| **`ROADMAP.md` 18-month plan (41 stories: 14 PLG, 15 ENT, 12 PLT)** | **Quarters for the code-heavy part, and not fully agent-completable at all** | It is written for a 25–39 FTE team with a $3.8M Year-1 budget; the insurance binder, expert-network staffing, partner LOIs and the FedRAMP 3PAO cannot be delivered by an agent |
 
 ## What shipped
 

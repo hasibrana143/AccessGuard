@@ -1,6 +1,40 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-24 (sixteenth-review closure)
+Last run: 2026-11-26 (seventeenth-review closure)
+
+## Current verification (2026-11-26 — seventeenth-review closure)
+
+| Check | Result |
+|---|---|
+| Git state | Base `a02ba63` equals `origin/main`; the closure is committed on top of it — the fix `5e30641`, the docs `4f0a69f` |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0, no diagnostics |
+| `npm run lint` | PASS — exit 0, no ESLint errors |
+| `npx vitest run --coverage` | PASS — 53 files, 987/987 tests (15 new seventeenth-review regressions) |
+| Coverage | PASS — statements 70.4% (threshold 55) · branches 63.12% (50) · functions 73.41% (58) · lines 72.53% (57) |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS — 79 tests, 79 passed, 0 failed, 0 flaky (4.1m) |
+| `npm audit --audit-level=high --json` | PASS — exit 0, Critical 0 / High 0 (15 moderate advisories) |
+| Fails-before proof | PASS — with only the two source fixes reverted and the new regressions kept, **10 of the 15 new tests fail** (the six harmful mutation spellings, the dynamic mutation form, the computed method name, the unreadable method name and the duplicate font family) and the five benign-boundary tests pass; with the fixes restored all 15 pass |
+| Seventeenth-review closure | `src/lib/github.ts` (the runtime mutation reader), `src/lib/css-context.ts` (the `@font-face` reader), `src/lib/__tests__/github.test.ts` (11 regressions), `src/lib/__tests__/css-context.test.ts` (4 regressions) |
+
+## Current HEAD verification
+
+| Check | Result |
+|---|---|
+| Git state | PASS — `main` is at `a02ba63` and matches `origin/main`; the only working-tree item is the pre-existing untracked `.playwright-mcp/` directory |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0, no diagnostics |
+| `npm run lint` | PASS — exit 0, no ESLint errors |
+| `npx vitest run --coverage` | PASS — 53 files, 972/972 tests |
+| Coverage | PASS — statements 70.3% (threshold 55) · branches 63.09% (50) · functions 73.36% (58) · lines 72.38% (57) |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS with one retry — 79 tests, 78 passed, 1 flaky, 0 failed (the authenticated landing CTA passed on the retry) |
+| `npm audit --audit-level=high --json` | PASS — exit 0, Critical 0 / High 0 (15 moderate advisories) |
+| CI on `a02ba63` | PASS — CI, Docker, AccessGuard Scan and Deploy workflows completed successfully |
+| Production deployment | NOT CLAIMED — the Deploy workflow completed, but every Vercel build/deploy step was skipped because the Vercel credentials are absent |
+| Environment recovery | The first unit run failed only because Docker Desktop was stopped (`localhost:5432` unavailable). Starting the local Postgres/Redis containers and rerunning `npm run db:seed` restored the documented dev fixture; the rerun passed 972/972 |
+| `gbrain context_pack` | PASS — the connection answered; it holds no cards, facts or open threads for AccessGuard, so there was no stored project context to load |
+
+## Sixteenth independent security review evidence
 
 ## Sixteenth independent security review evidence
 

@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Current phase | **SECURITY FIX LOOP — V23 sixteenth-review closure shipped, seventeenth review pending** 🟡 |
-| Current task | Close the eleven sixteenth-review findings (16-H1…16-H7, 16-M1…16-M4) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) |
+| Current phase | **SECURITY FIX LOOP — V23 seventeenth-review closure shipped, eighteenth review pending** 🟡 |
+| Current task | Close the seventeenth review's two findings (17-H1 runtime mutation vocabulary, 17-M1 `@font-face` descriptor order) at their root cause, with a permanent regression each; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the sixteenth review reproduced **eleven new equivalent paths** (High 7, Medium 4); all eleven are now closed at their root cause and every gate is green. The release gate stays closed until a **seventeenth** independent review returns READY |
-| Blocked | The release gate stays closed until a **seventeenth** independent review returns READY; Strix autonomous pentest remains unavailable — every provider refused the run (quota / EOL model / no credits), so no Strix evidence exists for this cycle |
-| Next action | Push the sixteenth-review closure to `origin/main`, verify the four CI workflows on the pushed head and then run the seventeenth independent security review |
-| Last verification | 2026-11-24 — sixteenth-review closure: source-only typecheck 0, lint 0, vitest 53 files/972 tests, coverage 70.3/63.09/73.36/72.38, build 0, Playwright 79 tests (78 passed, 1 flaky, 0 failed), npm audit High 0, the recovered prior matrices 118/118 + 192/192 + 24/24 and the two pre-closure harnesses failing exactly as expected (12 failed + 5 passed, 2 failed + 7 passed) |
+| Status | AMBER — the seventeenth independent review returned **NOT READY (High 1, Medium 1)**; both root causes are now closed at their root cause with 15 permanent regressions, and every gate is green. The release gate stays closed until an **eighteenth** independent review returns READY |
+| Blocked | The release gate stays closed until the **eighteenth** independent review returns READY; Strix autonomous pentest remains unavailable — every provider refuses the run (quota / EOL model / no credits), so no Strix evidence exists for this cycle |
+| Next action | Run the eighteenth independent security review of the seventeenth-review closure tree; if READY, close the V23 release gate and request production-deploy approval. If NOT READY, close each reproduced root cause with a permanent regression and repeat the independent review |
+| Last verification | 2026-11-26 — seventeenth-review closure: source-only typecheck 0, lint 0, vitest 53 files/987 tests, coverage 70.4/63.12/73.41/72.53, build 0 (116 static pages), Playwright 79/79 passed (0 flaky), npm audit Critical 0 / High 0 (15 moderate), the fails-before proof 10 of the 15 new regressions failing without the fix |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
 

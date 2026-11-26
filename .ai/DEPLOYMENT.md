@@ -489,6 +489,29 @@ vulnerabilities still exist, so they confirm the closure.
 Strix was **not** run for this cycle: every configured provider refuses the run
 (quota / EOL model / no credits), so no Strix result is claimed.
 
+## The seventeenth-review closure run (2026-11-26)
+
+The closure of the seventeenth-review findings ships as five commits, in the order the
+volume definition of done asks for:
+
+| Commit | Layer | Content |
+|---|---|---|
+| `0d619ae` | state | the seventeenth independent review recorded — the reviewer's own artifact `.ai/SECURITY-REVIEW-17.md` |
+| `5e30641` | security | the two seventeenth-review findings closed at their root cause, with 15 permanent regressions (every statically resolvable DOM mutation form and the unreadable method and written name that fail closed, the CSS declaration order of every `@font-face` descriptor and the incomplete family table) |
+| `4f0a69f` | ai | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
+| this commit | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
+| the releases commit | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
+
+The gate suite that backed the push: `npx tsc -p tsconfig.check.json --noEmit` 0,
+`npm run lint` 0, `npx vitest run --coverage` 53 files / 987 tests, coverage
+70.4 / 63.12 / 73.41 / 72.53 (thresholds 55 / 50 / 58 / 57), `npm run build` 0 (116
+static pages), `npx playwright test --project=chromium` 79/79 with 0 failed,
+`npm audit --audit-level=high` Critical 0 / High 0, plus the fails-before proof at
+10 failures with the five benign-boundary tests passing before and after.
+
+Strix was **not** run for this cycle: every configured provider refuses the run
+(quota / EOL model / no credits), so no Strix result is claimed.
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the
