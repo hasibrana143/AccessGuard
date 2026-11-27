@@ -1,6 +1,26 @@
 # AccessGuard — Final Report
+Cycle: **V23 — verified-fix engine + security hardening + twentieth-review closure** · Date: 2026-11-28 · Owner: CTO agent
 
-Cycle: **V23 — verified-fix engine + security hardening + nineteenth-review closure** · Date: 2026-11-27 · Owner: CTO agent
+## Current verification (2026-11-28 — twentieth review)
+
+The twentieth independent security review (`.ai/SECURITY-REVIEW-20.md`) returned **NOT READY — Critical 0, High 6, Medium 0, Low 2**. The reviewer's own matrix ran **148 writer cases (63 written, 82 refused, 3 review)** and **102 destination CSS cases (62 harm, 40 null)**; the baseline re-run of both matrices on `88afebd` changed 45 writer and 34 CSS verdicts. The Chromium harness took 50 measurements and the real-route harness ran 4 cases (three harmful cases answered HTTP 200 with the write, the pull request and the audit trail; the refused control answered HTTP 400 with no branch, no file, no pull request and no audit record).
+
+- **20-H1 (High)** — the object-utility family was recognised only when the receiver chain was literally `Object`, so `window.Object.assign(img,{alt:''})`, `globalThis.Object.assign(img,{alt:''})`, `Object.assign.call(null,img,{alt:''})` and `const o=Object.assign;o(img,{alt:''})` emptied the alternative text the fix adds while the direct spelling was refused — the browser cannot tell the five apart.
+- **20-H2 (High)** — the markup read was invisible: `img.outerHTML.indexOf('alt')>-1` let a runtime gate a takeover on the attribute the fix adds, and Chromium measured a `1280×720` fixed takeover after the merge.
+- **20-H3 (High)** — the destination cascade came from the **repository's scan order**, not the **document's order**, and the stylesheets of different documents were merged: a `<style>` block before a linked stylesheet, two `<link>`s in the reverse tree order and a competing rule on another page were all judged wrongly.
+- **20-H4 (High)** — an escaped CSS identifier was over-counted (`.md\:flex` and `.\000063ard` were a class **and** a type), so a rule the browser judges weaker won the tie.
+- **20-H5 (High)** — the `.call` / `.apply` branch took the method from the **last** chain segment, so `Object.getOwnPropertyDescriptor(Element.prototype,'removeAttribute').value.call(img,'alt')` removed the alternative text the fix adds while the destructured twin was refused.
+- **20-H6 (High)** — a tagged-template invocation was not a call at all: `img.removeAttribute`alt`` and `img.toggleAttribute`alt`` removed the alternative text the fix adds while the parenthesised twins were refused.
+- **20-L1 (Low)** — a `:root` / `html` rule made the whole destination unprovable, so every fix of an ordinary repository was refused.
+- **20-L2 (Low)** — a read of an unrelated attribute through `.apply` refused every fix of the repository.
+
+**All eight are now closed at their root cause**, together with the two residuals the closure exposed (the **read** side of the tagged template — `img.getAttribute`alt`` reads the attribute the fix adds — and a stylesheet another stylesheet imports being judged on its own when its **name** sorted first) — **34 permanent regressions** (11 in `css-context.test.ts`, 23 in `github.test.ts`), the unit suite grown from 1075 to **1098 tests**.
+
+The fails-before proof, run by the CTO on the shipped tree with only the source reverted and the new regressions kept: **11 destination failures** and **14 writer failures** (every harmful path the pre-closure tree accepted), while every benign twin passes before and after.
+
+The gate suite on the closure tree: source-only typecheck **0**, lint **0** (0 errors, 0 warnings), `npx vitest run --coverage` **54 files / 1098 tests passed**, coverage **71.38 / 63.81 / 75.02 / 73.7** (thresholds 55 / 50 / 58 / 57), `npm run build` **0** (116 static pages), `npx playwright test --project=chromium` **79 passed, 0 failed** (4.1 min), `npm audit --audit-level=high` **Critical 0 / High 0** (15 moderate advisories in the development tooling chain only).
+
+The release gate stays **closed**: it opens only when a fresh **twenty-first independent review** returns READY (Critical 0, High 0) against this closure tree. No production deployment is claimed: the Deploy workflow skips every Vercel step without the credentials, and the owner's approval is still required.
 
 ## Current verification (2026-11-27 — nineteenth review)
 

@@ -1,18 +1,18 @@
 # AccessGuard — Security Status
 
-Last verification: 2026-11-26
+Last verification: 2026-11-28
 
 ## Current HEAD verification
 
 | Check | Result |
 |---|---|
-| Reviewed tree | `a02ba63` was the reviewed base (identical to `origin/main`); the seventeenth-review closure is committed on top of it — the fix `5e30641`, the docs `4f0a69f` |
+| Reviewed tree | `c5a6c4c` was the reviewed base (identical to `origin/main`); the twentieth-review closure is committed on top of it — the review artifact `d482d5c`, the cascade / specificity / root-selector fix `e11832f`, the writer-side fix `2a3249e` |
 | Source-only typecheck | PASS — exit 0 |
 | Lint | PASS — exit 0, 0 errors |
-| Unit / integration suite | PASS — 53 files, 987/987 tests (15 new seventeenth-review regressions) |
-| Coverage | PASS — 70.4 / 63.12 / 73.41 / 72.53 against 55 / 50 / 58 / 57 |
+| Unit / integration suite | PASS — 54 files, 1098/1098 tests (23 new twentieth-review writer regressions, 11 new destination regressions) |
+| Coverage | PASS — 71.38 / 63.81 / 75.02 / 73.7 against 55 / 50 / 58 / 57 |
 | Production build | PASS — exit 0, 116 static pages |
-| Browser E2E | PASS with one retry — 78 passed, 1 flaky, 0 failed |
+| Browser E2E | PASS — 79 passed, 0 failed, 0 skipped (4.1 min) |
 | `npm audit --audit-level=high` | PASS — Critical 0 / High 0 (15 moderate advisories) |
 | CI security gates | PASS — the CI and Docker workflows succeeded on `53e2af0` (runs 45810724743 and 45810724518); the AccessGuard Scan workflow succeeded with its documented secret-gated skip |
 | Production deployment | NOT CLAIMED — the Vercel build/deploy steps were skipped because the credentials are absent |
@@ -20,7 +20,54 @@ Last verification: 2026-11-26
 | Seventeenth independent review | **NOT READY — Critical 0, High 1, Medium 1** (`.ai/SECURITY-REVIEW-17.md`); both root causes are closed at their root cause in the shipped source (`5e30641`) |
 | Eighteenth independent review | **NOT READY — Critical 0, High 1, Medium 1, Low 1** (`.ai/SECURITY-REVIEW-18.md`); **all three findings are closed at their root cause** in the shipped source (`b16dafd`) |
 | Nineteenth independent review | **NOT READY — Critical 0, High 3, Medium 2, Low 2** (`.ai/SECURITY-REVIEW-19.md`); the three High findings are **closed at their root cause** in the shipped source, the two Medium findings and the two Low findings are closed in the destination CSS reader (see the nineteenth-review section below) |
-| Twentieth independent review | **PENDING** — the release gate opens only when it returns READY (Critical 0, High 0) |
+| Twentieth independent review | **NOT READY — Critical 0, High 6, Medium 0, Low 2** (`.ai/SECURITY-REVIEW-20.md`); **all eight findings are closed at their root cause** in the shipped source (`e11832f`, `2a3249e`), together with the two residuals the closure exposed |
+| Twenty-first independent review | **PENDING** — the release gate opens only when it returns READY (Critical 0, High 0) |
+
+## Twentieth independent security review (2026-11-28) — closure shipped
+
+**Verdict: NOT READY — Critical 0, High 6, Medium 0, Low 2.** The READY gate requires
+Critical 0 and High 0. The reviewer's own artifact is `.ai/SECURITY-REVIEW-20.md`
+(report only — it changed no shipped source, test, dependency, CI, environment or
+existing `.ai/` file). Every reproduction used local synthetic repositories, a mocked
+GitHub transport, local Chromium and listeners bound to `127.0.0.1`; no production,
+public, third-party or live-GitHub target was touched, and **no Strix result is
+claimed**. The reviewer ran a 148-case writer matrix (63 written, 82 refused, 3
+review) and a 102-case destination CSS matrix (62 harm, 40 null); the baseline re-run
+of both matrices on `88afebd` changed 45 writer and 34 CSS verdicts. The Chromium
+harness took 50 measurements and the real-route harness ran 4 cases (three harmful
+cases answered HTTP 200 with the write, the pull request and the audit trail; the
+refused control answered HTTP 400 with no branch, no file, no pull request and no
+audit record).
+
+The six High findings share two shapes: the writer's **vocabularies were still
+spelling-bound** (the object utilities, the markup read, the `.call` / `.apply`
+method and the tagged template), and the destination CSS reader computed the
+**repository's scan order** instead of the **document's order**.
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 20-H1 | **High** | The **object utilities** on the write side | `window.Object.assign(img,{alt:''})`, `globalThis.Object.assign(img,{alt:''})`, `Object.assign.call(null,img,{alt:''})` and `const o=Object.assign;o(img,{alt:''})` emptied the alternative text the fix adds; the direct spelling `Object.assign(img,{alt:''})` was refused, so the browser could not tell the five apart | the branch keyed on the **literal** receiver `Object` (`receiver.length === 1 && receiver[0].name === 'object'`), so every other spelling of the same utility fell through to the generic branch and was dropped; the same restriction was in `runtimeMutations()` | **CLOSED** — the family is closed **by construction**: the utility is resolved by the identity of the constructor it holds (`Object`, `window.Object`, `globalThis.Object`, `self.Object`, a `const` alias, a bound alias), a `.call` / `.apply` is unwrapped to the utility's **own** argument list, and the target is the utility's **first argument**. A utility, an alias or an argument list the reader cannot resolve **fails closed** like an unreadable name. The same resolution runs in the dynamic model, so that bucket is no longer spelling-bound. Regressions `20-H1a`–`20-H1d` with the benign twins `20-H1e` and `20-H1f` |
+| 20-H2 | **High** | The **read** side of the runtime reader | `img.outerHTML.indexOf('alt')>-1` (and the `.includes`, `!==` and `.match` spellings) let a runtime gate a takeover on the attribute the fix adds: the image was covered by a `1280×720` fixed overlay after the merge | the generic-read pattern named three APIs (`getAttributeNames()`, `hasAttributes()`, `.attributes`) and omitted the **markup read**, which carries the same attributes — while the sibling `img.attributes.outerHTML…` was caught by the `.attributes` branch | **CLOSED** — the markup read joins the generic state reads: a runtime that reads the markup of the element sees the attribute the fix adds. The markup of the **document** (`document.body.innerHTML`) deliberately stays out — the review recorded it as the customer's own unconditional runtime. Regressions `20-H2a`–`20-H2d` with the twin `20-H2e` |
+| 20-H3 | **High** | The **cascade** of the destination CSS reader | A `<style>` block before a linked stylesheet, two `<link>`s in the reverse tree order, and a competing rule on another page were all judged with the **repository's scan order** instead of the **document's order**, so a fix that activates a customer-side font request was written | every stylesheet of the repository was merged into **one** cascade, and the order of that cascade was the order the scan happened to read the files in | **CLOSED** — every document gets its **own** cascade: its `<style>` blocks and its `<link rel="stylesheet">` elements in the order the browser applies them, the sheets an `@import` rule names **before** the sheet that imports them. The stylesheets of two documents never share one cascade, the stylesheet no document references is judged on its own, and a stylesheet another stylesheet imports belongs to the importer's cascade — the name of a file may not decide the verdict. The destination is refused when **any** cascade harms. Regressions `20-H3a`–`20-H3d` with the benign twins `20-C1h` and `20-C1i` |
+| 20-H4 | **High** | The **specificity** of the destination CSS reader | `.md\:flex` and `.\000063ard` were counted as a class **and** a type (0,1,1), so a rule the browser judges weaker won the tie and a fix that activates a customer-side request was written | the specificity reader consumed `[\w-]` only, so the backslash of an escape ended the identifier and the escape was counted as a type selector | **CLOSED** — `endOfIdentifier()` consumes a CSS escape as part of the identifier (up to six hexadecimal digits and an optional whitespace, or the escaped character), so `.md\:flex` is one class (0,1,0) and `.\000063ard` is one class too. Regressions `20-H4a`–`20-H4c` |
+| 20-H5 | **High** | The **`.call` / `.apply`** branch of the writer | `Object.getOwnPropertyDescriptor(Element.prototype,'removeAttribute').value.call(img,'alt')` removed the alternative text the fix adds, while the destructured twin `const {removeAttribute}=Element.prototype;removeAttribute.call(img,'alt')` was refused | the branch took the called method from the **last** member of the receiver chain, which here is `value` — the property that **holds** the function, not the function — so the write was recorded as a write of an unrelated property | **CLOSED** — `calledMethod()` resolves the method the chain **holds**: a function kept in a property is resolved to the method it is, and a chain the reader cannot resolve **fails closed** instead of losing the effect. Regressions `20-H5a` with the twin `20-H5b` |
+| 20-H6 | **High** | The **call syntaxes** of the writer | `img.removeAttribute`alt`` and `img.toggleAttribute`alt`` removed the alternative text the fix adds; the parenthesised twins were refused | `METHOD_CALL_PATTERN` requires an opening parenthesis, so a tagged-template invocation was **not a call at all** — neither the write scanner nor the dynamic model saw it | **CLOSED** — every call syntax is modelled: `TAGGED_TEMPLATE_CALL_PATTERN` reads a tagged-template invocation as a call whose first argument is the template strings, on the write side **and** on the read side (`img.getAttribute`alt`` reads the attribute the fix adds). An unreadable tag fails closed. Regressions `20-H6a`–`20-H6f` with the twins `20-H6c` and `20-H6d` |
+| 20-L1 | **Low** | A fail-closed false positive in the destination CSS reader | A stylesheet with `:root{--brand:#000}` **next to** the rule the fix activates made the whole destination unprovable — every fix of the repository was refused | `matchingSpecificity()` **skipped** the root selectors and then returned `null`, and the caller read that `null` as a selector whose specificity cannot be read | **CLOSED** — the result is now a discriminated value (`none` / `unreadable` / `specificity`): a `:root` / `html` rule is **skipped** (it cannot match the patched element), not turned into an unprovable destination. The custom properties it defines are still resolved on the path the fix activates. Regressions `20-L1a`–`20-L1b` |
+| 20-L2 | **Low** | A fail-closed false positive in the read side | `img.getAttribute.apply(img,['src'])` — a read of an **unrelated** attribute — refused every fix of the repository | the branch decided between the `.call` and the `.apply` argument rule **after** it had already replaced the method with the called one, so the `.apply` spelling was read with the `.call` rule and the attribute never resolved | **CLOSED** — the spelling is captured first, so the `.apply` list is split and its first element is the attribute the read names. `img.getAttribute.apply(img,['src'])` is writable again while `img.getAttribute.apply(img,['alt'])` stays refused. Regressions `20-L2a` with the twin `20-L2b` |
+
+**Two residuals the closure exposed are closed in the same cycle.** The **read** side of
+the tagged template (`img.getAttribute`alt`` reads the attribute the fix adds) was
+still invisible when the writer scope was closed, and a stylesheet another stylesheet
+imports was still judged on its own when its **name** sorted first — so the verdict
+depended on the file name. Both are closed with permanent regressions (`20-H6e`,
+`20-H6f`, `20-H3d`, `20-H3e`).
+
+The fails-before proof, run by the CTO on the shipped tree (only the source reverted,
+the new regressions kept): **11 destination failures** (20-H3a–c, 20-H4a–c, 20-L1a–b,
+20-C1h–i and the github-side 20-L1a) and **14 writer failures** (20-H1a–d, 20-H2a–d,
+20-H5a, 20-H6a, 20-H6b, 20-L2a, 20-H6e, 20-H3d) — every benign twin passes before and
+after.
+
 
 ## Nineteenth independent security review (2026-11-27) — closure shipped
 

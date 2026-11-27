@@ -1,6 +1,36 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-27 (nineteenth-review closure)
+Last run: 2026-11-28 (twentieth-review closure)
+
+## Twentieth-review closure evidence (2026-11-28)
+
+The closure of the twentieth review's six High findings and two Low findings ships
+with permanent regressions — 23 in `src/lib/__tests__/github.test.ts` and 11 in
+`src/lib/__tests__/css-context.test.ts`. The unit suite grew from 1075 to **1098**
+tests.
+
+The fails-before proof, run by the CTO on the shipped tree (only the source reverted,
+the new regressions kept):
+
+| Reverted source | Suite | Result |
+|---|---|---|
+| `src/lib/github.ts` (writer scope) | `github.test.ts -t "20-"` | **14 failed**, 15 passed — the failing cases are the harmful paths the pre-closure tree accepted (`20-H1a`–`20-H1d`, `20-H2a`–`20-H2d`, `20-H5a`, `20-H6a`, `20-H6b`, `20-L2a`, `20-H6e`, `20-H3d`); the ones that pass are the benign twins and the CSS-scope cases the previous commit had already closed |
+| `src/lib/css-context.ts` (destination scope) | `css-context.test.ts` + `github.test.ts -t "20-"` | **11 failed** — `20-H3a`–`20-H3c`, `20-H4a`–`20-H4c`, `20-L1a`–`20-L1b`, `20-C1h`, `20-C1i` and the github-side `20-L1a`; every benign twin passed before and after |
+
+The gate suite that backed the push, run by the CTO on the shipped tree:
+
+| Gate | Command | Exit code | Evidence |
+|---|---:|---:|---|
+| Source-only typecheck | `npx tsc -p tsconfig.check.json --noEmit` | **0** | no diagnostics |
+| Lint | `npm run lint` | **0** | eslint reported no error and no warning |
+| Unit suite + coverage gate | `npx vitest run --coverage` | **0** | 54 test files, **1098 tests passed**, 0 failed; coverage 71.38 % statements / 63.81 % branches / 75.02 % functions / 73.7 % lines against the 55 / 50 / 58 / 57 thresholds |
+| Standalone build | `npm run build` | **0** | Next.js standalone build, compiled in 11.6 s, **116 static pages** generated |
+| Chromium E2E | `npx playwright test --project=chromium` | **0** | **79 passed**, 0 failed, 0 skipped (4.1 min) |
+| Dependency audit | `npm audit --audit-level=high` | **0** | **0 high / 0 critical**; 15 moderate advisories remain, all in the development tooling chain (`vitest` / `@vitest/mocker`, `fast-copy`, `glob` / `minimatch` through `@sentry/nextjs` and the ESLint parser) — none in the shipped runtime path |
+
+No Strix result is claimed for this cycle: every configured provider refuses the run
+(quota / EOL model / no credits).
+
 
 ## Nineteenth-review closure evidence (2026-11-27)
 
