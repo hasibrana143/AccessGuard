@@ -75,9 +75,19 @@ export interface StyleSource {
   dynamic: boolean;
 }
 
-/** The `<style>` sources of an HTML document. */
-export function collectStyleSources(html: string): StyleSource[] {
-  const sources: StyleSource[] = [];
+/** A `<style>` block of a document and where it stands in the document. */
+interface StyleBlock {
+  /** The position of the block in the document. */
+  position: number;
+  /** The CSS of the block. */
+  css: string;
+  /** The block is built at runtime, so the analyser cannot read it. */
+  dynamic: boolean;
+}
+
+/** The `<style>` blocks of an HTML document, in the order they appear. */
+function styleBlocks(html: string): StyleBlock[] {
+  const blocks: StyleBlock[] = [];
   const pattern = /<style\b([^>]*)>([\s\S]*?)<\/style\s*>/gi;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(html)) !== null) {
@@ -86,9 +96,54 @@ export function collectStyleSources(html: string): StyleSource[] {
     const dynamic =
       css.trim().startsWith('{') ||
       attributes.some(attribute => attribute.name === 'dangerouslysetinnerhtml');
-    sources.push({ css, dynamic });
+    blocks.push({ position: match.index, css, dynamic });
   }
-  return sources;
+  return blocks;
+}
+
+/** The `<style>` sources of an HTML document. */
+export function collectStyleSources(html: string): StyleSource[] {
+  return styleBlocks(html).map(block => ({ css: block.css, dynamic: block.dynamic }));
+}
+
+/**
+ * A style source of a document, in the order the browser applies it.
+ *
+ * The browser applies the `<style>` blocks and the `<link rel="stylesheet">`
+ * elements of a document in the order they appear in it, so the analyser reads
+ * them in that order too.
+ */
+export interface DocumentStyleSource {
+  /** The CSS of a `<style>` block, or null when the source is a link. */
+  css: string | null;
+  /** The `href` of a `<link rel="stylesheet">`, or null when the source is a block. */
+  href: string | null;
+  /** The block is built at runtime, so the analyser cannot read it. */
+  dynamic: boolean;
+  /** Why the source cannot be read, or null when it can. */
+  unprovable: string | null;
+}
+
+/** The style sources of a document, in the order the browser applies them. */
+export function collectDocumentStyleSources(html: string): DocumentStyleSource[] {
+  const entries: Array<{ position: number; source: DocumentStyleSource }> = [];
+
+  for (const block of styleBlocks(html)) {
+    entries.push({
+      position: block.position,
+      source: { css: block.css, href: null, dynamic: block.dynamic, unprovable: null },
+    });
+  }
+
+  for (const link of orderedStylesheetLinks(html)) {
+    entries.push({
+      position: link.position,
+      source: { css: null, href: link.href, dynamic: false, unprovable: link.unprovable },
+    });
+  }
+
+  entries.sort((a, b) => a.position - b.position);
+  return entries.map(entry => entry.source);
 }
 
 /** The `<style>` blocks of an HTML document. */
@@ -114,23 +169,31 @@ function linkAttributesAreUnreadable(html: string, attributeEnd: number): boolea
   return /["']/.test(trailing.slice(0, tagEnd));
 }
 
-/**
- * The stylesheet links of a document.
- *
- * The browser decodes the entities of `rel` and `href`, and a `>` inside a
- * quoted attribute does not end the tag. A link whose attributes cannot be
- * read may hide a stylesheet, so the destination is unprovable.
- */
-export function analyzeStylesheetLinks(html: string): StylesheetLinkAnalysis {
-  const links: string[] = [];
-  const unprovable: string[] = [];
+/** A stylesheet link of a document and where it stands in the document. */
+interface OrderedStylesheetLink {
+  /** The position of the link in the document. */
+  position: number;
+  /** The decoded `href`, or null when the link cannot be read. */
+  href: string | null;
+  /** Why the link cannot be read, or null when it can. */
+  unprovable: string | null;
+}
+
+/** The stylesheet links of a document, in the order they appear in it. */
+function orderedStylesheetLinks(html: string): OrderedStylesheetLink[] {
+  const ordered: OrderedStylesheetLink[] = [];
   const tags = parseHtmlTags(html);
   const tagsByStart = new Map(tags.map(tag => [tag.start, tag]));
 
   for (const candidate of html.matchAll(/<link\b/gi)) {
-    const tag = tagsByStart.get(candidate.index);
+    const position = candidate.index;
+    const tag = tagsByStart.get(position);
     if (!tag) {
-      unprovable.push('a stylesheet link has attributes the analyser cannot read');
+      ordered.push({
+        position,
+        href: null,
+        unprovable: 'a stylesheet link has attributes the analyser cannot read',
+      });
       continue;
     }
 
@@ -142,22 +205,56 @@ export function analyzeStylesheetLinks(html: string): StylesheetLinkAnalysis {
 
     if (rel.split(/\s+/).includes('stylesheet')) {
       if (!href) {
-        unprovable.push('a stylesheet link has no readable href');
+        ordered.push({
+          position,
+          href: null,
+          unprovable: 'a stylesheet link has no readable href',
+        });
         continue;
       }
       if (linkAttributesAreUnreadable(html, lastAttributeEnd)) {
-        unprovable.push('a stylesheet link has attributes the analyser cannot read');
+        ordered.push({
+          position,
+          href: null,
+          unprovable: 'a stylesheet link has attributes the analyser cannot read',
+        });
         continue;
       }
-      links.push(href);
+      ordered.push({ position, href, unprovable: null });
       continue;
     }
 
     // Without a readable `rel`, an unreadable tag may hide the stylesheet
     // token the browser would use.
     if (!relAttribute && linkAttributesAreUnreadable(html, lastAttributeEnd)) {
-      unprovable.push('a stylesheet link has attributes the analyser cannot read');
+      ordered.push({
+        position,
+        href: null,
+        unprovable: 'a stylesheet link has attributes the analyser cannot read',
+      });
     }
+  }
+
+  return ordered;
+}
+
+/**
+ * The stylesheet links of a document.
+ *
+ * The browser decodes the entities of `rel` and `href`, and a `>` inside a
+ * quoted attribute does not end the tag. A link whose attributes cannot be
+ * read may hide a stylesheet, so the destination is unprovable.
+ */
+export function analyzeStylesheetLinks(html: string): StylesheetLinkAnalysis {
+  const links: string[] = [];
+  const unprovable: string[] = [];
+
+  for (const link of orderedStylesheetLinks(html)) {
+    if (link.unprovable !== null) {
+      unprovable.push(link.unprovable);
+      continue;
+    }
+    links.push(link.href as string);
   }
 
   return { links, unprovable };
@@ -2023,6 +2120,45 @@ function closingParenthesis(text: string, open: number): number {
 }
 
 /**
+ * The end of the identifier that starts at `index`.
+ *
+ * A CSS escape is part of the identifier: `.md\:flex` is one class and
+ * `.\000063ard` is one class too. The escape is a backslash with up to six
+ * hexadecimal digits and an optional whitespace, or a backslash with the
+ * character it escapes.
+ */
+function endOfIdentifier(text: string, index: number): number {
+  let cursor = index;
+
+  while (cursor < text.length) {
+    const character = text[cursor] as string;
+
+    if (/[\w-]/.test(character)) {
+      cursor++;
+      continue;
+    }
+
+    if (character === '\\') {
+      cursor++;
+      const hexadecimal = /^[0-9a-fA-F]{1,6}/.exec(text.slice(cursor));
+      if (hexadecimal) {
+        cursor += hexadecimal[0].length;
+        // A hexadecimal escape is terminated by one whitespace.
+        if (/[\r\n\f\t ]/.test(text[cursor] ?? '')) cursor++;
+        continue;
+      }
+      // The escaped character belongs to the identifier.
+      cursor++;
+      continue;
+    }
+
+    break;
+  }
+
+  return cursor;
+}
+
+/**
  * The specificity of one compound selector.
  *
  * The counts follow the CSS cascade: an id counts 100, a class, an attribute
@@ -2041,15 +2177,13 @@ function compoundSpecificity(compound: string): Specificity | null {
 
     if (character === '#') {
       specificity.ids++;
-      index++;
-      while (index < compound.length && /[\w-]/.test(compound[index] as string)) index++;
+      index = endOfIdentifier(compound, index + 1);
       continue;
     }
 
     if (character === '.') {
       specificity.classes++;
-      index++;
-      while (index < compound.length && /[\w-]/.test(compound[index] as string)) index++;
+      index = endOfIdentifier(compound, index + 1);
       continue;
     }
 
@@ -2065,18 +2199,14 @@ function compoundSpecificity(compound: string): Specificity | null {
       // A pseudo-element (`::before`) counts as a type.
       if (compound[index + 1] === ':') {
         specificity.types++;
-        index += 2;
-        while (index < compound.length && /[\w-]/.test(compound[index] as string)) index++;
+        index = endOfIdentifier(compound, index + 2);
         continue;
       }
 
       index++;
-      let name = '';
-      while (index < compound.length && /[\w-]/.test(compound[index] as string)) {
-        name += compound[index];
-        index++;
-      }
-      name = name.toLowerCase();
+      const nameEnd = endOfIdentifier(compound, index);
+      const name = decodeCssEscapes(compound.slice(index, nameEnd)).toLowerCase();
+      index = nameEnd;
 
       let argument: string | null = null;
       if (compound[index] === '(') {
@@ -2131,11 +2261,11 @@ function compoundSpecificity(compound: string): Specificity | null {
     // A type selector counts as a type.
     if (/[A-Za-z_\\]/.test(character)) {
       specificity.types++;
-      while (index < compound.length && /[\w\\-]/.test(compound[index] as string)) index++;
+      index = endOfIdentifier(compound, index);
       // A namespace (`svg|a`) continues the name.
       if (compound[index] === '|' && compound[index + 1] !== '=') {
         index++;
-        while (index < compound.length && /[\w\\-]/.test(compound[index] as string)) index++;
+        index = endOfIdentifier(compound, index);
       }
       continue;
     }
@@ -2180,17 +2310,24 @@ function specificityOfSelector(selector: string): Specificity | null {
 }
 
 /**
- * The specificity of the most specific part of a selector list that may match
- * the element.
+ * The specificity of the part of a selector list that may match the element.
  *
  * The specificity of a selector list is the specificity of the part that
  * matches, so a rule that names the element twice is judged by the more
- * specific of its two parts.
+ * specific of its two parts. A selector list with no part that matches the
+ * element has no specificity at all (`none`), and a part that matches but
+ * whose specificity cannot be read leaves the destination unprovable
+ * (`unreadable`).
  */
+type MatchingSpecificity =
+  | { kind: 'none' }
+  | { kind: 'unreadable' }
+  | { kind: 'specificity'; value: Specificity };
+
 function matchingSpecificity(
   selector: string,
   element: ElementDescriptor
-): Specificity | null {
+): MatchingSpecificity {
   let best: Specificity | null = null;
 
   for (const part of splitTopLevel(selector, ',')) {
@@ -2208,11 +2345,12 @@ function matchingSpecificity(
     if (matchSubject(parseSubject(subject), element) === 'no') continue;
 
     const value = specificityOfSelector(trimmed);
-    if (value === null) return null;
+    if (value === null) return { kind: 'unreadable' };
     if (best === null || compareSpecificity(value, best) > 0) best = value;
   }
 
-  return best;
+  if (best === null) return { kind: 'none' };
+  return { kind: 'specificity', value: best };
 }
 
 /** A declaration that applies to the patched element, with the rank the cascade gives it. */
@@ -4406,13 +4544,14 @@ export function destinationCssHarm(
         const match = matchSelector(rule.selector, element);
         if (match === 'no') continue;
         const specificity = matchingSpecificity(rule.selector, element);
-        if (specificity === null) {
+        if (specificity.kind === 'none') continue;
+        if (specificity.kind === 'unreadable') {
           return 'the repository stylesheet cannot be judged: a selector whose specificity cannot be read';
         }
         for (const declaration of parseDeclarations(rule.declarations)) {
           candidates.push({
             declaration,
-            specificity,
+            specificity: specificity.value,
             inline: false,
             order: order++,
             definite: match === 'yes',
@@ -4484,7 +4623,7 @@ export function destinationCssHarm(
       const same =
         previous !== undefined &&
         previous.length === values.length &&
-        [...previous].sort().join(' ') === [...values].sort().join(' ');
+        [...previous].sort().join('\u0000') === [...values].sort().join('\u0000');
       if (!same) changed.add(property);
     }
 

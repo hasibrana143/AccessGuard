@@ -1743,3 +1743,62 @@ describe('the nineteenth review regressions', () => {
     expect(result).toContain('customer-side request');
   });
 });
+
+describe('the twentieth review regressions', () => {
+  const ORIGINAL = '<button id="target" class="md:flex">Save</button>';
+  const PATCHED = '<button id="target" class="md:flex" aria-label="Save">Save</button>';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('20-H4a gives an escaped class the specificity of one class', () => {
+    // `.md\:flex` is one class, so it ties with `[aria-label]` and the later
+    // rule wins: the browser computes the family the attribute rule defines.
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} .md\\:flex{--f:Local} [aria-label]{--f:Evil} button{font-family:var(--f)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('20-H4b gives a hexadecimal escape the specificity of one class', () => {
+    // `.\000063ard` is the class `card`, so it ties with `[aria-label]` and
+    // the later rule wins.
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} .\\000063ard{--f:Local} [aria-label]{--f:Evil} button{font-family:var(--f)}',
+      '<button id="target" class="card">Save</button>',
+      '<button id="target" class="card" aria-label="Save">Save</button>'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('20-H4c gives an escaped id the specificity of one id', () => {
+    // `#targ\65t` is the id `target`, so it ties with `#target` and the later
+    // rule wins: the browser computes the family the plain id defines.
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} #targ\\65t{--f:Local} #target{--f:Evil} [aria-label]{--f:Local} button{font-family:var(--f)}',
+      '<button id="target">Save</button>',
+      '<button id="target" aria-label="Save">Save</button>'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('20-L1a skips a root rule instead of refusing the destination', () => {
+    // A `:root` rule cannot match the patched element, so it is skipped: the
+    // destination stays provable and the activated rule decides the verdict.
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} :root{--brand:#000} [aria-label]{--f:Evil} button{font-family:var(--f)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('20-L1b keeps a root rule next to a harmless rule harmless', () => {
+    expect(
+      harm(':root{--brand:#000} [aria-label]{--f:Local} button{font-family:var(--f)}')
+    ).toBeNull();
+  });
+});

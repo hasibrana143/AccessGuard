@@ -3115,6 +3115,133 @@ describe('the nineteenth review regressions', () => {
   });
 });
 
+describe('the twentieth review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix(
+    remediationCode = '<img id="target" class="card" src="x" alt="Photo">',
+    elementHtml = '<img id="target" class="card" src="x">'
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml,
+        remediationCode,
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+  }
+
+  /** The stylesheet that loads a font family the fix activates. */
+  const EVIL_CSS =
+    '@font-face{font-family:Evil;src:url(/evil-font)} [alt]{--f:Evil} img{font-family:var(--f)}';
+
+  /** The stylesheet that defines the same property with a local family. */
+  const LOCAL_CSS = '[class~="card"]{--f:Local}';
+
+  it('20-H3a: does not write a fix when a linked stylesheet wins the document order', async () => {
+    // The browser applies the `<style>` block before the linked stylesheet, so
+    // the linked sheet's `[alt]` wins the specificity tie and the customer
+    // browser loads the font.
+    tree(['index.html', 'a.css']);
+    fileContent(
+      'index.html',
+      '<html><head><style>[class~="card"]{--f:Local}</style><link rel="stylesheet" href="a.css"></head><body><img id="target" class="card" src="x"></body></html>'
+    );
+    fileContent('a.css', EVIL_CSS);
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('20-H3b: does not write a fix when the second linked stylesheet wins the document order', async () => {
+    // The second link is the one the browser applies last, so its `[alt]` wins
+    // the specificity tie.
+    tree(['index.html', 'local.css', 'evil.css']);
+    fileContent(
+      'index.html',
+      '<html><head><link rel="stylesheet" href="local.css"><link rel="stylesheet" href="evil.css"></head><body><img id="target" class="card" src="x"></body></html>'
+    );
+    fileContent('local.css', LOCAL_CSS);
+    fileContent('evil.css', EVIL_CSS);
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('20-H3c: does not write a fix when the competing stylesheet belongs to another page', async () => {
+    // The page that holds the element applies the harmful stylesheet; the
+    // other page applies the one that would win the tie. Two pages never
+    // share one cascade.
+    tree(['index.html', 'other.html', 'evil.css', 'local.css']);
+    fileContent(
+      'index.html',
+      '<html><head><link rel="stylesheet" href="evil.css"></head><body><img id="target" class="card" src="x"></body></html>'
+    );
+    fileContent(
+      'other.html',
+      '<html><head><link rel="stylesheet" href="local.css"></head><body><p>other</p></body></html>'
+    );
+    fileContent('evil.css', EVIL_CSS);
+    fileContent('local.css', LOCAL_CSS);
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('20-C1h: writes a fix when the local stylesheet comes last in the document', async () => {
+    // The same stylesheets in the other order: the local family wins the tie,
+    // so the customer browser requests nothing.
+    tree(['index.html', 'local.css', 'evil.css']);
+    fileContent(
+      'index.html',
+      '<html><head><link rel="stylesheet" href="evil.css"><link rel="stylesheet" href="local.css"></head><body><img id="target" class="card" src="x"></body></html>'
+    );
+    fileContent('local.css', LOCAL_CSS);
+    fileContent('evil.css', EVIL_CSS);
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('20-C1i: writes a fix when a linked stylesheet is harmless', async () => {
+    tree(['index.html', 'a.css']);
+    fileContent(
+      'index.html',
+      '<html><head><link rel="stylesheet" href="a.css"></head><body><img id="target" class="card" src="x"></body></html>'
+    );
+    fileContent('a.css', 'body{color:#000}');
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('20-L1a: writes a fix when a root rule stands next to the activated rule', async () => {
+    // A `:root` rule cannot match the patched element, so it is skipped: the
+    // destination stays provable.
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><head><style>:root{--brand:#000} [alt]{--f:Local} img{font-family:var(--f)}</style></head><body><img id="target" class="card" src="x"></body></html>'
+    );
+
+    await expectWritten(await planAltFix());
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();

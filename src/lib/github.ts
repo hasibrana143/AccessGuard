@@ -2,6 +2,7 @@
 import { Octokit } from '@octokit/rest';
 import { decodeHtmlEntities, parseTagAttributes, URI_BASE } from '@/lib/html-attributes';
 import type { ElementContext } from '@/lib/element-ancestors';
+import type { CssContext } from '@/lib/css-context';
 
 const REPOSITORY_ORIGIN = new URL(URI_BASE).origin;
 
@@ -2672,7 +2673,7 @@ export async function planRepositoryFixes(
   // The ancestor reader carries the TypeScript compiler, so it is loaded the
   // same way the element locator is: the compiler stays out of the hot path.
   const { elementAncestors } = await import('@/lib/element-ancestors');
-  const { buildCssContext, destinationCssHarm, collectStyleSources, analyzeStylesheetLinks, extractCssImports, stripCssLineComments, describeElements, introducedElements } =
+  const { buildCssContext, destinationCssHarm, collectDocumentStyleSources, extractCssImports, stripCssLineComments, describeElements, introducedElements } =
     await import('@/lib/css-context');
 
   const candidates = violations.filter(v => v.remediationCode && v.elementHtml);
@@ -2817,8 +2818,8 @@ export async function planRepositoryFixes(
   // every file, the stylesheets a file links and the stylesheets they import.
   // A style source that cannot be read makes the destination unprovable, and an
   // unprovable destination never receives a source patch.
-  const cssSources: Array<{ path: string; css: string; baseUrl?: URL }> = [];
-  const cssPaths = new Set<string>();
+  const cssFiles = new Map<string, string>();
+  const referencedCss = new Set<string>();
   const styleProblems: string[] = [];
   const documentBases = new Map<string, URL>();
   const documentBaseInfo = new Map<string, { ids: Set<string>; hasBase: boolean }>();
@@ -2830,16 +2831,34 @@ export async function planRepositoryFixes(
   // writer decides by reach and effect, not by a list of DOM methods.
   const runtimeWriteScripts: RuntimeScript[] = [];
 
-  const addCssSource = (path: string, css: string): void => {
-    if (cssPaths.has(path)) return;
-    cssPaths.add(path);
-    const preprocessor = PREPROCESSOR_FILE_PATTERN.test(path);
-    if (preprocessor && PREPROCESSOR_SYNTAX.test(css)) {
-      // The preprocessor resolves the syntax into CSS the analyser cannot
-      // see, so the destination is unprovable.
-      styleProblems.push(`the stylesheet ${path} uses syntax the analyser cannot resolve`);
+  /**
+   * The CSS a style source applies, with the imports before its own rules.
+   *
+   * A browser applies the sheet an `@import` rule names before the sheet that
+   * imports it, so the imported CSS comes first.
+   */
+  const cssTextOf = (
+    path: string,
+    css: string,
+    baseUrl: URL | undefined,
+    seen: Set<string>
+  ): string[] => {
+    const texts: string[] = [];
+
+    for (const imported of extractCssImports(css)) {
+      const target = resolveRepositoryPath(path, imported, baseUrl);
+      if (!target || !cssFiles.has(target)) {
+        styleProblems.push(`the stylesheet ${path} imports ${imported}, which is not part of the repository`);
+        continue;
+      }
+      referencedCss.add(target);
+      if (seen.has(target)) continue;
+      seen.add(target);
+      texts.push(...cssTextOf(target, cssFiles.get(target) as string, undefined, seen));
     }
-    cssSources.push({ path, css: preprocessor ? stripCssLineComments(css) : css });
+
+    texts.push(css);
+    return texts;
   };
 
   const inspectRuntimeScript = (sourcePath: string, content: string): void => {
@@ -2894,8 +2913,18 @@ export async function planRepositoryFixes(
     }
   };
 
+  // The stylesheet files of the repository. A stylesheet the browser never
+  // applies is still read: the page that applies it may be one the analyser
+  // cannot name.
   for (const [path, content] of contentCache) {
-    if (CSS_FILE_PATTERN.test(path)) addCssSource(path, content);
+    if (!CSS_FILE_PATTERN.test(path)) continue;
+    const preprocessor = PREPROCESSOR_FILE_PATTERN.test(path);
+    if (preprocessor && PREPROCESSOR_SYNTAX.test(content)) {
+      // The preprocessor resolves the syntax into CSS the analyser cannot
+      // see, so the destination is unprovable.
+      styleProblems.push(`the stylesheet ${path} uses syntax the analyser cannot resolve`);
+    }
+    cssFiles.set(path, preprocessor ? stripCssLineComments(content) : content);
   }
 
   for (const [path, content] of contentCache) {
@@ -2964,30 +2993,49 @@ export async function planRepositoryFixes(
     }
   }
 
+  // The stylesheets of the repository, one cascade per document.
+  //
+  // A browser applies the `<style>` blocks and the `<link rel="stylesheet">`
+  // elements of a document in the order the document applies them, and the
+  // stylesheets of two documents never share one cascade. Every document
+  // therefore gets its own cascade, in the order the document applies it.
+  const documentTexts: string[] = [];
+
   for (const [path, content] of contentCache) {
     // Every `<style>` block is a style source of the file that holds it: its
     // imports are relative to that file.
-    for (const source of collectStyleSources(content)) {
+    const texts: string[] = [];
+    for (const source of collectDocumentStyleSources(content)) {
+      if (source.unprovable !== null) {
+        styleProblems.push(`the stylesheet link in ${path} is unprovable: ${source.unprovable}`);
+        continue;
+      }
       if (source.dynamic) {
         styleProblems.push(`the stylesheet ${path} uses a dynamic style source the analyser cannot resolve`);
         continue;
       }
-      cssSources.push({ path, css: source.css, baseUrl: documentBases.get(path) });
-    }
-    const stylesheetLinks = analyzeStylesheetLinks(content);
-    for (const reason of stylesheetLinks.unprovable) {
-      styleProblems.push(`the stylesheet link in ${path} is unprovable: ${reason}`);
-    }
-    for (const href of stylesheetLinks.links) {
-      const base = documentBases.get(path);
-      if (!base) continue;
-      const target = resolveRepositoryPath(path, href, base);
-      if (!target || !contentCache.has(target)) {
-        styleProblems.push(`the stylesheet ${href} is not part of the repository`);
+      if (source.href !== null) {
+        const base = documentBases.get(path);
+        if (!base) continue;
+        const target = resolveRepositoryPath(path, source.href, base);
+        const linked = target === null ? undefined : contentCache.get(target);
+        if (target === null || linked === undefined) {
+          styleProblems.push(`the stylesheet ${source.href} is not part of the repository`);
+          continue;
+        }
+        // A stylesheet the document links is one the browser applies, whatever
+        // its name says.
+        if (!cssFiles.has(target)) cssFiles.set(target, linked);
+        referencedCss.add(target);
+        texts.push(...cssTextOf(target, cssFiles.get(target) as string, undefined, new Set()));
         continue;
       }
-      addCssSource(target, contentCache.get(target) as string);
+      texts.push(
+        ...cssTextOf(path, source.css ?? '', documentBases.get(path), new Set())
+      );
     }
+    documentTexts.push(texts.join('\n'));
+
     if (SCRIPT_FILE_PATTERN.test(path) || scriptTargets.has(path)) {
       inspectRuntimeScript(path, content);
     } else {
@@ -3009,24 +3057,18 @@ export async function planRepositoryFixes(
     }
   }
 
-  // The imports of a stylesheet are relative to the stylesheet itself.
-  const pending = [...cssSources];
-  while (pending.length > 0) {
-    const source = pending.shift() as { path: string; css: string; baseUrl?: URL };
-    for (const imported of extractCssImports(source.css)) {
-      const target = resolveRepositoryPath(source.path, imported, source.baseUrl);
-      if (!target || !contentCache.has(target)) {
-        styleProblems.push(`the stylesheet ${source.path} imports ${imported}, which is not part of the repository`);
-        continue;
-      }
-      const already = cssPaths.has(target);
-      addCssSource(target, contentCache.get(target) as string);
-      if (!already) pending.push({ path: target, css: contentCache.get(target) as string });
-    }
+  // The stylesheets no document references: they belong to a page the analyser
+  // cannot name, and their order among themselves is unknown, so each of them
+  // is judged on its own.
+  const cssContexts: CssContext[] = documentTexts.map(text => buildCssContext(text));
+  for (const path of [...cssFiles.keys()].sort()) {
+    if (referencedCss.has(path)) continue;
+    cssContexts.push(
+      buildCssContext(
+        cssTextOf(path, cssFiles.get(path) as string, undefined, new Set()).join('\n')
+      )
+    );
   }
-
-  const cssContext = buildCssContext(cssSources.map(source => source.css).join('\n'));
-  cssContext.unprovable.push(...styleProblems);
 
   // Selected fixes for the same element with different remediations cannot be
   // mapped to the occurrences of that element.
@@ -3217,8 +3259,14 @@ export async function planRepositoryFixes(
 
     // The repository's own stylesheet can restyle the patched element: the
     // isolated verification does not see it. A refused destination gets no
-    // artifact at all.
-    if (destinationCssHarm(cssContext, violation.elementHtml, violation.remediationCode)) {
+    // artifact at all. Every document has its own cascade, so a stylesheet
+    // that another page applies cannot decide the verdict of this one.
+    if (
+      styleProblems.length > 0 ||
+      cssContexts.some(context =>
+        destinationCssHarm(context, violation.elementHtml, violation.remediationCode)
+      )
+    ) {
       pendingFixIds.delete(violation.id);
       refusedFixIds.add(violation.id);
       continue;
