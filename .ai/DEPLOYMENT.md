@@ -572,6 +572,34 @@ static pages), `npx playwright test --project=chromium` 79/79 with 0 failed,
 Strix was **not** run for this cycle: every configured provider refuses the run
 (quota / EOL model / no credits), so no Strix result is claimed.
 
+## The nineteenth-review closure (2026-11-27)
+
+### The Docker workflow was red on the head `88afebd`
+
+The nineteenth cycle inherited a **red Docker workflow**. The run `45969493750` on
+`88afebd` failed at `Trivy image scan (fail on HIGH/CRITICAL)` with
+`##[error]Process completed with exit code 1.` — Trivy found **six HIGH `libxml2`
+CVEs** (CVE-2026-86138, CVE-2026-86139, CVE-2026-86140, CVE-2026-86142,
+CVE-2026-86143, CVE-2026-11979) in the `node:22-alpine` base image, whose frozen
+package is `2.13.9-r2` while the Alpine repository already offered the fixed
+`2.13.9-r5`. The other three workflows were green on the same head: CI
+`45969493693`, Deploy `45969493656` (skipped with a notice — no Vercel credentials),
+AccessGuard Scan `45969493726` (skipped with a notice — no API key).
+
+### The fix and its local proof
+
+The runner stage now upgrades the package from the repository at build time
+(`RUN apk upgrade --no-cache libxml2`). A pinned base-image digest cannot protect
+against a package advisory, because the packages are read from the repository when the
+image is built.
+
+| Check | Result |
+|---|---|
+| Local build | `accessguard:probe19` built from the closure tree |
+| Package in the image | `apk info -v` → **`libxml2-2.13.9-r5`** (the fixed version; the base image froze `-r2`) — Alpine 3.24.4 |
+| Trivy image scan (`--severity CRITICAL,HIGH --exit-code 1`) | **exit 0** — no HIGH and no CRITICAL finding |
+| Trivy JSON report | **0 vulnerabilities** in the HIGH/CRITICAL severities |
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the

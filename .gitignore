@@ -48,6 +48,7 @@ prompt
 # Playwright
 playwright/.auth/
 playwright-report/
+.playwright-mcp/
 
 # Screenshots
 screenshot*.png

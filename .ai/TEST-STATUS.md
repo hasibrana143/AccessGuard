@@ -1,6 +1,37 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-26 (eighteenth-review closure)
+Last run: 2026-11-27 (nineteenth-review closure)
+
+## Nineteenth-review closure evidence (2026-11-27)
+
+The closure of the nineteenth review's seven findings (plus the object-utility gap the
+closure itself found) ships with permanent regressions — 30 in
+`src/lib/__tests__/github.test.ts` and the nineteenth-review regressions in
+`src/lib/__tests__/css-context.test.ts`, plus 8 in the new
+`src/lib/__tests__/element-ancestors.test.ts`.
+
+The fails-before proof, run by the CTO on the shipped tree (only the source reverted,
+the new regressions kept):
+
+| Reverted source | Suite | Result |
+|---|---|---|
+| `src/lib/github.ts` (writer scope) | `github.test.ts -t "19-"` | **22 failed**, 9 passed — every failing case is a harmful path the pre-closure tree accepted (`19-H1a`–`19-H1f`, `19-H2a`–`19-H2f`, `19-H4a`, `19-H4c`, `19-H4d`, `19-L1a`–`19-L1d`, `19-H3a`–`19-H3c`); the nine that pass are the benign twins and the two cases the pre-closure tree already refused |
+| `src/lib/css-context.ts` (destination scope) | `css-context.test.ts -t "19-"` | **4 failed**, 4 passed — the four failing cases (`19-M1a`, `19-M2a`, `19-L2a`, `19-L2c`) are the harmful paths the pre-closure tree accepted; the four that pass are the benign twins |
+
+The gate suite that backed the push, run by the CTO on the shipped tree:
+
+| Gate | Command | Exit code | Evidence |
+|---|---:|---:|---|
+| Source-only typecheck | `npx tsc -p tsconfig.check.json --noEmit` | **0** | no diagnostics |
+| Lint | `npm run lint` | **0** | eslint reported no error and no warning |
+| Unit suite + coverage gate | `npx vitest run --coverage` | **0** | 54 test files, **1064 tests passed**, 0 failed; coverage 70.63 % statements / 63.08 % branches / 74.7 % functions / 72.94 % lines against the 55 / 50 / 58 / 57 thresholds |
+| Standalone build | `npm run build` | **0** | Next.js standalone build, compiled in 10.7 s, **116 static pages** generated |
+| Chromium E2E | `npx playwright test --project=chromium` | **0** | **79 tests: 78 passed, 1 flaky, 0 failed** (4.5 min) — the landing page redirect of an authenticated visitor failed on the first attempt (the credentials callback answered 401) and passed on the retry, the same flake the eighteenth cycle recorded; the change under test touches the fix engine and not the authentication |
+| Dependency audit | `npm audit --audit-level=high` | **0** | **0 high / 0 critical**; 15 moderate advisories remain, all in the development tooling chain (`vitest` / `@vitest/mocker`, `fast-copy`, `glob` / `minimatch` through `@sentry/nextjs` and the ESLint parser) — none in the shipped runtime path |
+| Image scan (Trivy) | `trivy image --severity CRITICAL,HIGH accessguard:probe19` | **0** | the rebuilt image carries `libxml2-2.13.9-r5`; the JSON report lists **0** HIGH and **0** CRITICAL vulnerabilities |
+
+No Strix result is claimed for this cycle: every configured provider refuses the run
+(quota / EOL model / no credits).
 
 ## Eighteenth-review closure evidence (2026-11-26)
 

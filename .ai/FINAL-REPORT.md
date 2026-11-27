@@ -1,6 +1,28 @@
 # AccessGuard — Final Report
 
-Cycle: **V23 — verified-fix engine + security hardening + eighteenth-review closure** · Date: 2026-11-26 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + nineteenth-review closure** · Date: 2026-11-27 · Owner: CTO agent
+
+## Current verification (2026-11-27 — nineteenth review)
+
+The nineteenth independent security review (`.ai/SECURITY-REVIEW-19.md`) returned **NOT READY — Critical 0, High 3, Medium 2, Low 2**. The reviewer's own matrix ran **67 cases (19 failed, 48 passed)** with 10 control twins (5 written / 5 refused), 24 Chromium cases and 3 real-route reproductions (HTTP 200 with the write, the pull request and the audit trail; the refused control answered HTTP 400); the recovered prior matrices passed **209/209** and **118/118**.
+
+- **19-H1 (High)** — the attribute-read side was still a closed list of five names, so a namespaced read (`getAttributeNS(null,'alt')`) gated a takeover: the fix was applied, `index.html` was written and Chromium measured a `1280×720` fixed takeover.
+- **19-H2 (High)** — the `Reflect.apply` branch recorded the write but dropped the method and its arguments, so `Reflect.apply(Element.prototype.setAttribute, img, ['alt',''])` emptied the alternative text the fix adds and `Reflect.apply(Element.prototype.remove, img, [])` deleted the patched element.
+- **19-H3 (High)** — the destruction reach was compared with the patched element only, so removing a **container** of the patched element (`querySelectorAll('.card').forEach(card => card.remove())`) deleted the fix.
+- **19-M1 (Medium)** — the activated custom-property chain was not transitive: `--a` → `--b` → `font-family` → `@font-face` → a customer-side `GET /evil-font` after the merge.
+- **19-M2 (Medium)** — the cascade winner of the custom property was not computed: `[aria-label]{--f:Evil}` (specificity 0,1,0) beats `button{--f:Local}` (0,0,1), and the analyser resolved the other way.
+- **19-L1 (Low)** — an iteration call (`document.querySelectorAll('img').forEach(…)`) counted as a write of the page, so a benign script that only reads and logs refused every fix of the repository.
+- **19-L2 (Low)** — the applicable `font-family` declarations were unioned instead of cascaded, so a repository whose later rule overrides the family was refused although the browser computes the safe family.
+
+**All seven are now closed at their root cause**, with the closure's own extra finding (the object utilities `Object.assign` / `Object.defineProperty` / `Object.defineProperties` writing the attribute the fix adds) closed in the same pass — **47 permanent regressions** (31 in `github.test.ts`, 8 in `css-context.test.ts`, 8 in the new `element-ancestors.test.ts`), the unit suite grown from 1017 to **1064 tests**.
+
+The fails-before proof, run by the CTO on the shipped tree with only the source reverted and the new regressions kept: **22 of the 31 writer regressions fail** (every harmful path the pre-closure tree accepted) and **4 of the 8 destination regressions fail** (`19-M1a`, `19-M2a`, `19-L2a`, `19-L2c`), while every benign twin passes before and after.
+
+The gate suite on the closure tree: source-only typecheck **0**, lint **0** (0 errors, 0 warnings), `npx vitest run --coverage` **54 files / 1064 tests passed**, coverage **70.63 / 63.08 / 74.7 / 72.94** (thresholds 55 / 50 / 58 / 57), `npm run build` **0** (116 static pages), `npx playwright test --project=chromium` **79 tests: 78 passed, 1 flaky, 0 failed** (the landing page redirect of an authenticated visitor failed on the first attempt and passed on the retry — the same flake the eighteenth cycle recorded), `npm audit --audit-level=high` **Critical 0 / High 0** (15 moderate advisories in the development tooling chain only).
+
+The Docker workflow was red on the head `88afebd` — Trivy found six HIGH `libxml2` CVEs in the frozen `node:22-alpine` base image. The runner stage now upgrades the package from the Alpine repository at build time; the rebuilt local image carries **`libxml2-2.13.9-r5`** and the Trivy JSON report lists **0 HIGH and 0 CRITICAL** vulnerabilities.
+
+The release gate stays **closed**: it opens only when a fresh **twentieth independent review** returns READY (Critical 0, High 0) against this closure tree. No production deployment is claimed: the Deploy workflow skips every Vercel step without the credentials, and the owner's approval is still required.
 
 ## Current verification (2026-11-26 — seventeenth-review closure)
 
