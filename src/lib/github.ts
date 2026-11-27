@@ -470,9 +470,14 @@ const RUNTIME_STYLE_PATTERN =
 const RUNTIME_STATE_READ_PATTERN =
   /\bgetAttributeNames\s*\(|\bgetNamedItem\s*\(|\bReflect\s*\.\s*(?:get|getOwnPropertyDescriptor)\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
 
-/** Reads of every attribute, which can react to any attribute the fix adds. */
+/**
+ * Reads of every attribute, which can react to any attribute the fix adds.
+ *
+ * The markup of the element carries its attributes, so a read of it is a read
+ * of the attribute the fix adds.
+ */
 const RUNTIME_GENERIC_STATE_READ_PATTERN =
-  /\bgetAttributeNames\s*\(|\bhasAttributes\s*\(|\.\s*attributes\b(?!\s*\.\s*getNamedItem\s*\()/i;
+  /\bgetAttributeNames\s*\(|\bhasAttributes\s*\(|\.\s*attributes\b(?!\s*\.\s*getNamedItem\s*\()|\.\s*outerHTML\b/i;
 
 /**
  * The string a concatenation of string literals evaluates to, or null.
@@ -662,6 +667,15 @@ const METHOD_CALL_PATTERN = new RegExp(
 );
 
 /**
+ * A tagged-template invocation: `tag`text`` calls `tag` with the template
+ * strings as its first argument.
+ */
+const TAGGED_TEMPLATE_CALL_PATTERN = new RegExp(
+  `([A-Za-z_$][\\w$]*(?:${MEMBER_ACCESS_SOURCE}|\\s*\\([^()\\n]*\\))*)\\s*\\x60([^\\x60]*)\\x60`,
+  'g'
+);
+
+/**
  * The attribute names a script reads through a DOM call, and the ones it
  * cannot resolve.
  *
@@ -684,10 +698,11 @@ function attributeReadCalls(content: string): { name: string | null }[] {
     // `fn.call(receiver, argument)` and `fn.apply(receiver, [argument])` call
     // `fn` with the receiver as the first argument.
     if (method.name !== null && (method.name === 'call' || method.name === 'apply') && members.length >= 2) {
+      const spelling = method.name;
       method = members[members.length - 2] as { name: string | null; computed: boolean };
-      if (method.name === 'apply') {
+      if (spelling === 'apply') {
         const list = args && args.length > 1 ? args[1] : null;
-        const first = list === null ? null : /^\s*\[([^\]]*)\]/.exec(list)?.[1] ?? null;
+        const first = list === null ? null : /^\s*\[([^\]]*)\]/.exec(list)?.[1]?.split(',')[0] ?? null;
         args = first === null ? null : [first];
       } else {
         args = args ? args.slice(1) : null;
@@ -705,6 +720,17 @@ function attributeReadCalls(content: string): { name: string | null }[] {
     const position = attributeReadPosition(method.name) ?? 0;
     const argument = args && args.length > position ? args[position] : null;
     reads.push({ name: argument === null ? null : resolveStringExpression(argument.trim()) });
+  }
+
+  // A tagged-template invocation is a call: `img.getAttribute`alt`` calls the
+  // method with the template strings as its first argument, so it reads the
+  // attribute the template names.
+  for (const match of content.matchAll(TAGGED_TEMPLATE_CALL_PATTERN)) {
+    const members = calleeMembers(match[1] ?? '');
+    if (members.length === 0) continue;
+    const method = members[members.length - 1];
+    if (method.name === null || !isAttributeReadMethod(method.name)) continue;
+    reads.push({ name: resolveStringExpression(`\`${match[2] ?? ''}\``) });
   }
 
   return reads;
@@ -1074,6 +1100,7 @@ interface RuntimeMutation {
 function runtimeMutations(content: string, bindings: ElementBindings): RuntimeMutation {
   let mutates = false;
   let dynamic = false;
+  const utilities = objectUtilityBindings(content);
 
   for (const match of content.matchAll(METHOD_CALL_PATTERN)) {
     const members = calleeMembers(match[1] ?? '');
@@ -1131,13 +1158,30 @@ function runtimeMutations(content: string, bindings: ElementBindings): RuntimeMu
       continue;
     }
 
-    if (name === 'assign' && receiverName === 'object') {
+    // `Object.assign(element, source)` and its spellings write to the element
+    // they receive as an argument, not to their receiver.
+    const utility = objectUtilityCall(parseChain(match[1] ?? ''), args, utilities);
+    if (utility && utility.method !== null && OBJECT_UTILITY_METHODS.has(utility.method)) {
       mutates = true;
-      const source = args && args.length > 1 ? (args[1] ?? '').trim() : '';
       // The written names are the keys of the object: a literal without a
       // spread names them, anything else the analyser cannot read.
-      if (!source.startsWith('{') || source.includes('...')) dynamic = true;
+      if (utility.args === null) dynamic = true;
+      else if (objectUtilityAttributes(utility.method, utility.args).some(attribute => attribute === null)) {
+        dynamic = true;
+      }
     }
+  }
+
+  // A tagged-template invocation is a call: the tag receives the template
+  // strings as its first argument.
+  for (const match of content.matchAll(TAGGED_TEMPLATE_CALL_PATTERN)) {
+    const members = calleeMembers(match[1] ?? '');
+    if (members.length === 0) continue;
+    const method = members[members.length - 1];
+    if (method.name === null) continue;
+    if (!ATTRIBUTE_WRITING_METHODS.has(method.name.toLowerCase())) continue;
+    mutates = true;
+    if (writtenAttributeName(method.name, [`\`${match[2] ?? ''}\``]) === null) dynamic = true;
   }
 
   for (const match of content.matchAll(ATTRIBUTE_VALUE_ASSIGNMENT_PATTERN)) {
@@ -1697,6 +1741,193 @@ function objectLiteralKeys(source: string): (string | null)[] {
   return keys.length > 0 ? keys : [null];
 }
 
+/** The object utilities that write to the element they receive as an argument. */
+const OBJECT_UTILITY_METHODS = new Set(['assign', 'defineproperty', 'defineproperties']);
+
+/** The global names the `Object` constructor is reached through. */
+const OBJECT_SCOPE_NAMES = new Set(['window', 'globalthis', 'self']);
+
+/**
+ * True when a chain holds the `Object` constructor or one of its members.
+ *
+ * `Object`, `window.Object` and `globalThis.Object` are the same object, so
+ * the utility family does not depend on the spelling of its receiver.
+ */
+function holdsObjectConstructor(
+  chain: ChainSegment[],
+  utilities: Map<string, ChainSegment[]>
+): boolean {
+  if (chain.length === 0) return false;
+  const first = chain[0]?.name?.toLowerCase() ?? null;
+  if (first === 'object') return true;
+  if (first !== null && utilities.has(first)) {
+    const held = utilities.get(first) as ChainSegment[];
+    return holdsObjectConstructor(held, utilities);
+  }
+  if (chain.length >= 2 && first !== null && OBJECT_SCOPE_NAMES.has(first)) {
+    return chain[1]?.name?.toLowerCase() === 'object';
+  }
+  return false;
+}
+
+/**
+ * The variables that hold an object utility.
+ *
+ * `const o = Object.assign` holds the utility itself, so the chain of the
+ * assignment is the chain of the utility. Only a chain that names the `Object`
+ * constructor is an alias of the family.
+ */
+function objectUtilityBindings(content: string): Map<string, ChainSegment[]> {
+  const utilities = new Map<string, ChainSegment[]>();
+
+  for (let round = 0; round < 3; round++) {
+    let changed = false;
+    for (const match of content.matchAll(VARIABLE_ASSIGNMENT_PATTERN)) {
+      const name = match[1] ?? '';
+      if (utilities.has(name)) continue;
+      const chain = parseChain((match[2] ?? '').trim());
+      if (chain.length === 0) continue;
+      if (!holdsObjectConstructor(chain, utilities)) continue;
+      utilities.set(name, chain);
+      changed = true;
+    }
+    if (!changed) break;
+  }
+
+  return utilities;
+}
+
+/**
+ * The utility a chain holds, and whether its name can be read.
+ *
+ * The chain is the utility itself — `Object.assign` (whatever the spelling of
+ * its receiver) — or the variable that holds it. A member the analyser cannot
+ * read may be the utility, so the name is null and the write fails closed.
+ */
+function objectUtilityChain(
+  chain: ChainSegment[],
+  utilities: Map<string, ChainSegment[]>
+): { method: string | null } | null {
+  if (chain.length === 0) return null;
+
+  // A bound utility: `Object.assign.bind(Object)` holds the utility itself.
+  if (chain.length >= 3 && chain[chain.length - 1]?.name?.toLowerCase() === 'bind') {
+    return objectUtilityChain(chain.slice(0, -1), utilities);
+  }
+
+  // A variable that holds the utility.
+  if (chain.length === 1) {
+    const name = chain[0]?.name ?? null;
+    if (name === null || !utilities.has(name)) return null;
+    return objectUtilityChain(utilities.get(name) as ChainSegment[], utilities);
+  }
+
+  // `Object.assign` and its receiver spellings.
+  const receiver = chain.slice(0, -1);
+  if (!holdsObjectConstructor(receiver, utilities)) return null;
+  const method = chain[chain.length - 1]?.name ?? null;
+  if (method !== null && !OBJECT_UTILITY_METHODS.has(method.toLowerCase())) return null;
+  return { method: method === null ? null : method.toLowerCase() };
+}
+
+/**
+ * The arguments an `.apply` call passes, or null when the list cannot be read.
+ *
+ * `fn.apply(target, [a, b])` calls `fn` with the arguments the array holds; a
+ * list that is not an array literal is a list the analyser cannot read.
+ */
+function applyArguments(list: string | null): string[] | null {
+  if (list === null) return null;
+  const args = literalArguments(list);
+  return args.length > 0 ? args : null;
+}
+
+/**
+ * The object utility a callee chain calls, and the arguments it receives.
+ *
+ * The utility is `Object.assign`, `Object.defineProperty` or
+ * `Object.defineProperties` — whatever the spelling of its receiver and
+ * whatever the variable that holds it. A `.call` or an `.apply` passes the
+ * utility its own argument list after the receiver argument, so the target of
+ * the utility is the first argument of that list.
+ */
+function objectUtilityCall(
+  chain: ChainSegment[],
+  args: string[] | null,
+  utilities: Map<string, ChainSegment[]>
+): { method: string | null; args: string[] | null } | null {
+  if (chain.length === 0) return null;
+
+  const last = chain[chain.length - 1]?.name?.toLowerCase() ?? null;
+  if ((last === 'call' || last === 'apply') && chain.length >= 2) {
+    const inner = objectUtilityChain(chain.slice(0, -1), utilities);
+    if (!inner) return null;
+    if (args === null) return { method: inner.method, args: null };
+    if (last === 'apply') {
+      return {
+        method: inner.method,
+        args: applyArguments(args.length > 1 ? args[1] ?? null : null),
+      };
+    }
+    return { method: inner.method, args: args.slice(1) };
+  }
+
+  const inner = objectUtilityChain(chain, utilities);
+  if (!inner) return null;
+  return { method: inner.method, args };
+}
+
+/**
+ * The attributes an object utility writes, and the ones it cannot name.
+ *
+ * `Object.assign` copies every source, `Object.defineProperty` names one
+ * attribute and `Object.defineProperties` defines every key of the descriptor
+ * literal. A name the analyser cannot read is null: the write may touch any
+ * attribute.
+ */
+function objectUtilityAttributes(method: string, args: string[]): (string | null)[] {
+  if (method === 'defineproperty') {
+    return [args[1] ? resolveStringExpression(args[1].trim()) : null];
+  }
+
+  const sources = method === 'assign' ? args.slice(1) : [args[1] ?? ''];
+  const names: (string | null)[] = [];
+  for (const source of sources) {
+    names.push(...objectLiteralKeys(source));
+  }
+  return names;
+}
+
+/**
+ * The method a `.call` or an `.apply` chain calls.
+ *
+ * The method is the function the chain holds: `Element.prototype.setAttribute`
+ * holds it in its last member, and
+ * `Object.getOwnPropertyDescriptor(proto, 'removeAttribute').value` holds it in
+ * the `value` of the descriptor the reader names. A chain the analyser cannot
+ * resolve is null and the write fails closed.
+ */
+function calledMethod(receiver: ChainSegment[]): string | null {
+  const last = receiver[receiver.length - 1] as ChainSegment;
+
+  // A function held by a property: the descriptor of the method the reader
+  // names.
+  if (last.name?.toLowerCase() === 'value' && receiver.length >= 2) {
+    const reader = receiver[receiver.length - 2] as ChainSegment;
+    const owner = receiver.length >= 3 ? receiver[receiver.length - 3]?.name?.toLowerCase() ?? null : null;
+    if (
+      reader.name?.toLowerCase() === 'getownpropertydescriptor' &&
+      (owner === 'object' || owner === 'reflect')
+    ) {
+      const name = reader.args && reader.args.length > 1 ? reader.args[1] ?? '' : '';
+      return resolveStringExpression(name.trim());
+    }
+    return null;
+  }
+
+  return last.name;
+}
+
 /** The write of a method call. */
 function methodWrite(
   method: string,
@@ -1779,6 +2010,7 @@ function chainWrite(chain: string, bindings: ElementBindings): ScriptWrite | nul
  */
 function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[] {
   const writes: ScriptWrite[] = [];
+  const utilities = objectUtilityBindings(content);
 
   // A property assignment or a deletion.
   for (const match of content.matchAll(ASSIGNMENT_WRITE_PATTERN)) {
@@ -1870,48 +2102,50 @@ function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[]
 
     // `Object.assign(element, source)`, `Object.defineProperty(element, name,
     // descriptor)` and `Object.defineProperties(element, descriptors)` write
-    // to the element they receive as an argument, not to their receiver.
-    if (receiver.length === 1 && receiver[0]?.name?.toLowerCase() === 'object') {
-      if (methodName !== 'assign' && methodName !== 'defineproperty' && methodName !== 'defineproperties') {
+    // to the element they receive as an argument, not to their receiver. The
+    // target is the first argument of the utility, whatever the spelling of
+    // its receiver and whatever the variable that holds it.
+    const utility = objectUtilityCall(segments, args, utilities);
+    if (utility) {
+      if (utility.args === null) {
+        // The argument list cannot be read: the write may reach the patched
+        // element, so it fails closed.
+        writes.push(unresolvedAttributeWrite(unknownReach()));
         continue;
       }
-
-      const object = chainObject(parseChain(args[0] ?? ''), bindings);
+      const target = utility.args[0] ?? null;
+      if (target === null) continue;
+      const object = chainObject(parseChain(target), bindings);
       if (object.kind !== 'element') continue;
-
-      if (methodName === 'defineproperty') {
-        const name = args[1] ? resolveStringExpression(args[1].trim()) : null;
-        writes.push(...attributeWrites([name], object.reach));
+      if (utility.method === null) {
+        // The utility cannot be read: it may write the attribute the fix adds,
+        // so it fails closed.
+        writes.push(unresolvedAttributeWrite(object.reach));
         continue;
       }
-
-      // `Object.assign` copies every source, and `Object.defineProperties`
-      // defines every key of the descriptor literal.
-      const sources = methodName === 'assign' ? args.slice(1) : [args[1] ?? ''];
-      const names: (string | null)[] = [];
-      for (const source of sources) {
-        names.push(...objectLiteralKeys(source));
-      }
-      writes.push(...attributeWrites(names, object.reach));
+      if (!OBJECT_UTILITY_METHODS.has(utility.method)) continue;
+      writes.push(
+        ...attributeWrites(objectUtilityAttributes(utility.method, utility.args), object.reach)
+      );
       continue;
     }
 
     // `fn.call(target, ...)` and `fn.apply(target, [...])` call `fn` with the
     // target as its receiver.
     if ((methodName === 'call' || methodName === 'apply') && receiver.length > 0) {
-      const called = receiver[receiver.length - 1] as ChainSegment;
       const object = chainObject(parseChain(args[0] ?? ''), bindings);
       if (object.kind !== 'element') continue;
-      if (called.name === null) {
-        // The called method cannot be read: it is a write the analyser
-        // cannot follow.
-        writes.push(unresolvedWrite(object.reach));
+      const called = calledMethod(receiver);
+      if (called === null) {
+        // The called method cannot be read: it is a write the analyser cannot
+        // follow, so it fails closed.
+        writes.push(unresolvedAttributeWrite(object.reach));
         continue;
       }
-      if (isPureReadMethod(called.name)) continue;
+      if (isPureReadMethod(called)) continue;
       const calledArgs =
         methodName === 'apply' ? literalArguments(args[1] ?? '') : args.slice(1);
-      writes.push(methodWrite(called.name, receiver, object.reach, calledArgs));
+      writes.push(methodWrite(called, receiver, object.reach, calledArgs));
       continue;
     }
 
@@ -1948,6 +2182,25 @@ function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[]
     const object = chainObject(receiver, bindings);
     if (object.kind !== 'element') continue;
     writes.push(methodWrite(method.name, receiver, object.reach, args));
+  }
+
+  // A tagged-template invocation is a call: `img.removeAttribute`alt`` calls
+  // the method with the template strings as its first argument.
+  for (const match of content.matchAll(TAGGED_TEMPLATE_CALL_PATTERN)) {
+    const segments = parseChain(match[1] ?? '');
+    if (segments.length === 0) continue;
+    const method = segments[segments.length - 1] as ChainSegment;
+    const receiver = segments.slice(0, -1);
+    const object = chainObject(receiver, bindings);
+    if (object.kind !== 'element') continue;
+    if (method.name === null) {
+      // The called method cannot be read: it is a write the analyser cannot
+      // follow, so it fails closed.
+      writes.push(unresolvedAttributeWrite(object.reach));
+      continue;
+    }
+    if (isPureReadMethod(method.name)) continue;
+    writes.push(methodWrite(method.name, receiver, object.reach, [`\`${match[2] ?? ''}\``]));
   }
 
   return writes;
@@ -3059,10 +3312,20 @@ export async function planRepositoryFixes(
 
   // The stylesheets no document references: they belong to a page the analyser
   // cannot name, and their order among themselves is unknown, so each of them
-  // is judged on its own.
+  // is judged on its own. A stylesheet another stylesheet imports belongs to
+  // the importer's cascade, so it is judged there and not on its own — the
+  // name of a file may not decide the verdict.
+  const orphans = [...cssFiles.keys()].filter(path => !referencedCss.has(path)).sort();
+  const importedByOrphan = new Set<string>();
+  for (const path of orphans) {
+    for (const imported of extractCssImports(cssFiles.get(path) as string)) {
+      const target = resolveRepositoryPath(path, imported, undefined);
+      if (target && cssFiles.has(target)) importedByOrphan.add(target);
+    }
+  }
+  const roots = orphans.filter(path => !importedByOrphan.has(path));
   const cssContexts: CssContext[] = documentTexts.map(text => buildCssContext(text));
-  for (const path of [...cssFiles.keys()].sort()) {
-    if (referencedCss.has(path)) continue;
+  for (const path of roots.length > 0 ? roots : orphans) {
     cssContexts.push(
       buildCssContext(
         cssTextOf(path, cssFiles.get(path) as string, undefined, new Set()).join('\n')

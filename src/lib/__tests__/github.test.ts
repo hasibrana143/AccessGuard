@@ -3150,6 +3150,47 @@ describe('the twentieth review regressions', () => {
     expect(plan.fileWrites).toHaveLength(1);
   }
 
+  /** A refused candidate writes nothing. */
+  async function expectNoWrite(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  /** A written candidate writes the file it planned. */
+  async function expectOneWrite(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+    expect(result.filesModified).toEqual([{ path: 'index.html', fixesApplied: 1 }]);
+  }
+
+  /** A repository whose runtime code is the given script. */
+  function writerRepository(script: string) {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" class="card" src="x"><script>${script}</script></body></html>`
+    );
+    fileContent('styles.css', 'body{color:#000}');
+  }
+
+  /**
+   * A repository whose runtime reads an attribute and then writes.
+   *
+   * The read is the expression the script tests and the mutation the one it
+   * runs when the read succeeds.
+   */
+  function writerConditionalRepository(read: string, mutation: string) {
+    writerRepository(
+      `document.querySelectorAll('img').forEach(function(img){if(${read})${mutation}})`
+    );
+  }
+
+  /** A repository whose runtime writes to every image. */
+  function writerWriteRepository(script: string) {
+    writerRepository(`document.querySelectorAll('img').forEach(function(img){${script}})`);
+  }
+
   /** The stylesheet that loads a font family the fix activates. */
   const EVIL_CSS =
     '@font-face{font-family:Evil;src:url(/evil-font)} [alt]{--f:Evil} img{font-family:var(--f)}';
@@ -3237,6 +3278,208 @@ describe('the twentieth review regressions', () => {
       'index.html',
       '<html><head><style>:root{--brand:#000} [alt]{--f:Local} img{font-family:var(--f)}</style></head><body><img id="target" class="card" src="x"></body></html>'
     );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('20-H1a: does not patch an element a script empties the alternative text of through a window object utility', async () => {
+    writerWriteRepository("window.Object.assign(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H1b: does not patch an element a script empties the alternative text of through a global object utility', async () => {
+    writerWriteRepository("globalThis.Object.assign(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H1c: does not patch an element a script empties the alternative text of through a called object utility', async () => {
+    writerWriteRepository("Object.assign.call(null,img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H1d: does not patch an element a script empties the alternative text of through an aliased object utility', async () => {
+    writerWriteRepository("const o=Object.assign;o(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H1e: writes a fix when the script assigns an attribute the fix does not add', async () => {
+    writerWriteRepository("Object.assign(img,{title:'x'})");
+
+    const plan = await planAltFix();
+    await expectWritten(plan);
+    await expectOneWrite(plan);
+  });
+
+  it('20-H1f: writes a fix when the script assigns another element', async () => {
+    writerWriteRepository("Object.assign(other,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectWritten(plan);
+    await expectOneWrite(plan);
+  });
+
+  it('20-H2a: does not patch an element a script reacts to through the markup of the element', async () => {
+    writerConditionalRepository("img.outerHTML.indexOf('alt')>-1", "img.classList.add('overlay')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H2b: does not patch an element a script reacts to through the markup of the element', async () => {
+    writerConditionalRepository("img.outerHTML.includes('alt=')", "img.classList.add('overlay')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H2c: does not patch an element a script reacts to through the markup of the element', async () => {
+    writerConditionalRepository('img.outerHTML!==h', "img.classList.add('overlay')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H2d: does not patch an element a script reacts to through the markup of the element', async () => {
+    writerConditionalRepository('img.outerHTML.match(/alt/)!=null', "img.classList.add('overlay')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H2e: does not patch an element a script reacts to through the attributes of the element', async () => {
+    writerConditionalRepository("img.attributes.outerHTML.indexOf('alt')>-1", "img.classList.add('overlay')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H5a: does not patch an element a script takes the alternative text away from through a descriptor', async () => {
+    writerWriteRepository(
+      "Object.getOwnPropertyDescriptor(Element.prototype,'removeAttribute').value.call(img,'alt')"
+    );
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H5b: does not patch an element a script takes the alternative text away from through a destructured method', async () => {
+    writerWriteRepository(
+      "const {removeAttribute}=Element.prototype;removeAttribute.call(img,'alt')"
+    );
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H6a: does not patch an element a script takes the alternative text away from through a tagged template', async () => {
+    writerWriteRepository('img.removeAttribute`alt`');
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H6b: does not patch an element a script takes the alternative text away from through a tagged template', async () => {
+    writerWriteRepository('img.toggleAttribute`alt`');
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H6c: does not patch an element a script takes the alternative text away from through a call', async () => {
+    writerWriteRepository("img.removeAttribute('alt')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H6d: does not patch an element a script takes the alternative text away from through a call', async () => {
+    writerWriteRepository("img.toggleAttribute('alt')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-L2a: writes a fix when the script reads an unrelated attribute through an applied read', async () => {
+    writerConditionalRepository("img.getAttribute.apply(img,['src'])", "img.classList.add('overlay')");
+
+    const plan = await planAltFix();
+    await expectWritten(plan);
+    await expectOneWrite(plan);
+  });
+
+  it('20-L2b: does not patch an element a script reads the added attribute through an applied read', async () => {
+    writerConditionalRepository("img.getAttribute.apply(img,['alt'])", "img.classList.add('overlay')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H6e: does not patch an element a script reads the added attribute through a tagged template', async () => {
+    // The tag receives the template strings as its first argument, so the read
+    // names the attribute the fix adds.
+    writerConditionalRepository('img.getAttribute`alt`', "img.classList.add('overlay')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('20-H6f: writes a fix when a script reads an unrelated attribute through a tagged template', async () => {
+    writerConditionalRepository('img.getAttribute`src`', "img.classList.add('overlay')");
+
+    const plan = await planAltFix();
+    await expectWritten(plan);
+    await expectOneWrite(plan);
+  });
+
+  it('20-H3d: writes a fix when an imported stylesheet loses the tie to the importer', async () => {
+    // The browser applies the imported sheet before the sheet that imports it,
+    // so the importer's rule wins the tie. The name of the imported file may
+    // not decide the verdict.
+    tree(['index.html', 'a.css', 'z.css']);
+    fileContent(
+      'index.html',
+      '<html><body><img id="target" class="card" src="x"></body></html>'
+    );
+    fileContent('a.css', EVIL_CSS);
+    fileContent('z.css', `@import "a.css";\n${LOCAL_CSS}`);
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('20-H3e: writes a fix when the importer sorts before the imported stylesheet', async () => {
+    // The same two stylesheets with the other names: the verdict is the same.
+    tree(['index.html', 'a.css', 'z.css']);
+    fileContent(
+      'index.html',
+      '<html><body><img id="target" class="card" src="x"></body></html>'
+    );
+    fileContent('a.css', `@import "z.css";\n${LOCAL_CSS}`);
+    fileContent('z.css', EVIL_CSS);
 
     await expectWritten(await planAltFix());
   });
