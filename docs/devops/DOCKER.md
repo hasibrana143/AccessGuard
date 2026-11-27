@@ -16,6 +16,13 @@
 
 **Stage 2 — Runner** (`node:22-alpine`)
 - Installs runtime deps: `openssl chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont`
+- Upgrades `libxml2` to the newest version the Alpine repository offers: the Alpine
+  packages the base image was built with can lag behind an advisory, and the Trivy gate
+  in `docker.yml` fails on the HIGH CVEs in the OS packages (CVE-2026-86138,
+  CVE-2026-86139, CVE-2026-86140, CVE-2026-86142, CVE-2026-86143, CVE-2026-11979).
+  The upgrade always takes the newest package the repository offers, so the image ships
+  the fixed `libxml2` instead of the one the base image froze. The base image digest
+  alone does not protect against this: the package repository is read at build time.
 - Upgrades npm to `12.2.3`: the base image's npm 11 bundles packages with known
   HIGH CVEs (pacote, sigstore, picomatch, ip-address, brace-expansion) and the
   Trivy gate in `docker.yml` fails on them. npm 12.2.3 bundles fixed versions and

@@ -34,6 +34,14 @@ WORKDIR /app
 # Install OpenSSL and Puppeteer dependencies
 RUN apk add --no-cache openssl chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont
 
+# The Alpine packages the base image was built with can lag behind a libxml2
+# advisory: the Trivy gate in .github/workflows/docker.yml fails on the HIGH
+# CVEs in the OS packages (CVE-2026-86138, CVE-2026-86139, CVE-2026-86140,
+# CVE-2026-86142, CVE-2026-86143, CVE-2026-11979). The upgrade always takes
+# the newest libxml2 the Alpine repository offers, so the image ships the
+# fixed package instead of the one the base image froze.
+RUN apk upgrade --no-cache libxml2
+
 # The base image ships npm 11, whose bundle contains packages with known HIGH
 # CVEs (pacote, sigstore, picomatch, ip-address, brace-expansion) — the Trivy
 # gate in .github/workflows/docker.yml fails on them. npm 12.2.3 bundles fixed
