@@ -2837,6 +2837,284 @@ describe('the eighteenth review regressions', () => {
   });
 });
 
+describe('the nineteenth review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix(
+    remediationCode = '<img id="target" src="x" alt="Photo">',
+    elementHtml = '<img id="target" src="x">'
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml,
+        remediationCode,
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+    await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+  }
+
+  /** A repository whose runtime code is the given script. */
+  function runtimeRepository(script: string) {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" src="x"><script>${script}</script></body></html>`
+    );
+    fileContent(
+      'styles.css',
+      '.overlay{position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;background:#f0f}'
+    );
+  }
+
+  /**
+   * A repository whose runtime reads an attribute and then writes.
+   *
+   * The read is the expression the script tests and the mutation the one it
+   * runs when the read succeeds.
+   */
+  function conditionalRepository(read: string, mutation: string) {
+    runtimeRepository(
+      `document.querySelectorAll('img').forEach(function(img){if(${read})${mutation}})`
+    );
+  }
+
+  /** A repository whose runtime writes to every image. */
+  function writeRepository(script: string) {
+    runtimeRepository(`document.querySelectorAll('img').forEach(function(img){${script}})`);
+  }
+
+  it('19-H1a: does not patch an element a script takes over after a namespaced read', async () => {
+    conditionalRepository(
+      "img.getAttributeNS(null,'alt')",
+      "Element.prototype.setAttribute.call(img,'class','overlay')"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H1b: does not patch an element a script takes over after a namespaced read', async () => {
+    conditionalRepository("img.getAttributeNS(null,'alt')", "img.classList.add('overlay')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H1c: does not patch an element a script takes over after a namespaced read', async () => {
+    conditionalRepository(
+      "img.getAttributeNS(null,'alt')",
+      "Reflect.apply(Element.prototype.setAttribute,img,['class','overlay'])"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H1d: does not patch an element a script removes after a namespaced read', async () => {
+    conditionalRepository("img.getAttributeNS(null,'alt')", "Reflect.apply(Element.prototype.remove,img,[])");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H1e: does not patch an element a script takes over after a namespaced node read', async () => {
+    conditionalRepository(
+      "img.getAttributeNodeNS(null,'alt')",
+      "img.classList.add('overlay')"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H1f: does not patch an element a script takes over after a namespaced presence read', async () => {
+    conditionalRepository("img.hasAttributeNS(null,'alt')", "img.classList.add('overlay')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H1g: does not patch an element a script takes the alternative text away from through a direct toggle', async () => {
+    writeRepository("img.toggleAttribute('alt')");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-C1g: writes a fix when the script toggles an attribute the fix does not add', async () => {
+    writeRepository("img.toggleAttribute('title')");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('19-C1a: writes a fix when the script reads an unrelated namespaced attribute', async () => {
+    conditionalRepository("img.getAttributeNS(null,'src')", "img.classList.add('overlay')");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('19-H2a: does not patch an element a script takes the alternative text away from through a reflective removal', async () => {
+    writeRepository("Reflect.apply(Element.prototype.removeAttribute,img,['alt'])");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H2b: does not patch an element a script empties the alternative text of through a reflective write', async () => {
+    writeRepository("Reflect.apply(Element.prototype.setAttribute,img,['alt',''])");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H2c: does not patch an element a script empties the alternative text of through a reflective namespaced write', async () => {
+    writeRepository("Reflect.apply(Element.prototype.setAttributeNS,img,[null,'alt',''])");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H2d: does not patch an element a script removes through a reflective removal', async () => {
+    writeRepository("Reflect.apply(Element.prototype.remove,img,[])");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H2e: does not patch an element a script takes the alternative text away from through a reflective toggle', async () => {
+    writeRepository("Reflect.apply(Element.prototype.toggleAttribute,img,['alt'])");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H2f: does not patch an element a script takes the alternative text away from through a reflective write it cannot read', async () => {
+    writeRepository("Reflect.apply(fn,img,['alt'])");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-C1b: writes a fix when the script takes the class over without reading the fix', async () => {
+    writeRepository("Reflect.apply(Element.prototype.setAttribute,img,['class','overlay'])");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('19-H4a: does not patch an element a script empties the alternative text of through an object assignment', async () => {
+    writeRepository("Object.assign(img,{alt:''})");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H4b: does not patch an element a script empties the alternative text of through an object assignment it cannot read', async () => {
+    writeRepository("Object.assign(img,{...other,alt:''})");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H4c: does not patch an element a script shadows the alternative text of through a property definition', async () => {
+    writeRepository("Object.defineProperty(img,'alt',{value:''})");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H4d: does not patch an element a script shadows the alternative text of through a property definitions object', async () => {
+    writeRepository("Object.defineProperties(img,{alt:{value:''}})");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-C1c: writes a fix when the script assigns an attribute the fix does not add', async () => {
+    writeRepository("Object.assign(img,{title:'x'})");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('19-C1d: writes a fix when the script assigns another element', async () => {
+    writeRepository("Object.assign(other,{alt:''})");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('19-L1a: writes a fix when the script only reads the attribute and logs', async () => {
+    conditionalRepository("img.getAttribute('alt')", "console.log('x')");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('19-L1b: writes a fix when the script only reads the attribute and writes a plain object', async () => {
+    conditionalRepository("img.getAttribute('alt')", 'state.count=1');
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('19-L1c: writes a fix when the script only reads the attribute and writes the document title', async () => {
+    conditionalRepository("img.getAttribute('alt')", "document.title='x'");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('19-L1d: writes a fix when the script only reads the attribute and moves the focus', async () => {
+    conditionalRepository("img.getAttribute('alt')", 'img.focus()');
+
+    await expectWritten(await planAltFix());
+  });
+
+  /** A repository whose patched image sits inside a container. */
+  function containerRepository(script: string) {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><div class="card"><img id="target" src="x"></div><script>${script}</script></body></html>`
+    );
+    fileContent('styles.css', 'body{color:#000}');
+  }
+
+  it('19-H3a: does not patch an element a script removes with its container', async () => {
+    containerRepository(
+      "document.querySelectorAll('.card').forEach(function(card){card.remove()})"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H3b: does not patch an element a script removes with the container of its tag', async () => {
+    containerRepository("document.querySelectorAll('div').forEach(function(box){box.remove()})");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-H3c: does not patch an element a script removes with the container it names', async () => {
+    containerRepository("document.querySelector('.card').remove()");
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('19-C1e: writes a fix when the script removes an element that cannot contain the patched one', async () => {
+    containerRepository("document.querySelectorAll('p').forEach(function(paragraph){paragraph.remove()})");
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('19-C1f: does not patch an element a script removes itself', async () => {
+    containerRepository("document.querySelectorAll('img').forEach(function(img){img.remove()})");
+
+    await expectRefused(await planAltFix());
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -1435,6 +1435,8 @@ function compoundActivatedByFocus(compound: string, element: ElementDescriptor):
 interface Declaration {
   property: string;
   value: string;
+  /** The declaration carries the `!important` priority suffix. */
+  important: boolean;
 }
 
 /** The declarations of a rule. */
@@ -1445,11 +1447,14 @@ function parseDeclarations(body: string): Declaration[] {
     const separator = part.indexOf(':');
     if (separator === -1) continue;
     const property = decodeCssEscapes(part.slice(0, separator).trim()).toLowerCase();
-    const value = stripCssPriority(
-      decodeCssEscapes(part.slice(separator + 1).trim()).toLowerCase()
-    );
+    const rawValue = decodeCssEscapes(part.slice(separator + 1).trim()).toLowerCase();
+    // The priority suffix is not part of the value, but it decides the
+    // cascade: an important declaration wins over an important declaration of
+    // a higher specificity.
+    const important = /\s*!\s*important\s*$/i.test(rawValue);
+    const value = stripCssPriority(rawValue);
     if (!property) continue;
-    declarations.push({ property, value });
+    declarations.push({ property, value, important });
   }
 
   return declarations;
@@ -1972,11 +1977,332 @@ function resolveCustomProperties(value: string, definitions: Map<string, string>
  * The `var()` references of a value decide which custom properties it needs:
  * a declaration that reads none of them keeps the value it had.
  */
-function consumesCustomProperty(value: string, names: Map<string, string>): boolean {
+function consumesCustomProperty(value: string, names: ReadonlySet<string>): boolean {
   for (const match of value.matchAll(/var\(\s*(--[\w-]+)/g)) {
     if (names.has(match[1] ?? '')) return true;
   }
   return false;
+}
+
+/** The specificity of a selector. */
+interface Specificity {
+  ids: number;
+  classes: number;
+  types: number;
+}
+
+/** Compare two specificities: the ids first, then the classes, then the types. */
+function compareSpecificity(a: Specificity, b: Specificity): number {
+  if (a.ids !== b.ids) return a.ids - b.ids;
+  if (a.classes !== b.classes) return a.classes - b.classes;
+  return a.types - b.types;
+}
+
+/** The index of the parenthesis that closes the one at `open`. */
+function closingParenthesis(text: string, open: number): number {
+  let depth = 0;
+
+  for (let index = open; index < text.length; index++) {
+    const character = text[index] as string;
+
+    if (character === '"' || character === "'") {
+      const quote = character;
+      index++;
+      while (index < text.length && text[index] !== quote) index++;
+      continue;
+    }
+
+    if (character === '(') depth++;
+    else if (character === ')') {
+      depth--;
+      if (depth === 0) return index;
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * The specificity of one compound selector.
+ *
+ * The counts follow the CSS cascade: an id counts 100, a class, an attribute
+ * and a pseudo-class count 10, a type and a pseudo-element count 1. The
+ * functional pseudo-classes that take a selector list take the specificity of
+ * their most specific argument, and `:where()` takes none.
+ *
+ * Null when the compound cannot be read: the caller then fails closed.
+ */
+function compoundSpecificity(compound: string): Specificity | null {
+  const specificity: Specificity = { ids: 0, classes: 0, types: 0 };
+  let index = 0;
+
+  while (index < compound.length) {
+    const character = compound[index] as string;
+
+    if (character === '#') {
+      specificity.ids++;
+      index++;
+      while (index < compound.length && /[\w-]/.test(compound[index] as string)) index++;
+      continue;
+    }
+
+    if (character === '.') {
+      specificity.classes++;
+      index++;
+      while (index < compound.length && /[\w-]/.test(compound[index] as string)) index++;
+      continue;
+    }
+
+    if (character === '[') {
+      const end = compound.indexOf(']', index);
+      if (end === -1) return null;
+      specificity.classes++;
+      index = end + 1;
+      continue;
+    }
+
+    if (character === ':') {
+      // A pseudo-element (`::before`) counts as a type.
+      if (compound[index + 1] === ':') {
+        specificity.types++;
+        index += 2;
+        while (index < compound.length && /[\w-]/.test(compound[index] as string)) index++;
+        continue;
+      }
+
+      index++;
+      let name = '';
+      while (index < compound.length && /[\w-]/.test(compound[index] as string)) {
+        name += compound[index];
+        index++;
+      }
+      name = name.toLowerCase();
+
+      let argument: string | null = null;
+      if (compound[index] === '(') {
+        const end = closingParenthesis(compound, index);
+        if (end === -1) return null;
+        argument = compound.slice(index + 1, end);
+        index = end + 1;
+      }
+
+      // `:where()` contributes no specificity.
+      if (name === 'where') continue;
+
+      // The legacy spelling of a pseudo-element (`:before`) counts as a type.
+      if (name === 'before' || name === 'after' || name === 'first-line' || name === 'first-letter') {
+        specificity.types++;
+        continue;
+      }
+
+      if (name === 'not' || name === 'is' || name === 'has') {
+        if (argument === null) return null;
+        const best = mostSpecificArgument(argument);
+        if (best === null) return null;
+        specificity.ids += best.ids;
+        specificity.classes += best.classes;
+        specificity.types += best.types;
+        continue;
+      }
+
+      // Every other pseudo-class counts as a class.
+      specificity.classes++;
+
+      // `:nth-child(2n of .card)` adds the specificity of its `of` list.
+      if (name === 'nth-child' || name === 'nth-last-child') {
+        const of = argument === null ? null : (/\bof\s+(.+)$/i.exec(argument)?.[1] ?? null);
+        if (of !== null) {
+          const value = specificityOfSelector(of);
+          if (value === null) return null;
+          specificity.ids += value.ids;
+          specificity.classes += value.classes;
+          specificity.types += value.types;
+        }
+      }
+      continue;
+    }
+
+    // The universal selector adds nothing.
+    if (character === '*') {
+      index++;
+      continue;
+    }
+
+    // A type selector counts as a type.
+    if (/[A-Za-z_\\]/.test(character)) {
+      specificity.types++;
+      while (index < compound.length && /[\w\\-]/.test(compound[index] as string)) index++;
+      // A namespace (`svg|a`) continues the name.
+      if (compound[index] === '|' && compound[index + 1] !== '=') {
+        index++;
+        while (index < compound.length && /[\w\\-]/.test(compound[index] as string)) index++;
+      }
+      continue;
+    }
+
+    // Anything else is not part of a compound the analyser can read.
+    return null;
+  }
+
+  return specificity;
+}
+
+/** The most specific argument of a functional pseudo-class. */
+function mostSpecificArgument(argument: string): Specificity | null {
+  let best: Specificity | null = null;
+
+  for (const part of splitTopLevel(argument, ',')) {
+    const trimmed = part.trim();
+    if (!trimmed) return null;
+    const value = specificityOfSelector(trimmed);
+    if (value === null) return null;
+    if (best === null || compareSpecificity(value, best) > 0) best = value;
+  }
+
+  return best;
+}
+
+/** The specificity of a selector, over every compound it has. */
+function specificityOfSelector(selector: string): Specificity | null {
+  const compounds = splitCompounds(selector);
+  if (compounds.length === 0) return null;
+
+  const total: Specificity = { ids: 0, classes: 0, types: 0 };
+  for (const compound of compounds) {
+    const value = compoundSpecificity(compound);
+    if (value === null) return null;
+    total.ids += value.ids;
+    total.classes += value.classes;
+    total.types += value.types;
+  }
+
+  return total;
+}
+
+/**
+ * The specificity of the most specific part of a selector list that may match
+ * the element.
+ *
+ * The specificity of a selector list is the specificity of the part that
+ * matches, so a rule that names the element twice is judged by the more
+ * specific of its two parts.
+ */
+function matchingSpecificity(
+  selector: string,
+  element: ElementDescriptor
+): Specificity | null {
+  let best: Specificity | null = null;
+
+  for (const part of splitTopLevel(selector, ',')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    // The root element's own declarations are inherited by the element, not
+    // declared on it: they are the fallback of the resolution, never a
+    // candidate of the element's own cascade.
+    const global = decodeCssEscapes(trimmed).toLowerCase();
+    if ((global === ':root' || global === 'html') && element.tag !== 'html') continue;
+
+    const compounds = splitCompounds(trimmed);
+    const subject = compounds[compounds.length - 1] ?? trimmed;
+    if (matchSubject(parseSubject(subject), element) === 'no') continue;
+
+    const value = specificityOfSelector(trimmed);
+    if (value === null) return null;
+    if (best === null || compareSpecificity(value, best) > 0) best = value;
+  }
+
+  return best;
+}
+
+/** A declaration that applies to the patched element, with the rank the cascade gives it. */
+interface CascadeCandidate {
+  declaration: Declaration;
+  specificity: Specificity;
+  /** The inline style outranks every rule of the stylesheet. */
+  inline: boolean;
+  /** The source order of the declaration. */
+  order: number;
+  /** The rule provably applies to the element. */
+  definite: boolean;
+}
+
+/** Compare two candidates by the cascade: important, inline, specificity, source order. */
+function compareCascade(a: CascadeCandidate, b: CascadeCandidate): number {
+  const important = Number(a.declaration.important) - Number(b.declaration.important);
+  if (important !== 0) return important;
+
+  const inline = Number(a.inline) - Number(b.inline);
+  if (inline !== 0) return inline;
+
+  const specificity = compareSpecificity(a.specificity, b.specificity);
+  if (specificity !== 0) return specificity;
+
+  return a.order - b.order;
+}
+
+/**
+ * The declarations that may be the cascade winner of their property.
+ *
+ * A rule that only *may* apply to the element is a candidate as well: when it
+ * outranks the rule that provably applies, the browser's winner is uncertain
+ * and both declarations are judged.
+ */
+function cascadeWinners(candidates: CascadeCandidate[]): Map<string, CascadeCandidate[]> {
+  const winners = new Map<string, CascadeCandidate[]>();
+  const definite = new Map<string, CascadeCandidate>();
+  const possible = new Map<string, CascadeCandidate>();
+
+  for (const candidate of candidates) {
+    const property = candidate.declaration.property;
+
+    const current = possible.get(property);
+    if (current === undefined || compareCascade(candidate, current) > 0) {
+      possible.set(property, candidate);
+    }
+
+    if (!candidate.definite) continue;
+    const currentDefinite = definite.get(property);
+    if (currentDefinite === undefined || compareCascade(candidate, currentDefinite) > 0) {
+      definite.set(property, candidate);
+    }
+  }
+
+  for (const [property, candidate] of possible) {
+    const certain = definite.get(property);
+    winners.set(property, certain && certain !== candidate ? [certain, candidate] : [candidate]);
+  }
+
+  return winners;
+}
+
+/**
+ * The custom properties the fix's chain reaches.
+ *
+ * A property that a declaration defines while it references a property already
+ * in the set joins the set, so the chain is closed transitively: `--a` → `--b`
+ * → `font-family` is judged end to end.
+ */
+function closeCustomPropertyChain(
+  seed: ReadonlySet<string>,
+  candidates: CascadeCandidate[]
+): Set<string> {
+  const closed = new Set(seed);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const candidate of candidates) {
+      const declaration = candidate.declaration;
+      if (!declaration.property.startsWith('--')) continue;
+      if (closed.has(declaration.property)) continue;
+      if (!consumesCustomProperty(declaration.value, closed)) continue;
+      closed.add(declaration.property);
+      changed = true;
+    }
+  }
+
+  return closed;
 }
 
 /**
@@ -3499,7 +3825,7 @@ function stateOf(
     if (isLargeOffset(value)) state.hidden = true;
   };
 
-  const apply = ({ property, value }: Declaration): void => {
+  const apply = ({ property, value }: { property: string; value: string }): void => {
     const values = state.values.get(property) ?? [];
     values.push(value);
     state.values.set(property, values);
@@ -4071,32 +4397,80 @@ export function destinationCssHarm(
     // and the ones the remediation declares. The resolved value of a
     // declaration that reads one of them is judged like a declared value.
     if (introducedDefinitions.size > 0) {
-      const effectiveDefinitions = new Map(resourceDefinitions);
-      for (const [name, value] of introducedDefinitions) {
-        effectiveDefinitions.set(name, value);
+      // The declarations that apply to the patched element, with the rank the
+      // cascade gives them. A rule that only *may* apply is a candidate too:
+      // the winner is then uncertain and both declarations are judged.
+      const candidates: CascadeCandidate[] = [];
+      let order = 0;
+      for (const rule of context.rules) {
+        const match = matchSelector(rule.selector, element);
+        if (match === 'no') continue;
+        const specificity = matchingSpecificity(rule.selector, element);
+        if (specificity === null) {
+          return 'the repository stylesheet cannot be judged: a selector whose specificity cannot be read';
+        }
+        for (const declaration of parseDeclarations(rule.declarations)) {
+          candidates.push({
+            declaration,
+            specificity,
+            inline: false,
+            order: order++,
+            definite: match === 'yes',
+          });
+        }
+      }
+      // The inline style outranks every rule of the stylesheet.
+      for (const declaration of inline.declarations) {
+        candidates.push({
+          declaration,
+          specificity: { ids: 0, classes: 0, types: 0 },
+          inline: true,
+          order: order++,
+          definite: true,
+        });
       }
 
-      for (const rule of afterRules) {
-        const declarations = parseDeclarations(rule.declarations);
-        // A declaration that reads no introduced custom property keeps the
-        // value it had before the fix.
-        const consumed = declarations.filter(declaration =>
-          consumesCustomProperty(declaration.value, introducedDefinitions)
-        );
-        if (consumed.length === 0) continue;
+      const winners = cascadeWinners(candidates);
 
-        const ruleDefinitions = new Map(effectiveDefinitions);
-        for (const [name, value] of customPropertyDefinitions(declarations)) {
-          ruleDefinitions.set(name, value);
+      // The custom properties the browser computes: the cascade winner of
+      // every custom property. The inherited root definitions stay the
+      // fallback; a property with more than one possible value leaves the
+      // destination unprovable.
+      const effectiveDefinitions = new Map(resourceDefinitions);
+      for (const [property, declarations] of winners) {
+        if (!property.startsWith('--')) continue;
+        const values = new Set(declarations.map(candidate => candidate.declaration.value));
+        if (values.size > 1) {
+          return 'the repository stylesheet cannot be judged: a custom property has more than one possible value';
         }
+        const winner = declarations[0];
+        if (winner === undefined) continue;
+        effectiveDefinitions.set(property, winner.declaration.value);
+      }
 
-        const harm = declarationHarm(
-          consumed,
-          ruleDefinitions,
-          context.fontFaces,
-          context.fontFacesComplete
-        );
-        if (harm) return harm;
+      // The chain of custom properties the fix reaches, closed transitively: a
+      // property that an applicable declaration defines while it references a
+      // property already in the set joins the set.
+      const chain = closeCustomPropertyChain(
+        new Set(introducedDefinitions.keys()),
+        candidates
+      );
+
+      // Only the declaration the browser keeps is judged.
+      for (const [property, declarations] of winners) {
+        if (property.startsWith('--')) continue;
+        for (const candidate of declarations) {
+          // A declaration that reads no property of the chain keeps the value
+          // it had before the fix.
+          if (!consumesCustomProperty(candidate.declaration.value, chain)) continue;
+          const harm = declarationHarm(
+            [candidate.declaration],
+            effectiveDefinitions,
+            context.fontFaces,
+            context.fontFacesComplete
+          );
+          if (harm) return harm;
+        }
       }
     }
 

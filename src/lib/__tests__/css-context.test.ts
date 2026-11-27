@@ -1670,3 +1670,76 @@ describe('the eighteenth review regressions', () => {
     expect(result).toContain('customer-side request');
   });
 });
+
+describe('the nineteenth review regressions', () => {
+  const ORIGINAL = '<button id="target">Save</button>';
+  const PATCHED = '<button id="target" aria-label="Save">Save</button>';
+
+  function harm(css: string, original = ORIGINAL, patched = PATCHED): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('19-M1a follows a custom property chain into the font family', () => {
+    // The chain is transitive: `--b` references `--a`, so the family the
+    // browser computes reaches the rule that consumes `--b`.
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--a:Evil} button{--b:var(--a);font-family:var(--b)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('19-M1b keeps a chain without a font face harmless', () => {
+    expect(harm('[aria-label]{--a:Local} button{--b:var(--a);font-family:var(--b)}')).toBeNull();
+  });
+
+  it('19-M2a reads the cascade winner of a custom property', () => {
+    // The attribute selector is more specific than the type selector, so the
+    // browser computes the family the attribute rule defines.
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:Evil} button{--f:Local;font-family:var(--f)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('19-M2b keeps the cascade winner without a font face harmless', () => {
+    expect(harm('[aria-label]{--f:Local} button{--f:Evil;font-family:var(--f)}')).toBeNull();
+  });
+
+  it('19-L2a judges only the declaration the browser keeps', () => {
+    // The later rule wins the cascade, so the browser computes the local
+    // family and requests nothing.
+    expect(
+      harm(
+        '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:Evil} button{font-family:var(--f)} button{font-family:Local}'
+      )
+    ).toBeNull();
+  });
+
+  it('19-L2b keeps the harmful cascade winner refused', () => {
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:Evil} button{font-family:Local} button{font-family:var(--f)}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('19-L2c lets an important declaration win the cascade', () => {
+    // The important declaration wins over the later normal one, so the
+    // browser computes the local family and requests nothing.
+    expect(
+      harm(
+        '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:Evil} button{font-family:var(--f)} button{font-family:Local !important}'
+      )
+    ).toBeNull();
+  });
+
+  it('19-L2d keeps an important harmful winner refused', () => {
+    const result = harm(
+      '@font-face{font-family:Evil;src:url(/evil-font)} [aria-label]{--f:Evil} button{font-family:Local} button{font-family:var(--f) !important}'
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+});

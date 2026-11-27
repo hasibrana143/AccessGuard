@@ -1,6 +1,7 @@
 // GitHub integration for AccessGuard
 import { Octokit } from '@octokit/rest';
 import { decodeHtmlEntities, parseTagAttributes, URI_BASE } from '@/lib/html-attributes';
+import type { ElementContext } from '@/lib/element-ancestors';
 
 const REPOSITORY_ORIGIN = new URL(URI_BASE).origin;
 
@@ -539,16 +540,37 @@ function resolveMemberName(expression: string): string | null {
   return /^\d+$/.test(trimmed) ? trimmed : null;
 }
 
-/** The DOM methods that read an attribute by name. */
-function isAttributeReadMethod(name: string): boolean {
+/**
+ * The DOM methods that read one attribute by name.
+ *
+ * The family is a pattern, not a list of names: every method that reads a
+ * single attribute — `getAttribute`, `getAttributeNode`, `hasAttribute` and
+ * their namespaced variants (`getAttributeNS`, `getAttributeNodeNS`,
+ * `hasAttributeNS`) — belongs to it, while a method that only *writes* an
+ * attribute (`toggleAttribute`) does not. The namespaced variants read the
+ * **local** name, which is their second argument, because the namespace comes
+ * first.
+ */
+const ATTRIBUTE_READ_PATTERN = /^(?:get|has)attribute(?:node)?(?:ns)?$/;
+
+/** The method that reads an attribute of a named node map. */
+const NAMED_ITEM_READ = 'getnameditem';
+
+/**
+ * The argument that names the attribute a read method reads.
+ *
+ * Null when the method does not read an attribute by name.
+ */
+function attributeReadPosition(name: string): number | null {
   const lower = name.toLowerCase();
-  return (
-    lower === 'hasattribute' ||
-    lower === 'getattribute' ||
-    lower === 'getattributenode' ||
-    lower === 'toggleattribute' ||
-    lower === 'getnameditem'
-  );
+  if (lower === NAMED_ITEM_READ) return 0;
+  if (!ATTRIBUTE_READ_PATTERN.test(lower)) return null;
+  return lower.endsWith('ns') ? 1 : 0;
+}
+
+/** True when a method reads an attribute by name. */
+function isAttributeReadMethod(name: string): boolean {
+  return attributeReadPosition(name) !== null;
 }
 
 /**
@@ -678,7 +700,9 @@ function attributeReadCalls(content: string): { name: string | null }[] {
     }
     if (!isAttributeReadMethod(method.name)) continue;
 
-    const argument = args && args.length > 0 ? args[0] : null;
+    // The namespaced methods read the local name, which follows the namespace.
+    const position = attributeReadPosition(method.name) ?? 0;
+    const argument = args && args.length > position ? args[position] : null;
     reads.push({ name: argument === null ? null : resolveStringExpression(argument.trim()) });
   }
 
@@ -1162,9 +1186,31 @@ const PURE_READ_METHODS = new Set([
   'getattributenames',
 ]);
 
-/** True when a method only reads. */
+/**
+ * The DOM methods that do not write the page.
+ *
+ * An iteration helper over an element collection changes nothing by itself —
+ * the writes inside its callback are read separately — and the focus helpers
+ * change nothing the markup or the attributes of the element depend on. A
+ * method that is in neither list is treated as a write, so an unknown runtime
+ * fails closed.
+ */
+const NON_WRITING_METHODS = new Set([
+  'foreach',
+  'entries',
+  'keys',
+  'values',
+  'item',
+  'focus',
+  'blur',
+]);
+
+/** True when a method does not write the page. */
 function isPureReadMethod(name: string): boolean {
-  return isAttributeReadMethod(name) || PURE_READ_METHODS.has(name.toLowerCase());
+  const lower = name.toLowerCase();
+  return (
+    isAttributeReadMethod(name) || PURE_READ_METHODS.has(lower) || NON_WRITING_METHODS.has(lower)
+  );
 }
 
 /** The methods that remove the element they are called on. */
@@ -1571,6 +1617,85 @@ function unresolvedWrite(reach: ElementReach | null): ScriptWrite {
   };
 }
 
+/**
+ * A write whose attribute the analyser cannot read.
+ *
+ * The write may be the attribute the fix adds, so it fails closed.
+ */
+function unresolvedAttributeWrite(reach: ElementReach | null): ScriptWrite {
+  return {
+    property: null,
+    attribute: null,
+    attributeMethod: true,
+    element: true,
+    reach,
+    destroys: false,
+    page: false,
+    classes: [],
+    classMethod: null,
+  };
+}
+
+/** A write for each attribute a write may touch. */
+function attributeWrites(names: (string | null)[], reach: ElementReach | null): ScriptWrite[] {
+  return names.map(name => ({
+    property: null,
+    attribute: name,
+    attributeMethod: true,
+    element: true,
+    reach,
+    destroys: false,
+    page: false,
+    classes: [],
+    classMethod: null,
+  }));
+}
+
+/**
+ * The keys of an object literal.
+ *
+ * A key the analyser cannot read is null: the write may touch any attribute,
+ * so it fails closed. A spread may carry any key, so a literal with a spread
+ * has no readable key at all.
+ */
+function objectLiteralKeys(source: string): (string | null)[] {
+  const text = source.trim();
+  if (!text.startsWith('{') || !text.endsWith('}')) return [null];
+
+  const body = text.slice(1, -1);
+  if (body.includes('...')) return [null];
+
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const character of body) {
+    if (character === '{' || character === '[' || character === '(') depth++;
+    if (character === '}' || character === ']' || character === ')') depth--;
+    if (character === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+  parts.push(current);
+
+  const keys: (string | null)[] = [];
+  for (const part of parts) {
+    const key = part.split(':')[0]?.trim() ?? '';
+    if (key === '') return [null];
+    const resolved = resolveStringExpression(key);
+    if (resolved !== null) {
+      keys.push(resolved);
+      continue;
+    }
+    // A bare identifier is the key of an object literal: `{alt: '…'}`.
+    keys.push(/^[A-Za-z_$][\w$]*$/.test(key) ? key : null);
+  }
+
+  return keys.length > 0 ? keys : [null];
+}
+
 /** The write of a method call. */
 function methodWrite(
   method: string,
@@ -1698,19 +1823,75 @@ function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[]
       const target = methodName === 'set' ? args[0] ?? '' : args[1] ?? '';
       const object = chainObject(parseChain(target), bindings);
       if (object.kind !== 'element') continue;
-      const property =
-        methodName === 'set' && args[1] ? resolveStringExpression(args[1].trim()) : null;
-      writes.push({
-        property,
-        attribute: property === null ? null : attributeOfProperty(property),
-        attributeMethod: false,
-        element: true,
-        reach: object.reach,
-        destroys: false,
-        page: false,
-        classes: [],
-        classMethod: null,
-      });
+
+      if (methodName === 'set') {
+        const property = args[1] ? resolveStringExpression(args[1].trim()) : null;
+        writes.push({
+          property,
+          attribute: property === null ? null : attributeOfProperty(property),
+          attributeMethod: property === null,
+          element: true,
+          reach: object.reach,
+          destroys: false,
+          page: false,
+          classes: [],
+          classMethod: null,
+        });
+        continue;
+      }
+
+      // `Reflect.apply(fn, target, args)` calls `fn` with the target as its
+      // receiver: the method decides what the write touches.
+      const applied = args[0] ? parseChain(args[0].trim()) : [];
+      const appliedArguments = args[2] ? literalArguments(args[2]) : [];
+      let appliedMethod = applied[applied.length - 1]?.name ?? null;
+      let appliedReceiver = applied.slice(0, -1);
+
+      // `fn.bind(element)` is a bound function: the method it binds decides
+      // what the write touches.
+      if (appliedMethod?.toLowerCase() === 'bind') {
+        appliedMethod = appliedReceiver[appliedReceiver.length - 1]?.name ?? null;
+        appliedReceiver = appliedReceiver.slice(0, -1);
+      }
+
+      if (applied.length < 2 || appliedMethod === null) {
+        // The applied method cannot be read: the write may be the attribute the
+        // fix adds, so it fails closed.
+        writes.push(unresolvedAttributeWrite(object.reach));
+        continue;
+      }
+
+      writes.push(
+        methodWrite(appliedMethod, appliedReceiver, object.reach, appliedArguments)
+      );
+      continue;
+    }
+
+    // `Object.assign(element, source)`, `Object.defineProperty(element, name,
+    // descriptor)` and `Object.defineProperties(element, descriptors)` write
+    // to the element they receive as an argument, not to their receiver.
+    if (receiver.length === 1 && receiver[0]?.name?.toLowerCase() === 'object') {
+      if (methodName !== 'assign' && methodName !== 'defineproperty' && methodName !== 'defineproperties') {
+        continue;
+      }
+
+      const object = chainObject(parseChain(args[0] ?? ''), bindings);
+      if (object.kind !== 'element') continue;
+
+      if (methodName === 'defineproperty') {
+        const name = args[1] ? resolveStringExpression(args[1].trim()) : null;
+        writes.push(...attributeWrites([name], object.reach));
+        continue;
+      }
+
+      // `Object.assign` copies every source, and `Object.defineProperties`
+      // defines every key of the descriptor literal.
+      const sources = methodName === 'assign' ? args.slice(1) : [args[1] ?? ''];
+      const names: (string | null)[] = [];
+      for (const source of sources) {
+        names.push(...objectLiteralKeys(source));
+      }
+      writes.push(...attributeWrites(names, object.reach));
       continue;
     }
 
@@ -1841,18 +2022,43 @@ function reachMayInclude(
 }
 
 /**
+ * True when a reach may include the patched element or one of its containers.
+ *
+ * A write that removes a container of the patched element removes the fix
+ * with it, so the reach is compared with the whole chain that contains the
+ * element. A chain the analyser cannot read fails closed: the reach may name
+ * a container the scan did not establish.
+ */
+function reachMayReachElement(
+  reach: ElementReach | null,
+  patched: { tag: string; id: string | null; classes: Set<string> },
+  containers: ElementContext[] | null
+): boolean {
+  if (reachMayInclude(reach, patched)) return true;
+  if (containers === null) return true;
+  return containers.some(container =>
+    reachMayInclude(reach, {
+      tag: container.tag,
+      id: container.id,
+      classes: new Set(container.classes),
+    })
+  );
+}
+
+/**
  * True when the runtime neutralises or destroys the fix.
  *
  * The neutralisation is decided by name: a write of the attribute or of the
  * class the fix adds removes it, whatever the spelling of the write is. The
- * destruction is decided by reach: a write that removes the patched element
- * or that replaces the page removes the fix with it.
+ * destruction is decided by reach: a write that removes the patched element,
+ * one of its containers or that replaces the page removes the fix with it.
  */
 function scriptNeutralisesFix(
   script: RuntimeScript,
   added: Set<string>,
   addedClasses: Set<string>,
-  patched: { tag: string; id: string | null; classes: Set<string> }
+  patched: { tag: string; id: string | null; classes: Set<string> },
+  containers: ElementContext[] | null
 ): boolean {
   const addedNames = new Set([...added].map(name => name.toLowerCase()));
 
@@ -1862,8 +2068,9 @@ function scriptNeutralisesFix(
 
     if (!write.element) continue;
 
-    // The patched element is removed: the fix does not survive.
-    if (write.destroys && reachMayInclude(write.reach, patched)) return true;
+    // The patched element or one of its containers is removed: the fix does
+    // not survive.
+    if (write.destroys && reachMayReachElement(write.reach, patched, containers)) return true;
 
     if (addedNames.size === 0 && addedClasses.size === 0) continue;
 
@@ -2460,7 +2667,11 @@ export async function planRepositoryFixes(
 
   const { applyFixesToFile, fixOccurrenceKey, validateFixCandidate, conflictingRemediationKeys } =
     await import('@/lib/github-pr');
-  const { locateElement, isPatchableFile } = await import('@/lib/ast-patch');
+  const { locateElement, isPatchableFile, countElementOccurrences } =
+    await import('@/lib/ast-patch');
+  // The ancestor reader carries the TypeScript compiler, so it is loaded the
+  // same way the element locator is: the compiler stays out of the hot path.
+  const { elementAncestors } = await import('@/lib/element-ancestors');
   const { buildCssContext, destinationCssHarm, collectStyleSources, analyzeStylesheetLinks, extractCssImports, stripCssLineComments, describeElements, introducedElements } =
     await import('@/lib/css-context');
 
@@ -2821,6 +3032,39 @@ export async function planRepositoryFixes(
   // mapped to the occurrences of that element.
   const conflictingKeys = conflictingRemediationKeys(violations);
 
+  /**
+   * The elements that contain an element of the repository.
+   *
+   * A runtime that removes one of them removes the fix with it, so the chain
+   * is read from the repository's own markup. Only a file that can hold markup
+   * contributes a chain — a module or a stylesheet holds no element — and an
+   * element the scan cannot place leaves the relation unprovable.
+   */
+  const containersOf = (elementHtml: string): ElementContext[] | null => {
+    const containers = new Map<string, ElementContext>();
+    let located = false;
+
+    for (const file of textFiles) {
+      if (!isPatchableFile(file.path)) continue;
+      const content = contentCache.get(file.path);
+      if (content === undefined) continue;
+      const occurrences = countElementOccurrences(content, file.path, elementHtml);
+      for (let occurrence = 0; occurrence < occurrences; occurrence++) {
+        const chain = elementAncestors(content, file.path, elementHtml, occurrence);
+        if (chain === null) continue;
+        located = true;
+        for (const container of chain) {
+          containers.set(
+            `${container.tag}|${container.id ?? ''}|${container.classes.join(' ')}`,
+            container
+          );
+        }
+      }
+    }
+
+    return located ? [...containers.values()] : null;
+  };
+
   for (const violation of candidates) {
     if (!pendingFixIds.has(violation.id)) continue;
 
@@ -2930,10 +3174,17 @@ export async function planRepositoryFixes(
       }
 
       // The runtime neutralises the fix: it writes the attribute or the class
-      // the fix adds, or it destroys the patched element or the page.
+      // the fix adds, or it destroys the patched element, one of its
+      // containers or the page.
+      const destroys = runtimeWriteScripts.some(script =>
+        script.writes.some(write => write.destroys)
+      );
+      const containers = destroys
+        ? containersOf(violation.elementHtml ?? '')
+        : [];
       if (
         runtimeWriteScripts.some(script =>
-          scriptNeutralisesFix(script, added, addedClasses, patchedElement)
+          scriptNeutralisesFix(script, added, addedClasses, patchedElement, containers)
         )
       ) {
         pendingFixIds.delete(violation.id);
