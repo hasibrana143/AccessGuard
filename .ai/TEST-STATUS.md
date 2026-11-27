@@ -5,8 +5,8 @@ Last run: 2026-11-26 (eighteenth-review closure)
 ## Eighteenth-review closure evidence (2026-11-26)
 
 The closure of the eighteenth review's three findings ships in `b16dafd` (source and
-tests) with 20 permanent regressions — 16 in `src/lib/__tests__/github.test.ts` and 14
-in `src/lib/__tests__/css-context.test.ts`, 10 harmful and 10 benign-boundary cases.
+tests) with 30 permanent regressions — 20 in `src/lib/__tests__/github.test.ts` and 10
+in `src/lib/__tests__/css-context.test.ts`; the unit suite grew from 987 to 1017 tests.
 
 The fails-before proof, run by the CTO on the shipped tree:
 

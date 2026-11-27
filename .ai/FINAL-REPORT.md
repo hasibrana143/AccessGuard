@@ -28,7 +28,7 @@ The eighteenth independent security review (`.ai/SECURITY-REVIEW-18.md`) returne
 - the **activated custom property** joins the definitions every rule that applies to the element resolves against, so the chain `--f` → `font-family` → `@font-face` → customer-side resource is followed;
 - an unrelated computed call no longer refuses every fix.
 
-20 permanent regressions and the fails-before proof, run three times (12, 6 and 2 failures) with every benign twin passing before and after. Gate suite: source-only typecheck 0 · lint 0 errors and 0 warnings · vitest 53 files / **1017 tests** · coverage 70.84 / 63.37 / 74.1 / 73.08 (thresholds 55 / 50 / 58 / 57) · build 0 (116 static pages) · Playwright chromium **79/79** · `npm audit` 0 high / 0 critical (15 moderate, dev-tooling only).
+30 permanent regressions and the fails-before proof, run three times (12, 6 and 2 failures) with every benign twin passing before and after. Gate suite: source-only typecheck 0 · lint 0 errors and 0 warnings · vitest 53 files / **1017 tests** · coverage 70.84 / 63.37 / 74.1 / 73.08 (thresholds 55 / 50 / 58 / 57) · build 0 (116 static pages) · Playwright chromium **79/79** · `npm audit` 0 high / 0 critical (15 moderate, dev-tooling only).
 
 **The release gate is still closed**: it opens only when a fresh **nineteenth independent review** returns READY (Critical 0, High 0) against this closure tree.
 
@@ -166,7 +166,7 @@ bound class-list alias, `remove()`, `removeChild()`, `document.write()` and the 
 attribute write `img.alt=''`) — and that the **activated custom property** of a font
 activation chain was not followed into the rule that consumes it, while an unrelated
 computed call refused every fix of the repository. **All three are now fixed at
-their root cause** (20 regressions; the fails-before proof, run three times: 12, 6
+their root cause** (30 regressions; the fails-before proof, run three times: 12, 6
 and 2 failures) — the writer now decides by **reach and effect**, not by a spelling.
 The gate opens only when a **nineteenth independent review** returns READY (Critical
 0, High 0).

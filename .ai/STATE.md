@@ -5,12 +5,30 @@
 | Current phase | **SECURITY FIX LOOP — V23 eighteenth-review closure shipped, nineteenth review pending** 🟡 |
 | Current task | Run the nineteenth independent security review of the eighteenth-review closure tree; the release gate opens only on READY (Critical 0, High 0) |
 | Owner | CTO agent |
-| Status | AMBER — the eighteenth independent review returned **NOT READY (High 1, Medium 1, Low 1)**: the writer still decided by a closed list of mutation spellings, the activated custom property was not followed into the rule that consumes it, and an unrelated computed call refused every fix. **All three are now closed at their root cause** with 20 permanent regressions, and every gate is green. The release gate stays closed until a **nineteenth** independent review returns READY |
+| Status | AMBER — the eighteenth independent review returned **NOT READY (High 1, Medium 1, Low 1)**: the writer still decided by a closed list of mutation spellings, the activated custom property was not followed into the rule that consumes it, and an unrelated computed call refused every fix. **All three are now closed at their root cause** with 30 permanent regressions, and every gate is green. The release gate stays closed until a **nineteenth** independent review returns READY |
 | Blocked | The release gate stays closed until the **nineteenth** independent review returns READY; Strix autonomous pentest remains unavailable — every provider refuses the run (quota / EOL model / no credits), so no Strix evidence exists for this cycle |
 | Next action | Run the nineteenth independent review of the eighteenth-review closure tree (`b16dafd`); if READY, close the V23 release gate and request production-deploy approval. If NOT READY, close each reproduced root cause with a permanent regression and repeat the independent review |
-| Last verification | 2026-11-26 — seventeenth-review closure: source-only typecheck 0, lint 0, vitest 53 files/987 tests, coverage 70.4/63.12/73.41/72.53, build 0 (116 static pages), Playwright 79/79 passed (0 flaky), npm audit Critical 0 / High 0 (15 moderate), the fails-before proof 10 of the 15 new regressions failing without the fix |
+| Last verification | 2026-11-26 — eighteenth-review closure: source-only typecheck 0, lint 0 (0 errors, 0 warnings), vitest 53 files/1017 tests, coverage 70.84/63.37/74.1/73.08 (thresholds 55/50/58/57), build 0 (116 static pages), Playwright chromium 79/79 passed (3.9 min), npm audit Critical 0 / High 0 (15 moderate, dev-tooling only), the fails-before proof 12 / 6 / 2 failures with every benign twin passing before and after |
 
 **Product verdict:** `.ai/PRODUCT-CRITIQUE.md` — original issues fixed: crawler implemented, GitHub Action repaired, trial added, pricing math resolved. Deep critique: `.ai/PRODUCT-CRITIQUE-DEEP.md` — P0 truth gaps closed in V23. Execution plan: `.ai/TASKS.md`.
+
+## Evidence (2026-11-26, eighteenth-review closure)
+
+| Check | Result |
+|---|---|
+| Eighteenth-review closure | PASS — all three findings (18-H1, 18-M1, 18-L1) closed at their root cause in `src/lib/github.ts` and `src/lib/css-context.ts`; the dispositions are in `.ai/SECURITY-STATUS.md` and the reviewer's own artifact is `.ai/SECURITY-REVIEW-18.md` |
+| Permanent regressions | PASS — 30 new tests (20 in `github.test.ts`, 10 in `css-context.test.ts`); the unit suite grew from 987 to 1017 tests |
+| Fails-before proof | PASS — run three times on the shipped tree: `github.ts` reverted → 12 failed / 4 passed, `css-context.ts` reverted (destination suite) → 6 failed / 4 passed, `css-context.ts` reverted (writer suite `18-M1c`–`18-M1f`) → 2 failed / 2 passed; every benign twin passes before and after, and the stash was always popped |
+| `npx vitest run --coverage` | PASS — 53 files, 1017/1017 tests (was 53/987) |
+| Coverage | PASS — statements 70.84 % (threshold 55) · branches 63.37 % (50) · functions 74.1 % (58) · lines 73.08 % (57) |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npm run lint` | PASS — exit 0, 0 errors, 0 warnings |
+| `npm run build` | PASS — exit 0 (Next standalone build, 116 static pages) |
+| `npx playwright test --project=chromium` | PASS — 79 tests, 79 passed, 0 failed (3.9 min) |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate advisories, all in the development tooling chain) |
+| CI / Docker / Deploy / AccessGuard Scan | PASS on `032559e` and again on `5345744` — the Deploy and the Scan workflows are the documented secret-gated skips (no Vercel credentials, no API key), so no deployment and no self-scan are claimed |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
+| Release gate | CLOSED — opens only when the **nineteenth** independent review returns READY (Critical 0, High 0) |
 
 ## Evidence (2026-11-24, sixteenth-review closure)
 

@@ -540,16 +540,26 @@ All four workflows are green on `032559e` (the eighteenth-review closure tree):
 The two skips are the documented secret-gated behaviour, not a coverage result:
 neither the deployment nor the self-scan is claimed as evidence for this cycle.
 
-The closure of the eighteenth-review findings ships as five commits, in the order the
+The same four workflows are green again on the volume-chain head `5345744`:
+
+| Run | Workflow | Result |
+|---|---|---|
+| 45867190001 | CI | ✅ success — 53 test files / **1017 tests**, the build and the audit gate green |
+| 45867190088 | Docker | ✅ success — the multi-arch image builds, the Trivy CRITICAL/HIGH filter passes, the SARIF upload and the Syft SBOM attest are green |
+| 45867189751 | Deploy | ✅ success — **skipped with a notice**: `HAS_VERCEL_CREDS: false`, so the Vercel secrets are absent and nothing was deployed |
+| 45867189636 | AccessGuard Scan | ✅ success — **skipped with a notice**: `ACCESSGUARD_API_KEY` / `ACCESSGUARD_PROJECT_ID` are not configured, so the VPAT report and the self-scan did not run |
+
+The closure of the eighteenth-review findings ships as six commits, in the order the
 volume definition of done asks for:
 
 | Commit | Layer | Content |
 |---|---|---|
 | `96a33fa` | state | the eighteenth independent review recorded — the reviewer's own artifact `.ai/SECURITY-REVIEW-18.md` |
-| `b16dafd` | security | the three eighteenth-review findings closed at their root cause, with 20 permanent regressions (the runtime reader decides by reach and effect, the neutralisation and destruction gates, the activated custom property chain and the computed-member boundary) |
+| `b16dafd` | security | the three eighteenth-review findings closed at their root cause, with 30 permanent regressions (the runtime reader decides by reach and effect, the neutralisation and destruction gates, the activated custom property chain and the computed-member boundary) |
 | `6462784` | ai | `docs/ai/FIX_VERIFICATION.md` and `docs/ai/VALIDATION_ENGINE.md` brought in line with the shipped behaviour |
-| this commit | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
-| the releases commit | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
+| `032559e` | state | the closure evidence in `.ai/` — the dispositions, the decisions, the risks, the test status and the final report |
+| `b577de7` | state | the workflow run of the closure tree — the four green runs recorded above |
+| `5345744` | releases | the V23 row in `docs/VOLUMES.md` — the closure description and the hash chain |
 
 The gate suite that backed the push, run by the CTO on the shipped tree:
 `npx tsc -p tsconfig.check.json --noEmit` 0, `npm run lint` 0 (0 errors, 0 warnings),
