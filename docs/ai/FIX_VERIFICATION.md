@@ -172,7 +172,7 @@ spliced at AST-derived offsets, so the rest of the file is untouched.
 | Inherited resources | The **resource check** of an activated rule resolves the `var()` references of the declaration before it looks for a `url(…)`, against the custom properties that can reach the element — the ones the element's own rules and its inline style define **plus** the global ones (a `:root` / `html` rule). `:root{--pixel:url(…)}` with `background-image:var(--pixel)` therefore loads a resource in the **customer browser**, which the verification browser blocks and never sees, so the destination is unprovable. A reference that still cannot be resolved is unprovable too, never "no resource". The **effective style** is deliberately *not* widened with the global definitions: a value that only `:root` defines may be conditional or overridden, so the effective style stays unprovable for a `var()` it cannot resolve. |
 | Focus activation | A fix that adds `autofocus` **gives the element the focus**, so every focus rule whose compound can match the patched element is judged too — in any compound of the selector, not only in the subject. `input:focus ~ .overlay` takes the page over as soon as the input is focused, and `input:focus{background-image:url(…)}` makes the **customer browser** request a resource the verification browser blocks. Both make the destination unprovable. A fix that adds a **`tabindex`** is a **focusability transition** of the same kind: the customer can now focus the element, so the focus rules are judged as well. The **actual focusability** is compared before and after the fix, not only the presence of a `tabindex`: an anchor that gains an **`href`** becomes keyboard-focusable, an element that gains **`contenteditable`** becomes focusable, and a `tabindex` **value change** to a focusable value (`-1` → `0`) is a focusability transition too. |
 | Animation frame the customer sees | The frame the customer sees is decided by the **play state, the delay, the duration and the fill mode** — the direction alone is not enough. A **paused** animation stays on its **first** frame (`opacity:0`), so the element is invisible even though the last frame is visible. A paused animation with a **negative delay** is further along the timeline: the customer sees the frame at that progress (`-0.4s` into a `1s` animation is the `40%` frame), and the keyframe offsets are kept so the frame can be chosen. A **running** animation with a positive delay shows the **first** frame during the delay when the fill mode is `backwards` (or `both`); with `none` or `forwards` the base style shows during the delay, so the end state governs. A duration or a delay the analyser cannot read makes the frame unselectable — unprovable, never harmless. Both the longhand form and the `animation` shorthand are read. |
-| Repository runtime | The runtime is read in every carrier. An **inline `<script>`** in the repository HTML is runtime code like a linked script — an unclosed block cannot be followed, so it fails closed. An **event-handler attribute** (`onload="…"` on a tag) is the same thing: the code runs when the event fires, so it is analysed like an inline script, and a handler whose value cannot be read (an unterminated quote) fails closed. A **DOM property getter** (`img.alt`, `el.className`, `el.dataset.x`) is a state read like `hasAttribute(…)`, because the property reflects the attribute the fix adds. The DOM APIs that read an attribute's presence **generically** — `getAttributeNames()`, `getAttributeNode()`, `attributes.getNamedItem()`, `hasAttributes()` and an iteration of `element.attributes` — are state reads as well: a script that enumerates the attributes and then mutates reacts to **any** attribute the fix adds, without naming it. The **name** of an attribute read is resolved as well: a concatenation of string literals (`'a'+'lt'`) names the attribute it evaluates to, and a name the reader cannot resolve (a variable, a call, an interpolated template) fails closed into the generic bucket. A **computed property read** (`img["al"+"t"]`) and a **computed selector read** (`img.matches("["+"al"+"t"+"]")`) are state reads as well — the name is resolved when it is a concatenation of string literals and fails closed into the generic bucket otherwise. A **`<script src>` target** is followed into the tree and read as runtime code whatever the file is called — a browser executes the response by its MIME type, not by its suffix — and a target outside the repository makes the destination unprovable. The runtime is judged against **every element the remediation introduces**: a script that names an added id or reads an added attribute reaches that element only after the fix lands. |
+| Repository runtime | The runtime is read in every carrier. An **inline `<script>`** in the repository HTML is runtime code like a linked script — an unclosed block cannot be followed, so it fails closed. An **event-handler attribute** (`onload="…"` on a tag) is the same thing: the code runs when the event fires, so it is analysed like an inline script, and a handler whose value cannot be read (an unterminated quote) fails closed. A **DOM property getter** (`img.alt`, `el.className`, `el.dataset.x`) is a state read like `hasAttribute(…)`, because the property reflects the attribute the fix adds. The DOM APIs that read an attribute's presence **generically** — `getAttributeNames()`, `getAttributeNode()`, `attributes.getNamedItem()`, `hasAttributes()`, an iteration of `element.attributes` and the **markup read** (`outerHTML`) — are state reads as well: a script that enumerates the attributes (or reads the markup that carries them) and then mutates reacts to **any** attribute the fix adds, without naming it. The markup of the **document** (`document.body.innerHTML`) deliberately stays out of the family: it carries the customer's own unconditional runtime, not the attributes of the element the fix patches. The **name** of an attribute read is resolved as well: a concatenation of string literals (`'a'+'lt'`) names the attribute it evaluates to, and a name the reader cannot resolve (a variable, a call, an interpolated template) fails closed into the generic bucket. A **computed property read** (`img["al"+"t"]`) and a **computed selector read** (`img.matches("["+"al"+"t"+"]")`) are state reads as well — the name is resolved when it is a concatenation of string literals and fails closed into the generic bucket otherwise. A **`<script src>` target** is followed into the tree and read as runtime code whatever the file is called — a browser executes the response by its MIME type, not by its suffix — and a target outside the repository makes the destination unprovable. The runtime is judged against **every element the remediation introduces**: a script that names an added id or reads an added attribute reaches that element only after the fix lands. |
 | Conversion | HTML attributes are renamed to JSX (`class` → `className`, `for` → `htmlFor`), void elements are self-closed, `style="…"` becomes a style object. Style values are allow-listed: braces, quotes, backslashes, `url()` and `expression()` are dropped so a style attribute cannot break out of the JS expression it is written into. |
 | No-op | A patch identical to the original element is not a fix and is not counted. |
 | Content loss | A patch that empties an element that had visible text (a link or a button) is rejected — an axe-verified fix must not delete what the user reads. The new text has to **keep** the old text: a fix that reduces "Read more" to "R" passes every rule check and still deletes what the user reads. Text inside a hidden element (`hidden`, `display:none`, `visibility:hidden`, `opacity:0`) is not visible text, so moving the label into a hidden element is a content loss too. The CSS priority suffix is stripped before the check, so `opacity:0!important` is the same declaration as `opacity:0`. `aria-hidden` removes content from the accessibility tree, **not** from the screen: its text counts as visible text, so a fix may not delete it. |
@@ -623,8 +623,11 @@ unrelated property and the fail-closed rule never fired.
 The branch now resolves the method the expression names, unwraps a `.bind()` (the
 bound method is the method that decides), and reads that method's arguments — so
 `Reflect.apply(Element.prototype.setAttribute, img, ['alt',''])` is judged exactly
-like `img.setAttribute('alt','')`. A method or an argument list the reader cannot
-resolve **fails closed** like an unreadable name.
+like `img.setAttribute('alt','')`. The method is resolved from the **whole chain**, so
+a function held by a property — the `value` of a descriptor the reader names — is
+resolved to the method it is, and **every call syntax** is modelled (a tagged-template
+invocation included). A method, a chain or an argument list the reader cannot resolve
+**fails closed** like an unreadable name.
 
 ### 12.3 The destruction reach includes the ancestors of the patched element
 
@@ -650,9 +653,16 @@ Two rules keep the model honest:
 The closure of the review found the same gap one level up: `Object.assign(img,
 {alt: ''})` wrote the attribute the fix adds, and the write side had no model of the
 object utilities at all. Their target is their **first argument**, not the receiver,
-so `Object.assign`, `Object.defineProperty` and `Object.defineProperties` now write
-the attributes they name. A key the reader cannot resolve — a spread, a computed key —
-fails closed, because the write may touch any attribute.
+so `Object.assign`, `Object.defineProperty` and `Object.defineProperties` write the
+attributes they name.
+
+The family is closed **by construction**: the utility is resolved by the identity of
+the constructor it holds, so the target is the utility's first argument whatever the
+receiver chain (`Object`, `window.Object`, `globalThis.Object`, `self.Object`) and
+whatever the call syntax — a direct call, a `.call` / `.apply` with the utility's own
+argument list, a `const` alias, a bound alias. An unreadable utility, alias or
+argument list fails closed, because the write may touch any attribute; a key the
+reader cannot resolve — a spread, a computed key — fails closed for the same reason.
 
 ### 12.5 An iteration helper is not a write of the page
 
@@ -680,11 +690,18 @@ never judged.
 resolves it — `!important` first, then the inline style, then the **specificity**
 (id 100, class / attribute / pseudo-class 10, type / pseudo-element 1; `:not()`,
 `:is()` and `:has()` take their most specific argument, `:where()` takes none), then
-the **source order**. The winner among **all** the applicable declarations of that
-property wins, not the consuming rule's own value: `[aria-label]{--f:Evil}` (0,1,0)
-beats `button{--f:Local}` (0,0,1), exactly as the browser computes it. A selector
-whose specificity cannot be read **fails closed** — the destination becomes unprovable
-(`cannot be judged`), never absent.
+the **source order**. The specificity is the browser's: a CSS escape is part of the
+identifier, so `.md\:flex` is one class `(0,1,0)` and `.\000063ard` is one class too.
+The source order is the **document order of the page** — the `<style>` blocks and the
+`<link rel="stylesheet">` elements in the order the browser applies them, the sheets
+an `@import` rule names **before** the sheet that imports them — and every document
+has its **own** cascade, so the stylesheets of two pages never share one. The winner
+among **all** the applicable declarations of that property wins, not the consuming
+rule's own value: `[aria-label]{--f:Evil}` (0,1,0) beats `button{--f:Local}` (0,0,1),
+exactly as the browser computes it. A selector whose specificity cannot be read
+**fails closed** — the destination becomes unprovable (`cannot be judged`), never
+absent; a `:root` / `html` rule is **skipped** instead, because it cannot match the
+patched element.
 
 **Only the winner is judged.** The applicable `font-family` declarations are
 **cascaded**, not unioned: only the declaration the browser keeps is judged, so a
@@ -702,5 +719,94 @@ reverted and the new regressions kept:
 | `src/lib/css-context.ts` (destination scope) | `css-context.test.ts -t "19-"` | **4 failed**, 4 passed — the four failing cases (`19-M1a`, `19-M2a`, `19-L2a`, `19-L2c`) are the harmful paths the pre-closure tree accepted; the four that pass are the benign twins |
 
 The gate suite that backed the push is recorded in `.ai/TEST-STATUS.md`.
+
+## 13. The twentieth-review closure (V23)
+
+The twentieth independent security review returned **NOT READY** — Critical 0,
+High 6, Medium 0, Low 2. All eight of its closure criteria are met at the root
+cause: the object-utility family, the markup read and the call syntaxes on the
+**writer** side, the cascade, the specificity and the root selector on the
+**destination** side, and the two fail-closed false positives. The findings keep
+the review's names: `20-H1` to `20-H6` and `20-L1`, `20-L2`.
+
+### 13.1 The object-utility family is closed by construction (20-H1)
+
+The branch was keyed on the literal receiver `Object`, so `window.Object.assign`,
+`globalThis.Object.assign`, `Object.assign.call(null, …)` and a `const` alias of the
+utility were invisible while the direct spelling was refused.
+
+The utility is now resolved by the **identity of the constructor it holds**
+(`holdsObjectConstructor`, `objectUtilityBindings`, `objectUtilityChain`,
+`objectUtilityCall`, `objectUtilityAttributes` and `applyArguments` in
+`src/lib/github.ts`): `Object`, `window.Object`, `globalThis.Object` and
+`self.Object` are the same object, a variable that holds a utility is an alias of it,
+and a `.call` / `.apply` is unwrapped to the utility's **own** argument list. The
+target is the utility's **first argument**; an unreadable utility, alias or argument
+list **fails closed**, because the write may touch any attribute. The same resolution
+runs in the dynamic model (`runtimeMutations`), so that bucket is no longer
+spelling-bound.
+
+### 13.2 The markup read is a generic state read (20-H2)
+
+`img.outerHTML` carries the attributes of the element, so it reads the attribute the
+fix adds. It joins `getAttributeNames()`, `hasAttributes()` and the iteration of
+`element.attributes` in `RUNTIME_GENERIC_STATE_READ_PATTERN`. The markup of the
+**document** (`document.body.innerHTML`) deliberately stays out: the review recorded
+it as the customer's own unconditional runtime.
+
+### 13.3 The cascade is the document order of the page (20-H3)
+
+`collectDocumentStyleSources()` (`src/lib/css-context.ts`) returns the `<style>`
+blocks and the `<link rel="stylesheet">` elements of a document in the order the
+browser applies them, and `orderedStylesheetLinks()` carries the position of each
+link. Every document gets its **own** cascade (`src/lib/github.ts`): the stylesheets
+of two documents never share one. The sheets an `@import` rule names come **before**
+the sheet that imports them. The stylesheet no document references is judged on its
+own — and a stylesheet another stylesheet imports belongs to the importer's cascade,
+so the name of a file may not decide the verdict. The destination is refused when
+**any** cascade harms (the union of the verdicts).
+
+### 13.4 The specificity is the browser's specificity (20-H4)
+
+`endOfIdentifier()` consumes a CSS escape as part of the identifier, so `.md\:flex`
+is one class `(0,1,0)` and `.\000063ard` is one class too — the escape was counted as
+a class **and** a type before.
+
+### 13.5 The method of a `.call` / `.apply` comes from the whole chain (20-H5)
+
+`calledMethod()` resolves the method the chain holds: a function kept in a property
+(`Object.getOwnPropertyDescriptor(Element.prototype,'removeAttribute').value`) is
+resolved to the method it is; a chain the reader cannot resolve **fails closed**.
+
+### 13.6 Every call syntax is modelled (20-H6)
+
+A tagged-template invocation is a call: `TAGGED_TEMPLATE_CALL_PATTERN` models
+``img.removeAttribute`alt`` and ``img.toggleAttribute`alt`` on the write side, and
+the read side reads the template strings as the first argument of the call
+(``img.getAttribute`alt`` reads the attribute the fix adds). An unreadable tag
+**fails closed**.
+
+### 13.7 The two fail-closed false positives are narrowed (20-L1, 20-L2)
+
+A `:root` / `html` rule is **skipped** — it cannot match the patched element, so it
+is not a selector whose specificity cannot be read (`matchingSpecificity()` returns
+`none` / `unreadable` / `specificity`); the custom properties it defines are still
+resolved on the path the fix activates. The `.apply` spelling of a read now decides
+between the `.call` and the `.apply` argument rule **before** it replaces the method,
+so a read of an unrelated attribute no longer refuses every fix.
+
+### 13.8 The evidence
+
+The fails-before proofs (the source reverted, the regressions kept): 11 CSS-scope
+failures (20-H3a–c, 20-H4a–c, 20-L1a–b, 20-C1h–i and 20-L1a in `github.test.ts`)
+and 14 writer-scope failures (20-H1a–d, 20-H2a–d, 20-H5a, 20-H6a, 20-H6b, 20-L2a,
+20-H6e and 20-H3d), every benign control passing before and after. The 34 permanent
+regressions live in `src/lib/__tests__/css-context.test.ts` and
+`src/lib/__tests__/github.test.ts`.
+
+The gate suite on the shipped tree: source-only typecheck 0, lint 0, vitest 54 files
+/ **1098 tests** green, coverage 71.38 / 63.81 / 75.02 / 73.7 (thresholds 55 / 50 /
+58 / 57), build 0 (116 static pages), Playwright chromium 79 / 79, `npm audit
+--audit-level=high` Critical 0 / High 0 (15 moderate, dev-tooling only).
 
 

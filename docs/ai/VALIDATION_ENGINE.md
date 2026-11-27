@@ -178,10 +178,14 @@ writes anything into a customer's repository:
   attributes** are runtime carriers: `<body onload="…">` runs when the event fires, so
   the handler body is analysed like an inline script, and a handler whose value cannot
   be read fails closed. The DOM APIs that read an attribute's presence **generically**
-  — `getAttributeNames()`, `getAttributeNode()`, `attributes.getNamedItem()` and an
-  iteration of `element.attributes` — are state reads like `hasAttribute(…)`, so a
-  script that enumerates the attributes and then mutates reacts to any attribute the
-  fix adds. The **effective painted surface** is composed, not the content box: the
+  — `getAttributeNames()`, `getAttributeNode()`, `attributes.getNamedItem()`,
+  `hasAttributes()`, an iteration of `element.attributes` and the **markup read**
+  (`outerHTML`) — are state reads like `hasAttribute(…)`, so a script that enumerates
+  the attributes (or reads the markup that carries them) and then mutates reacts to
+  any attribute the fix adds. The markup of the **document**
+  (`document.body.innerHTML`) stays out of the family: it carries the customer's own
+  unconditional runtime, not the attributes of the element the fix patches. The
+  **effective painted surface** is composed, not the content box: the
   **logical** padding and border longhands set the same edges as the physical ones,
   `zoom` is a scale factor like `scale` and `transform: scale(…)`, a scale above one
   on an axis **without a declared size** cannot be computed (the intrinsic size is
@@ -205,14 +209,14 @@ writes anything into a customer's repository:
    Nine more gaps of the same judgement are closed after that. **Attribute reads
    whose name the script builds** are resolved: a concatenation of string literals
    (`'a'+'lt'`) names the attribute it evaluates to, and a name the reader cannot
-   resolve fails closed into the generic bucket — `hasAttributes()` joins the
-   generic reads (`getAttributeNames()`, `getAttributeNode()`,
-   `attributes.getNamedItem()`). A **`<script src>` target** is followed into the
-   tree and read as runtime code whatever the file is called — a browser executes
-   the response by its MIME type, not by its suffix — and a target outside the
-   repository makes the destination unprovable. The runtime is judged against
-   **every element the remediation introduces**: a script that names an added id or
-   reads an added attribute reaches that element only after the fix lands. The
+   resolve fails closed into the generic bucket — `hasAttributes()` and the **markup
+   read** (`outerHTML`) join the generic reads (`getAttributeNames()`,
+   `getAttributeNode()`, `attributes.getNamedItem()`). A **`<script src>` target**
+   is followed into the tree and read as runtime code whatever the file is called — a
+   browser executes the response by its MIME type, not by its suffix — and a target
+   outside the repository makes the destination unprovable. The runtime is judged
+   against **every element the remediation introduces**: a script that names an added
+   id or reads an added attribute reaches that element only after the fix lands. The
    **functional pseudo-classes** `:is()`, `:where()` and `:not()` are read and
    matched the way the browser matches them, and the fix's **removed** classes and
    attributes are tracked — removing `.card` makes `:not(.card)` start matching. An
@@ -279,8 +283,10 @@ writes anything into a customer's repository:
    Nine more gaps of the same judgement are closed after that. The **runtime reads an
    attribute by the shape of the call**, not by a literal method name: the direct call,
    the optional call (`img.getAttribute?.('alt')`), the prototype receiver
-   (`Element.prototype.getAttribute.call(img,'alt')`) and a statically resolvable
-   computed method name (`img['get'+'Attribute']('alt')`) are the same read, and the
+   (`Element.prototype.getAttribute.call(img,'alt')`), a statically resolvable
+   computed method name (`img['get'+'Attribute']('alt')`) and a **tagged-template**
+   invocation (``img.getAttribute`alt`` — the template strings are the first
+   argument of the call) are the same read, and the
    attribute argument is resolved with the existing string-expression resolver. A
    method name or an attribute name the reader cannot resolve fails closed into the
    generic bucket, because the script then reacts to **any** attribute the fix adds. A
@@ -439,9 +445,13 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   **defines while it references** a property already in the set joins the set, so the
   chain `--a` → `--b` → `font-family` → `@font-face` → customer-side resource is judged
   end to end; the **cascade winner** of a custom property — `!important`, then the
-  inline style, then the **specificity**, then the **source order** — so
+  inline style, then the **specificity** (the browser's: a CSS escape is part of the
+  identifier, so `.md\:flex` is one class `(0,1,0)`), then the **source order** — the
+  **document order of the page**, one cascade per document — so
   `[aria-label]{--f:Evil}` (0,1,0) beats `button{--f:Local}` (0,0,1) exactly as the
-  browser computes it, and a selector whose specificity cannot be read fails closed;
+  browser computes it, and a selector whose specificity cannot be read fails closed
+  (a `:root` / `html` rule is skipped instead, because it cannot match the patched
+  element);
   and the **applicable font declarations cascaded instead of unioned**, so only the
   declaration the browser keeps is judged and a repository whose later rule overrides
   the family stays writable).
@@ -459,7 +469,8 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   script** (a conditional class or inline-style mutation, a mutation that names the
   patched element, an **event-handler attribute** that reacts to the added
   attribute, a **generic attribute read** (`getAttributeNames()`,
-  `getAttributeNode()`, `attributes.getNamedItem()`), a service worker, a CSS-in-JS
+  `getAttributeNode()`, `attributes.getNamedItem()`, `hasAttributes()` and the
+  **markup read** `outerHTML`), a service worker, a CSS-in-JS
   library), the blob whose extension
   does not say
   whether it is binary, the template destination, failed writes not reported as
