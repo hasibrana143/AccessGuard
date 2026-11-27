@@ -564,8 +564,8 @@ property that no rule on the element consumes stays harmless.
 
 ### 11.5 The evidence
 
-20 permanent regressions (16 in `github.test.ts`, 14 in `css-context.test.ts` — 10
-harmful and 10 benign-boundary cases) and the fails-before proof, run twice:
+30 permanent regressions (20 in `github.test.ts`, 10 in `css-context.test.ts` — the unit
+suite grew from 987 to 1017 tests) and the fails-before proof, run three times:
 
 | Reverted source | Result |
 |---|---|
