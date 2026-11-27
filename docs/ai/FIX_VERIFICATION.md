@@ -578,3 +578,129 @@ With the fixes restored all tests pass. Gate suite: source-only typecheck 0, lin
 70.84 / 63.37 / 74.1 / 73.08 (thresholds 55 / 50 / 58 / 57), `next build` green
 (116 static pages), Playwright chromium **79/79**, `npm audit --audit-level=high`
 Critical 0 / High 0 (15 moderate advisories, all in the development tooling chain).
+
+## 12. The nineteenth-review closure (V23)
+
+The nineteenth independent security review found **three** equivalent paths the writer
+still did not model, **two** gaps in the destination CSS reader and **two** fail-closed
+false positives. The three High findings share one shape: the eighteenth-review closure
+made the **write** side structural, but the **read** side was still a closed list of
+five names, the reflective branch still dropped the effect of the write, and the
+destruction reach was still compared with the patched element alone. The two Medium
+findings share another shape: the custom-property chain was followed across one rule
+and without the cascade.
+
+### 12.1 The read side is a pattern, not a list of names
+
+`isAttributeReadMethod()` named five methods: `hasAttribute`, `getAttribute`,
+`getAttributeNode`, `toggleAttribute` and `getNamedItem`. A namespaced read
+(`getAttributeNS(null,'alt')`) was therefore invisible, and a script that gates its
+mutation on that read took the patched element over after the fix landed.
+
+The read side now asks a **structural** question — *does this method read one attribute
+by name?* — and the answer is a pattern:
+
+```
+/^(?:get|has)attribute(?:node)?(?:ns)?$/
+```
+
+Every `get` / `has` + `Attribute` + optional `Node` + optional `NS` method belongs to
+the family, and the **namespaced variants read the local name at the second argument**,
+because the namespace comes first (`getAttributeNS(namespace, localName)`). The
+attribute the reader cannot resolve still fails closed into the generic bucket.
+
+`toggleAttribute` left the read family: it **writes** an attribute (it adds it when it
+is absent and removes it when it is present), so it was never a read. A method that
+writes an attribute is judged as a write.
+
+### 12.2 The reflective write keeps the effect of the write
+
+`Reflect.apply(fn, target, args)` calls `fn` with `target` as its receiver, so the
+**method** decides what the write touches. The branch recorded the write but dropped
+the method and its arguments, so the write looked like a property write of an
+unrelated property and the fail-closed rule never fired.
+
+The branch now resolves the method the expression names, unwraps a `.bind()` (the
+bound method is the method that decides), and reads that method's arguments — so
+`Reflect.apply(Element.prototype.setAttribute, img, ['alt',''])` is judged exactly
+like `img.setAttribute('alt','')`. A method or an argument list the reader cannot
+resolve **fails closed** like an unreadable name.
+
+### 12.3 The destruction reach includes the ancestors of the patched element
+
+A write that removes a **container** of the patched element removes the fix with it,
+but the reach was compared with the patched element alone: `querySelectorAll('.card')`
+never matched the image inside the card, and the fix was written.
+
+`src/lib/element-ancestors.ts` reads the chain that contains the element **from the
+repository's own markup** — an HTML tag-stack scan (void elements, raw-text elements,
+inert content, comments and quoted attribute values aware) and, for JSX and TSX, the
+TypeScript compiler's parent chain. `reachMayReachElement()` compares the reach with
+the patched element **and** every container above it.
+
+Two rules keep the model honest:
+
+- the removal of an element that **cannot contain** the patched one stays writable
+  (`querySelectorAll('p')` does not refuse a fix on an image);
+- a relation the scan **cannot establish** fails closed — the reach may name a
+  container the scan did not read, so the fix is refused.
+
+### 12.4 The object utilities write the attributes they name
+
+The closure of the review found the same gap one level up: `Object.assign(img,
+{alt: ''})` wrote the attribute the fix adds, and the write side had no model of the
+object utilities at all. Their target is their **first argument**, not the receiver,
+so `Object.assign`, `Object.defineProperty` and `Object.defineProperties` now write
+the attributes they name. A key the reader cannot resolve — a spread, a computed key —
+fails closed, because the write may touch any attribute.
+
+### 12.5 An iteration helper is not a write of the page
+
+`document.querySelectorAll('img').forEach(…)` counted as a write of the page, so a
+benign script that only reads an attribute and logs refused **every** fix of the
+repository. The iteration helpers (`forEach`, `entries`, `keys`, `values`, `item`) and
+the focus helpers (`focus`, `blur`) change nothing the markup or the attributes of the
+element depend on; the writes inside the callback are read separately. A method that is
+in neither list is still treated as a write, so an unknown runtime fails closed.
+
+### 12.6 The destination CSS reader follows the cascade, not a union
+
+The two Medium findings share one shape: the custom property was resolved from the
+**consuming rule's own definition** and only **one level deep**, so the browser's own
+computation was never reproduced.
+
+**The chain is transitive.** A custom property that an applicable declaration
+**defines while it references** a property already in the set joins the set, and the
+loop repeats until the set is stable. The chain `--a` → `--b` → `font-family` →
+`@font-face` → the customer-side resource is therefore judged end to end; before the
+closure, only the property the activated rule defined was in the set, so `--b` was
+never judged.
+
+**The cascade winner decides.** A custom property is resolved the way the browser
+resolves it — `!important` first, then the inline style, then the **specificity**
+(id 100, class / attribute / pseudo-class 10, type / pseudo-element 1; `:not()`,
+`:is()` and `:has()` take their most specific argument, `:where()` takes none), then
+the **source order**. The winner among **all** the applicable declarations of that
+property wins, not the consuming rule's own value: `[aria-label]{--f:Evil}` (0,1,0)
+beats `button{--f:Local}` (0,0,1), exactly as the browser computes it. A selector
+whose specificity cannot be read **fails closed** — the destination becomes unprovable
+(`cannot be judged`), never absent.
+
+**Only the winner is judged.** The applicable `font-family` declarations are
+**cascaded**, not unioned: only the declaration the browser keeps is judged, so a
+repository whose later rule overrides the family is writable again (`font-family:
+Local` computes and requests nothing) while the harmful winner stays refused.
+
+### 12.7 The evidence
+
+The fails-before proof, run by the CTO on the shipped tree with only the source
+reverted and the new regressions kept:
+
+| Reverted source | Suite | Result |
+|---|---|---|
+| `src/lib/github.ts` (writer scope) | `github.test.ts -t "19-"` | **22 failed**, 9 passed — every failing case is a harmful path that the pre-closure tree accepted; every benign twin passed before and after |
+| `src/lib/css-context.ts` (destination scope) | `css-context.test.ts -t "19-"` | **4 failed**, 4 passed — the four failing cases (`19-M1a`, `19-M2a`, `19-L2a`, `19-L2c`) are the harmful paths the pre-closure tree accepted; the four that pass are the benign twins |
+
+The gate suite that backed the push is recorded in `.ai/TEST-STATUS.md`.
+
+

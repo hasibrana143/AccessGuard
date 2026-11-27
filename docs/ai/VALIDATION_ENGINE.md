@@ -389,6 +389,10 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   (raw-text elements, inert `template`/`object`/`applet`/`frameset` content,
   raw-text end tag prefixes, elements that are never closed, bogus comments and
   CDATA sections, an end tag inside an attribute value).
+- `src/lib/__tests__/element-ancestors.test.ts` — the chain that contains an element:
+  the HTML tag stack (a void element is not an ancestor, a sibling container is not
+  one, markup inside a script block or a comment is ignored) and the JSX parent chain
+  (`src/lib/element-ancestors.ts`).
 - `src/lib/__tests__/css-context.test.ts` — the destination stylesheet judgement:
   overlay and hiding rules, utility stylesheets read together, conditional groups,
   comments, attribute selectors and the rules that do not reach the element — plus
@@ -430,6 +434,17 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   and the **custom property the remediation declares inline**, while a family without
   a face, a property no rule of the element consumes and a global property the fix
   does not activate stay harmless).
+  and the rules the nineteenth review found and the analyser used to miss (the
+  **transitive custom-property chain** — a property that an applicable declaration
+  **defines while it references** a property already in the set joins the set, so the
+  chain `--a` → `--b` → `font-family` → `@font-face` → customer-side resource is judged
+  end to end; the **cascade winner** of a custom property — `!important`, then the
+  inline style, then the **specificity**, then the **source order** — so
+  `[aria-label]{--f:Evil}` (0,1,0) beats `button{--f:Local}` (0,0,1) exactly as the
+  browser computes it, and a selector whose specificity cannot be read fails closed;
+  and the **applicable font declarations cascaded instead of unioned**, so only the
+  declaration the browser keeps is judged and a repository whose later rule overrides
+  the family stays writable).
 - `src/lib/__tests__/fix-verification.test.ts` — gate semantics, the
   check-before-render order, the browser isolation (no HTTP, no WebSocket), the
   visible-text verdict, the rendered-element verdict (a hidden element, transparent
@@ -480,7 +495,23 @@ the response says so (`auditRecorded: false`, `auditNotice`).
   whose literal and unknown index no longer refuse every fix of the repository),
   and the **writer-level refusals of the activated custom property** that loads a
   font family or a font shorthand, with the global property and the family without a
-  face staying writable.
+  face staying writable,
+  and the behaviour the nineteenth review found and the writer used to miss (the
+  **attribute-read family** as a pattern rather than a list — every `get` / `has` +
+  `Attribute` + optional `Node` + optional `NS` method, with the namespaced variants
+  reading the **local** name at the second argument, while `toggleAttribute` left the
+  read family because it **writes**; the **reflective write that keeps its effect** —
+  `Reflect.apply(fn, target, args)` resolves the method it applies, unwraps a
+  `.bind()`, reads that method's arguments, and fails closed when the method or the
+  arguments cannot be read; the **destruction reach that includes the ancestors** of
+  the patched element, read from the repository's own markup by
+  `src/lib/element-ancestors.ts`, with the removal of an element that cannot contain
+  the patched one staying writable and an unprovable relation failing closed; the
+  **object utilities** `Object.assign` / `Object.defineProperty` /
+  `Object.defineProperties` writing the attributes they name; and the **iteration and
+  focus helpers** — `forEach`, `entries`, `keys`, `values`, `item`, `focus`, `blur` —
+  that no longer count as a write of the page, so a benign script that only reads and
+  logs keeps its fix).
 - `src/lib/__tests__/audit-retry.test.ts` — the audit write is retried before a
   missing trail is reported.
 - `src/app/api/github/create-pr/route.test.ts` — the PR route: no PR without verified
