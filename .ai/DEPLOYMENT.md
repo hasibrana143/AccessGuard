@@ -600,6 +600,36 @@ image is built.
 | Trivy image scan (`--severity CRITICAL,HIGH --exit-code 1`) | **exit 0** — no HIGH and no CRITICAL finding |
 | Trivy JSON report | **0 vulnerabilities** in the HIGH/CRITICAL severities |
 
+## The twentieth-review closure (2026-11-28)
+
+The twentieth cycle closed eight findings of the twentieth independent review
+(Critical 0, High 6, Medium 0, Low 2) plus the two residuals the closure
+exposed, in two commits: `e11832f` (the cascade, the specificity and the root
+selector — the destination scope) and `2a3249e` (the writer scope). The state
+of record was committed as `293745b`, the volume chain as `03582f0` and the
+documentation as `abc5cfc`.
+
+The four workflows were watched on the pushed head `03582f0`:
+
+| Workflow | Run | Conclusion | What it proves |
+|---|---|---|---|
+| CI | `46053059385` | green | the gate — lint, the source-only typecheck, vitest with the coverage gate, the standalone build, `npm audit` and the Playwright chromium suite |
+| Docker | `46053059344` | green | the image builds, the Trivy scan finds no HIGH/CRITICAL and the SBOM is attested |
+| AccessGuard Scan | `46053059403` | green | the dogfooding scan (skips with a notice without the API key) |
+| Deploy | `46053059249` | green (every Vercel step skipped, no credentials) | the secret-gated deploy path |
+
+The image scan is the one gate that carries a dependency on the base image
+rather than on the source: the nineteenth cycle found six HIGH `libxml2` CVEs
+there and fixed them by upgrading the package at build time. The twentieth
+cycle changed no dependency and no Dockerfile, so the same Trivy gate is the
+one to watch. The Trivy step ran with `severity=CRITICAL,HIGH` and
+`exit-code=1` and **succeeded** on the pushed image
+`ghcr.io/hasibrana143/accessguard:main-03582f0a2724030982f9ef8f6b1b11943702b8f5`
+— no HIGH and no CRITICAL finding.
+
+No production deployment is claimed: the Deploy workflow skips every Vercel
+step without the credentials, and the owner's approval is still required.
+
 ## Local environment
 
 - Docker services `accessguard-postgres-1` / `accessguard-redis-1` carry the
