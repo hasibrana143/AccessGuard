@@ -2415,6 +2415,54 @@ function cascadeWinners(candidates: CascadeCandidate[]): Map<string, CascadeCand
 }
 
 /**
+ * The declarations that may be the cascade winner of their property.
+ *
+ * The rules are read in the order the browser applies them, so the order of
+ * the candidates is the source order of the cascade. A rule that only *may*
+ * apply to the element is a candidate as well: when it outranks the rule that
+ * provably applies, the browser's winner is uncertain and both declarations
+ * are judged.
+ */
+function cascadeCandidates(
+  rules: CssRule[],
+  element: ElementDescriptor,
+  inline: Declaration[]
+): { candidates: CascadeCandidate[]; unreadable: boolean } {
+  const candidates: CascadeCandidate[] = [];
+  let order = 0;
+
+  for (const rule of rules) {
+    const match = matchSelector(rule.selector, element);
+    if (match === 'no') continue;
+    const specificity = matchingSpecificity(rule.selector, element);
+    if (specificity.kind === 'none') continue;
+    if (specificity.kind === 'unreadable') return { candidates, unreadable: true };
+    for (const declaration of parseDeclarations(rule.declarations)) {
+      candidates.push({
+        declaration,
+        specificity: specificity.value,
+        inline: false,
+        order: order++,
+        definite: match === 'yes',
+      });
+    }
+  }
+
+  // The inline style outranks every rule of the stylesheet.
+  for (const declaration of inline) {
+    candidates.push({
+      declaration,
+      specificity: { ids: 0, classes: 0, types: 0 },
+      inline: true,
+      order: order++,
+      definite: true,
+    });
+  }
+
+  return { candidates, unreadable: false };
+}
+
+/**
  * The custom properties the fix's chain reaches.
  *
  * A property that a declaration defines while it references a property already
@@ -4473,6 +4521,16 @@ export function destinationCssHarm(
     // defines and the ones the remediation's inline style declares.
     const introducedDefinitions = new Map<string, string>();
 
+    // The declarations that apply to the patched element, with the rank the
+    // cascade gives them. A rule the fix activates is judged against the rule
+    // the browser keeps, so the cascade of the element is computed once, here.
+    // A selector whose specificity cannot be read leaves the winner unknown:
+    // the activated rules are then judged as they were, and the destination
+    // fails closed in the cascade block below.
+    const cascade = cascadeCandidates(context.rules, element, inline.declarations);
+    const candidates = cascade.candidates;
+    const winners = cascadeWinners(candidates);
+
     if (
       changes.attributes.size > 0 ||
       changes.classes.size > 0 ||
@@ -4514,13 +4572,24 @@ export function destinationCssHarm(
           for (const [name, value] of customPropertyDefinitions(declarations)) {
             ruleDefinitions.set(name, value);
           }
-          const harm = declarationHarm(
-            declarations,
-            ruleDefinitions,
-            context.fontFaces,
-            context.fontFacesComplete
-          );
-          if (harm) return harm;
+          // The browser keeps the declaration that wins the cascade: a rule
+          // the fix activates that loses the tie does not apply to the
+          // element, so it is not judged. The winner of every property the
+          // activated rule declares is judged instead.
+          for (const declaration of declarations) {
+            const kept = cascade.unreadable ? [] : (winners.get(declaration.property) ?? []);
+            const judged =
+              kept.length > 0 ? kept.map(candidate => candidate.declaration) : [declaration];
+            for (const judgedDeclaration of judged) {
+              const harm = declarationHarm(
+                [judgedDeclaration],
+                ruleDefinitions,
+                context.fontFaces,
+                context.fontFacesComplete
+              );
+              if (harm) return harm;
+            }
+          }
         }
       }
     }
@@ -4535,42 +4604,9 @@ export function destinationCssHarm(
     // and the ones the remediation declares. The resolved value of a
     // declaration that reads one of them is judged like a declared value.
     if (introducedDefinitions.size > 0) {
-      // The declarations that apply to the patched element, with the rank the
-      // cascade gives them. A rule that only *may* apply is a candidate too:
-      // the winner is then uncertain and both declarations are judged.
-      const candidates: CascadeCandidate[] = [];
-      let order = 0;
-      for (const rule of context.rules) {
-        const match = matchSelector(rule.selector, element);
-        if (match === 'no') continue;
-        const specificity = matchingSpecificity(rule.selector, element);
-        if (specificity.kind === 'none') continue;
-        if (specificity.kind === 'unreadable') {
-          return 'the repository stylesheet cannot be judged: a selector whose specificity cannot be read';
-        }
-        for (const declaration of parseDeclarations(rule.declarations)) {
-          candidates.push({
-            declaration,
-            specificity: specificity.value,
-            inline: false,
-            order: order++,
-            definite: match === 'yes',
-          });
-        }
+      if (cascade.unreadable) {
+        return 'the repository stylesheet cannot be judged: a selector whose specificity cannot be read';
       }
-      // The inline style outranks every rule of the stylesheet.
-      for (const declaration of inline.declarations) {
-        candidates.push({
-          declaration,
-          specificity: { ids: 0, classes: 0, types: 0 },
-          inline: true,
-          order: order++,
-          definite: true,
-        });
-      }
-
-      const winners = cascadeWinners(candidates);
-
       // The custom properties the browser computes: the cascade winner of
       // every custom property. The inherited root definitions stay the
       // fallback; a property with more than one possible value leaves the
@@ -4609,6 +4645,42 @@ export function destinationCssHarm(
             context.fontFacesComplete
           );
           if (harm) return harm;
+        }
+      }
+
+      // The fix must not change the value the customer already sees. A custom
+      // property the element already computes is the customer's own: when the
+      // fix activates a rule that wins the cascade over the rule that defined
+      // it, the browser computes a different value. The analyser proves the
+      // new value harmless by following it to the declarations that read it;
+      // a value that no declaration reads cannot be followed, so the
+      // destination is unprovable.
+      if (before) {
+        const beforeCascade = cascadeCandidates(
+          context.rules,
+          before,
+          inlineStyleOf(before).declarations
+        );
+        if (beforeCascade.unreadable) {
+          return 'the repository stylesheet cannot be judged: a selector whose specificity cannot be read';
+        }
+        const beforeWinners = cascadeWinners(beforeCascade.candidates);
+
+        for (const [property, declarations] of winners) {
+          if (!property.startsWith('--')) continue;
+          const beforeValue = beforeWinners.get(property)?.[0]?.declaration.value;
+          const afterValue = declarations[0]?.declaration.value;
+          if (beforeValue === undefined || afterValue === undefined) continue;
+          // The value the customer sees does not change: the fix is harmless.
+          if (beforeValue === afterValue) continue;
+          // Does any declaration the browser keeps read the property?
+          const names = new Set([property]);
+          const read = [...winners.values()].some(kept =>
+            kept.some(candidate => consumesCustomProperty(candidate.declaration.value, names))
+          );
+          if (!read) {
+            return 'the repository stylesheet cannot be judged: the fix changes a custom property the element already computes';
+          }
         }
       }
     }

@@ -1802,3 +1802,90 @@ describe('the twentieth review regressions', () => {
     ).toBeNull();
   });
 });
+
+describe('the twenty-first review regressions', () => {
+  const FONT = '@font-face{font-family:Evil;src:url(/evil-font)}';
+  const BUTTON = '<button id="target" class="card">Save</button>';
+  const BUTTON_FIX = '<button id="target" class="card" aria-label="Save">Save</button>';
+  const VARIANT = '<button id="target" class="md:flex">Save</button>';
+  const VARIANT_FIX = '<button id="target" class="md:flex" aria-label="Save">Save</button>';
+  const IMAGE = '<img id="target" class="card" src="x">';
+  const IMAGE_FIX = '<img id="target" class="card" src="x" alt="Photo">';
+
+  function harm(css: string, original: string, patched: string): string | null {
+    return destinationCssHarm(buildCssContext(css), original, patched);
+  }
+
+  it('21-C1a refuses a fix that replaces the custom property the customer sees', () => {
+    // The `<style>` block comes after the `<link>`, so the browser applies it
+    // later: the `[alt]` rule wins the specificity tie over the
+    // `[class~="card"]` rule and replaces the value the element already
+    // computes. The analyser cannot follow the new value to a declaration
+    // that reads it, so the destination is unprovable.
+    const result = harm('[class~="card"]{--f:Local} [alt]{--f:Evil}', IMAGE, IMAGE_FIX);
+
+    expect(result).toContain('cannot be judged');
+    expect(result).not.toBeNull();
+  });
+
+  it('21-C1b keeps the same page writable when the customer value wins', () => {
+    // The `<style>` block comes before the `<link>`, so the
+    // `[class~="card"]` rule is applied later and keeps the value the
+    // element already computes: the fix changes nothing the customer sees.
+    expect(harm('[alt]{--f:Evil} [class~="card"]{--f:Local}', IMAGE, IMAGE_FIX)).toBeNull();
+  });
+
+  it('21-C1c keeps the harmful cascade winner of the same tie refused', () => {
+    // The same page with the stylesheet that reads the property: the winner
+    // is the harmful one and the customer browser loads the font.
+    const result = harm(
+      `${FONT} [class~="card"]{--f:Local} [alt]{--f:Evil} img{font-family:var(--f)}`,
+      IMAGE,
+      IMAGE_FIX
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('21-C2a keeps a fix writable when the competing rule wins the tie', () => {
+    // The rule the fix activates ties with the later `.card` rule, so the
+    // browser keeps `font-family: Local` and requests nothing.
+    expect(
+      harm(`${FONT} [aria-label]{font-family:Evil} .card{font-family:Local}`, BUTTON, BUTTON_FIX)
+    ).toBeNull();
+  });
+
+  it('21-C2b keeps the custom property spelling of the same tie writable', () => {
+    expect(
+      harm(
+        `${FONT} [aria-label]{--f:Evil} .card{--f:Local} button{font-family:var(--f)}`,
+        BUTTON,
+        BUTTON_FIX
+      )
+    ).toBeNull();
+  });
+
+  it('21-C3a keeps the harmful cascade winner of the same tie refused', () => {
+    // The competing rule comes first, so the rule the fix activates wins the
+    // tie and the customer browser loads the font.
+    const result = harm(
+      `${FONT} .card{font-family:Local} [aria-label]{font-family:Evil}`,
+      BUTTON,
+      BUTTON_FIX
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+
+  it('21-C3b keeps the escaped identifier spelling of the same tie refused', () => {
+    // `.md\:flex` is one class, so it ties with `[aria-label]` and the later
+    // rule wins: the browser computes the family the attribute rule defines.
+    const result = harm(
+      `${FONT} .md\\:flex{--f:Local} [aria-label]{--f:Evil} button{font-family:var(--f)}`,
+      VARIANT,
+      VARIANT_FIX
+    );
+
+    expect(result).toContain('customer-side request');
+  });
+});
