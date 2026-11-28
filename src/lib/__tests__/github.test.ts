@@ -3485,6 +3485,362 @@ describe('the twentieth review regressions', () => {
   });
 });
 
+describe('the twenty-first review regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix(
+    remediationCode = '<img id="target" class="card" src="x" alt="Photo">',
+    elementHtml = '<img id="target" class="card" src="x">'
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml,
+        remediationCode,
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+  }
+
+  /** A refused candidate writes nothing. */
+  async function expectNoWrite(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  /** A written candidate writes the file it planned. */
+  async function expectOneWrite(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+    expect(result.filesModified).toEqual([{ path: 'index.html', fixesApplied: 1 }]);
+  }
+
+  /** A repository whose runtime code is the given script. */
+  function writerRepository(script: string) {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" class="card" src="x"><script>${script}</script></body></html>`
+    );
+    fileContent('styles.css', 'body{color:#000}');
+  }
+
+  /** A repository whose runtime writes to every image. */
+  function writerWriteRepository(script: string) {
+    writerRepository(`document.querySelectorAll('img').forEach(function(img){${script}})`);
+  }
+
+  // ------------------------------------------------------- the utility family
+
+  it('21-W1a: does not patch an element a script empties the alternative text of through an aliased constructor', async () => {
+    writerWriteRepository("const O=Object;O.assign(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1b: does not patch an element a script empties the alternative text of through a namespace literal', async () => {
+    writerWriteRepository("const O={assign:Object.assign};O.assign(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1c: does not patch an element a script empties the alternative text of through a member assigned on a namespace', async () => {
+    writerWriteRepository("const O={};O.assign=Object.assign;O.assign(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1d: does not patch an element a script empties the alternative text of through a destructured utility', async () => {
+    writerWriteRepository("const {assign}=Object;assign(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1e: does not patch an element a script empties the alternative text of through a renamed destructured utility', async () => {
+    writerWriteRepository("const {assign:a}=Object;a(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1f: does not patch an element a script empties the alternative text of through an object literal member', async () => {
+    writerWriteRepository("({assign:Object.assign}).assign(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1g: does not patch an element a script empties the alternative text of through a namespace of the constructor', async () => {
+    writerWriteRepository("const ns={Object};ns.Object.assign(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1h: does not patch an element a script empties the alternative text of through a property descriptor', async () => {
+    writerWriteRepository("Object.getOwnPropertyDescriptor(Object,'assign').value(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1i: does not patch an element a script empties the alternative text of through a called property descriptor', async () => {
+    writerWriteRepository(
+      "Object.getOwnPropertyDescriptor(Object,'assign').value.call(null,img,{alt:''})"
+    );
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1j: does not patch an element a script empties the alternative text of through a reflected property', async () => {
+    writerWriteRepository("Reflect.get(Object,'assign')(img,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1k: does not patch an element a script empties the alternative text of through an applied utility', async () => {
+    // The applied utility writes the element it receives as its own first
+    // argument, not the receiver `Reflect.apply` is given.
+    writerWriteRepository("Reflect.apply(Object.assign,null,[img,{alt:''}])");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1l: writes a fix when an applied utility receives no element', async () => {
+    // The utility writes the object literal it receives, not the image.
+    writerWriteRepository("Reflect.apply(Object.assign,img,[{alt:''}])");
+
+    const plan = await planAltFix();
+    await expectWritten(plan);
+    await expectOneWrite(plan);
+  });
+
+  it('21-W1m: does not patch an element a script empties the alternative text of through an element of an array', async () => {
+    writerWriteRepository("Object.assign([img][0],{alt:''})");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W1n: writes a fix when an aliased utility writes another element', async () => {
+    writerWriteRepository("const o=Object.assign;o(other,{alt:''})");
+
+    const plan = await planAltFix();
+    await expectWritten(plan);
+    await expectOneWrite(plan);
+  });
+
+  // -------------------------------------------------------- the call boundary
+
+  it('21-W2a: does not patch an element a script takes the alternative text away from through a parameter', async () => {
+    writerWriteRepository("function f(e){e.removeAttribute('alt')};f(img)");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W2b: does not patch an element a script empties the alternative text of through a parameter', async () => {
+    writerWriteRepository("function f(e){e.setAttribute('alt','')};f(img)");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W2c: does not patch an element a script toggles the alternative text of through a parameter', async () => {
+    writerWriteRepository("function f(e){e.toggleAttribute('alt')};f(img)");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W2d: does not patch an element a script takes the alternative text away from through an arrow parameter', async () => {
+    writerWriteRepository("const f=e=>e.removeAttribute('alt');f(img)");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W2e: does not patch an element a script takes the alternative text away from through an applied parameter', async () => {
+    writerWriteRepository("function f(e){e.removeAttribute.apply(e,['alt'])};f(img)");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W2f: does not patch an element a script empties the alternative text of through a parameter', async () => {
+    writerWriteRepository("function f(e){Object.assign(e,{alt:''})};f(img)");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W2g: does not patch an element a script empties the alternative text of through an arrow parameter', async () => {
+    writerWriteRepository("const f=e=>Object.assign(e,{alt:''});f(img)");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W2h: does not patch an element a script empties the alternative text of through a call of a call', async () => {
+    writerWriteRepository(
+      "function f(e){g(e)};function g(e){Object.assign(e,{alt:''})};f(img)"
+    );
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W2i: writes a fix when a parameter writes an attribute the fix does not add', async () => {
+    writerWriteRepository("function f(e){e.setAttribute('title','x')};f(img)");
+
+    const plan = await planAltFix();
+    await expectWritten(plan);
+    await expectOneWrite(plan);
+  });
+
+  it('21-W2j: does not patch an element a script reacts to through the markup of a parameter', async () => {
+    writerWriteRepository(
+      "function f(e){if(e.outerHTML.indexOf('alt')>-1)e.classList.add('overlay')};f(img)"
+    );
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  // --------------------------------------------------------- the bound method
+
+  it('21-W3a: does not patch an element a script takes the alternative text away from through a bound method', async () => {
+    writerWriteRepository("img.removeAttribute.bind(img)('alt')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W3b: does not patch an element a script empties the alternative text of through a bound method', async () => {
+    writerWriteRepository("img.setAttribute.bind(img)('alt','')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W3c: does not patch an element a script takes the alternative text away from through an aliased bound method', async () => {
+    writerWriteRepository("const f=img.removeAttribute.bind(img);f('alt')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W3d: does not patch an element a script empties the alternative text of through an aliased bound method', async () => {
+    writerWriteRepository("const f=img.setAttribute.bind(img);f('alt','')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W3e: does not patch an element a script takes the alternative text away from through an applied bound method', async () => {
+    writerWriteRepository("const f=img.removeAttribute.bind(img);f.apply(img,['alt'])");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W3f: writes a fix when a bound method writes an attribute the fix does not add', async () => {
+    writerWriteRepository("const f=img.setAttribute.bind(img);f('title','x')");
+
+    const plan = await planAltFix();
+    await expectWritten(plan);
+    await expectOneWrite(plan);
+  });
+
+  // ------------------------------------------------------------- the proxy
+
+  it('21-W4a: does not patch an element a script takes the alternative text away from through a proxy', async () => {
+    // A proxy forwards the call to the element it wraps. Chromium throws when
+    // the proxy has no trap (`Illegal invocation`), but a trapping proxy
+    // performs the write, so the analyser cannot read the outcome and fails
+    // closed.
+    writerWriteRepository("new Proxy(img,{}).removeAttribute('alt')");
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  // ------------------------------------------------------- the observer
+
+  it('21-W5a: does not patch an element a script reacts to through an attribute observer', async () => {
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){new MutationObserver(function(){img.classList.add('overlay')}).observe(document.body,{attributes:true,subtree:true})})"
+    );
+
+    const plan = await planAltFix();
+    await expectRefused(plan);
+    await expectNoWrite(plan);
+  });
+
+  it('21-W5b: writes a fix when an observer watches the child list alone', async () => {
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){new MutationObserver(function(){img.classList.add('overlay')}).observe(document.body,{childList:true,subtree:true})})"
+    );
+
+    const plan = await planAltFix();
+    await expectWritten(plan);
+    await expectOneWrite(plan);
+  });
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
