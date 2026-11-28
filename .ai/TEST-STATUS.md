@@ -1,6 +1,61 @@
 # AccessGuard — Test Status
 
-Last run: 2026-11-28 (twentieth-review closure)
+Last run: 2026-11-28 (twenty-first-cycle closure)
+
+## Twenty-first-cycle closure evidence (2026-11-28)
+
+The twenty-first reviewer produced **no verdict** (it died on a provider network
+error), so the cycle was closed from its surviving matrices plus the CTO's own
+probes. The closure ships with permanent regressions in **five scopes** and
+**115 new tests**.
+
+### The fails-before proofs (only the source reverted, the regressions kept)
+
+| Reverted source | Suite | Result |
+|---|---|---|
+| `src/lib/github.ts` (writer scope) | `github.test.ts -t "21-"` | **27 failed** — every harmful path the pre-closure tree accepted (`21-W1a`–`21-W1h`, `21-W2a`, `21-W3a`–`21-W3c`, `21-W4a`–`21-W4c`, `21-W5a`–`21-W5c`, `21-W6a`, `21-W7a`); every benign twin passed before and after |
+| `src/lib/css-context.ts` (destination scope) | `css-context.test.ts -t "21-"` | **2 failed** (`21-C1a`, `21-C2a`), 5 passed — the two failures are the harmful paths the pre-closure tree accepted; every benign twin passed before and after |
+| `src/lib/css-context.ts` (destination scope, **end to end**) | `github.test.ts -t "21-C"` | **2 failed** (`21-C1d`, `21-C2c`), 3 passed — the end-to-end path proves the same two defects through the repository plan: the pre-closure tree **wrote** a fix whose destination was unprovable (`21-C1d`) and **refused** a fix the browser would have kept (`21-C2c`); the three benign twins (`21-C1e`, `21-C2d`, `21-C3c`) passed before and after. Evidence: `fails-before-css21-e2e.txt` |
+| `src/lib/github.ts` (the writer scope **and** the element-holder scope) | `github.test.ts` (350 tests) | **37 failed** / 313 passed — 34 element-holder regressions (every harmful holder spelling the pre-closure tree accepted, plus the over-refused benign twins) and the three dataset spellings the pre-closure reader refused. Evidence: `fails-before-21b.txt` |
+| `src/lib/github-pr.ts` (the template-marker scope) | `github.test.ts` + `github-pr.test.ts` (465 tests) | **6 failed** / 459 passed — `21-T1a` (the destination rule), `21-T1e` (the writer level) and the four dataset spellings (`21-R1a`–`21-R1d`) that the template rule had hidden from a writer that had judged them safe. Evidence: `fails-before-21b.txt` |
+
+### The CTO's own probes (the hunt evidence for the cycle)
+
+| Probe | Cases | Result |
+|---|---|---|
+| the twenty-first reviewer's **writer matrix** (`sr21-writer-temp.test.ts`) | 123 | **no verdict changes** under the whole twenty-first closure — utility 27 refused / 6 written · parameter 6/6 refused · read 8 refused / 7 written · call 22 refused / 2 written (both `written` ones throw in Chromium) · cascade 9 refused / 5 written · specificity 15/15 refused · benign 16/16 written |
+| the twenty-first reviewer's **CSS matrix** (`sr21-css-temp.test.ts`) | 18 | every `K-*` verdict byte-identical to the baseline; `C-style-after-link` flips written → refused |
+| the twenty-first reviewer's **route harness** (`sr21-route-temp.test.ts`) | 8 | the six harmful cases answer **HTTP 400** with no branch, no write, no pull request and no audit trail; the `document.body.innerHTML` case (the customer's own unconditional runtime) answers **HTTP 200** with the write, the pull request and the audit trail; the control answers **400** |
+| the CTO's **route harness with the holder cases** (`sr21-route-holder-21.test.ts`) | 14 | every harmful case answers **HTTP 400** with no branch, no write, no pull request and no audit trail — the six writer cases, the control, and the five holder spellings (a member assignment, a nested function return, an `Object.values` holder, a class field and a `Set`); the benign twin (the same holder carrying another element) answers **HTTP 200** with the write, and the accepted `document.body.innerHTML` runtime answers **HTTP 200** with the write |
+| the CTO's **end-to-end CSS probe** | 24 | 24/24 in the expected direction — the harmful sheet applied after the local one is refused, applied before it is written; the specificity ties are judged in both directions |
+| the CTO's **extended holder probe** (28 harmful + 7 benign) | 35 | **0 harmful written** and **0 benign not written** — every harmful shape is refused and every benign twin is written. Before the element-holder scope, **19 of the 29** harmful shapes were still written and 3 of the 7 benign twins were over-refused |
+| the element-holder scope against the **committed writer suite** | 343 | **341 passed / 2 failed** at the first pass — `21-W3a` and `21-W3b` (the bound method called at once) stopped being refused. The CTO's debug hook isolated the cause: `stripMembers(callee, 2)` returns null for a callee that ends with a call (`bind(img)`), so the receiver was "other", the write was never recorded and the fix was **applied** although the script destroys it. The specialist's follow-up reads the receiver from the parsed chain, and the two regressions refuse again |
+| the CTO's **direct-selection probe** (the family the twenty-first reviewer's matrix does not cover — every one of its cases is wrapped in `forEach`) | 20 | the same verdicts on the pre-closure tree (`HEAD`) and on the holder tree — so **no regression**, and **no new under-refusal**: the five differences are the shipped fail-closed policy, not a gap. `document.querySelector('img').classList.add('overlay')` and the held twin are `written`: Chromium measured the overlay class with **and** without the fix (`class="card overlay"` in both runs) and the `alt` survived (`"Photo"`), so the takeover is the customer's own unconditional behaviour — the nineteenth review's boundary. `const {removeAttribute}=document.querySelector('img');removeAttribute('alt')` is `written`: Chromium throws `TypeError: Illegal invocation`, so the attribute survives. `document.querySelector('div').removeAttribute('alt')` and the held twin are `refused`: the write of the attribute the fix adds is refused content-wide (a fail-closed over-refusal); Chromium measured the image's `alt="Photo"`. Evidence: `chromium-direct-selection.json` |
+| the CTO's **read-side probe** | 32 | every read of the state the fix adds is refused (`img.alt`, `img.matches('[alt]')`, `img.closest('[alt]')`, `document.querySelectorAll('[alt]')`, `Reflect.get`, `getAttribute`, `hasAttribute`, `getAttributeNames`, `outerHTML`, `attributes`, `getAttributeNode`, `getNamedItem`, `hasAttributes`, `document.body.outerHTML`) — **no under-refusal**; the benign reads land in `review` because their runtime writes to the element |
+| the CTO's **property-read probe** | 21 | every element-property read is refused (`img.alt`, `img['alt']`, `img?.alt`, `Reflect.get(img,'alt')`); every **dataset-receiver** read is written (`img.dataset.alt`, `img.dataset?.alt`, `img.dataset['alt']`, `img['dataset'].alt`, `img['dataset']['alt']`) — the false positive the cycle closes; `Reflect.get(img.dataset,'alt')` stays refused inside a mutating script (the content-wide state-read rule, `.ai/RISKS.md` row 94); a read on an **unknown** receiver stays refused (it may be the element) |
+| the CTO's **focused dataset probe** | 11 | a dataset read with no runtime write → **written**; a dataset read whose script writes to the element → **written** (the write touches a class, not the attribute the fix adds); a dataset read whose script replaces the page → refused (the page write, not the read); the element's own `alt` read with a runtime write → **refused**; a read-only `img.alt` → written; the computed receiver (`img['dataset'].alt`) behaves exactly like the dot receiver (**written**); `Reflect.get(img.dataset,'alt')` is written when the script only reads, and refused when the script also mutates (row 94); `Reflect.get(img,'alt')` is written when the script only reads |
+| the CTO's **destination probe** | 44 | 9 pseudo-elements, 17 resource shapes and 12 selector shapes are all judged in the safe direction — **no under-refusal**; the one false positive (an inline `data:` URL) is recorded as an accepted Low risk |
+| the CTO's **verification-browser probe** | 21 | every remediation that hides the element, loads CSS content or introduces a remote URL is rejected before verification; the two that verify (`clip:rect(0,0,0,0)`, `zoom:0`) are **not** hiding vectors — Chromium measured `clip` on a static inline element as no clip (the element still paints 200×100) and `zoom:0` as computed `zoom:1` |
+
+### The Chromium evidence
+
+| Measurement | Result |
+|---|---|
+| the eleven holder spellings of the brief | `alt=null` for every harmful spelling; `alt="Photo"` for the benign twin |
+| the twenty-nine extended holder spellings | `alt=null` for all twenty-nine; `alt="Photo"` for all seven benign twins |
+| the dataset key | `img.dataset.alt` is `undefined` before **and** after the fix; `img.alt` changes from `''` to `'Photo'` |
+
+### The gate suite (the combined twenty-first-cycle tree)
+
+| Check | Result |
+|---|---|
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npx vitest run --coverage` | PASS — 54 files, **1229 / 1229** tests (was 1098 on the twentieth-cycle tree; +131) |
+| Coverage | PASS — 72.87 / 64.65 / 76.45 / 75.86 against 55 / 50 / 58 / 57 |
+| `npm run build` | PASS — exit 0, 116 static pages |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed, 0 skipped |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate advisories, all in the development tooling chain) |
 
 ## Twentieth-review closure evidence (2026-11-28)
 

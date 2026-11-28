@@ -1,5 +1,48 @@
 # AccessGuard — Final Report
-Cycle: **V23 — verified-fix engine + security hardening + twentieth-review closure** · Date: 2026-11-28 · Owner: CTO agent
+Cycle: **V23 — verified-fix engine + security hardening + twenty-first-cycle closure** · Date: 2026-11-28 · Owner: CTO agent
+
+## Current verification (2026-11-28 — twenty-first-cycle closure)
+
+The twenty-first independent security review returned **no verdict**: the reviewer died on a provider network error (`getaddrinfo ENOTFOUND integrate.api.nvidia.com`) in the middle of its run and wrote no artifact. The cycle was therefore closed from **its own surviving matrices** plus the CTO's independent probe. The matrices reduced to **8 root-cause families**, not 20 findings, and the CTO's own probes added **three** more — the **element-holder family** (an under-refusal), the **dataset-receiver family** (a fail-closed false positive) and the **template-marker family** (a destination rule that hid the writer's verdict). All **eleven** families are closed at their root cause, with **115 permanent regressions**.
+
+| ID | Severity | Surface | Closure |
+|---|---|---|---|
+| 21-W1 | **High** | The object-utility family on the write side | the utility is resolved by a **value resolver**; the target is the utility's own first argument; an unreadable holder fails closed |
+| 21-W2 | **High** | The target rule of `Reflect.apply` | the target is the utility's **first argument**, not the receiver `Reflect.apply` is given |
+| 21-W3 | **High** | Parameter forwarding | a parameter holds the element the **call site** passes |
+| 21-W4 | **High** | Bound methods, proxies, tagged templates | a bound method writes what the method it binds writes; a proxy forwards to the element it wraps; a tagged template is a call |
+| 21-W5 | **High** | The markup read | the markup of the **element** is a generic state read; the markup of the **document** stays out (the customer's own unconditional runtime) |
+| 21-W6 | **High** | The attribute observer | an observer that watches **attributes** reacts to every attribute the fix adds |
+| 21-W7 | **Medium** | The callee of a call | a call whose callee is an **object literal** is read as a call |
+| 21-C1 | **High** | The destination CSS reader | the reader judges the **cascade winner**, not the rule the fix activates; a replaced customer-computed custom property no declaration reads is unprovable |
+| 21-C2 / 21-C3 | **Low** | The specificity tie | judged in both directions, with the escaped identifiers |
+| 21-H | **High** | The element-holder family | the writer resolves the receiver of a write through the **holders that carry the element**; an unreadable holder fails closed; a dynamic container ends at `review`, never at `written` |
+| 21-R1 | **Low** | The DOM-property read | the read is **receiver-aware**: a read on a `dataset` receiver names a dataset key, and the dataset read is masked as a **chain** (a variable named `dataset` is not a dataset) |
+| 21-T1 | **Low** | The destination template rule | the rule reads the **opener** of every template family; a closing marker on its own is not grammar |
+
+**The evidence** (every number is a run on this tree):
+
+| Proof | Result |
+|---|---|
+| Permanent regressions | **115** new tests — 33 writer · 7 destination reader · 5 destination end-to-end · 72 element-holder · 8 dataset-receiver · 5 template-marker |
+| Fails-before — `src/lib/github.ts` reverted | **37 fail** / 313 pass — 34 holder regressions and the three dataset spellings |
+| Fails-before — `src/lib/github-pr.ts` reverted | **6 fail** / 459 pass — `21-T1a`, `21-T1e` and the four dataset spellings the template rule had hidden |
+| The twenty-first reviewer's writer matrix (123 cases) | **0 verdict changes** against the recorded baseline |
+| The CTO's extended holder probe (35 cases) | 28 harmful → all refused · 7 benign → all written (0 / 0) |
+| The CTO's property-read probe (21 cases) | every element-property read refused · every dataset-receiver read written · `Reflect.get(img.dataset,'alt')` still refused (row 94) · an unknown receiver refused |
+| The CTO's focused dataset probe (11 cases) | the dataset reads written · the element-property twin refused · the page-writing twin refused |
+| The real-route harness (14 cases) | every harmful case HTTP 400 with no branch, no write, no pull request and no audit record; the benign twin and the accepted `document.body.innerHTML` runtime HTTP 200 with the write |
+| The direct-selection family (20 cases) | the verdicts are identical on the pre-closure tree and on the holder tree — no regression, no new under-refusal |
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npx vitest run --coverage` | PASS — 54 files, **1229 / 1229** tests (was 1098 on the twentieth-cycle tree) |
+| Coverage | PASS — 72.87 / 64.65 / 76.45 / 75.86 against 55 / 50 / 58 / 57 |
+| `npm run build` | PASS — exit 0, 116 static pages |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed, 0 skipped |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate advisories, all in the development tooling chain) |
+| Strix autonomous pentest | **NOT RUN** — every configured provider refuses the run (quota / EOL model / no credits); no Strix result is claimed for this cycle |
+| Production deployment | **NOT CLAIMED** — the Vercel credentials are absent and the deployment needs the owner's approval |
+| **Release gate** | **CLOSED** — it opens only when the **twenty-second** independent review returns READY (Critical 0, High 0) |
 
 ## Current verification (2026-11-28 — twentieth review)
 

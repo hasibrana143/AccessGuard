@@ -809,4 +809,208 @@ The gate suite on the shipped tree: source-only typecheck 0, lint 0, vitest 54 f
 58 / 57), build 0 (116 static pages), Playwright chromium 79 / 79, `npm audit
 --audit-level=high` Critical 0 / High 0 (15 moderate, dev-tooling only).
 
+## 14. The twenty-first-cycle closure (V23)
+
+The twenty-first independent review produced **no verdict**: the reviewer died on a
+provider network error in the middle of its run and wrote no artifact. The cycle was
+therefore closed from **its own surviving matrices** plus the CTO's independent probe.
+The matrices reduced to **8 root-cause families**, not 20 findings, and the CTO's own
+probes added **three** — the element-holder family (an under-refusal), the
+dataset-receiver family (a fail-closed false positive) and the template-marker family
+(a destination rule that hid the writer's verdict), none of which a prior review had
+recorded.
+
+The closure ships in **five scopes** with **115 permanent regressions**: the **writer
+scope** (`5d06986`), the **destination scope** (`f6d8790`), the **element-holder scope**,
+the **dataset-receiver scope** and the **template-marker scope**.
+
+### 14.1 The object-utility family is resolved by a value resolver (21-W1)
+
+The twentieth review closed the family for the receiver chain `Object`. The twenty-first
+review reproduced seven more spellings — an alias of an alias, a destructured name, a
+renamed destructured name, a member of an object literal, a member assigned on a
+namespace, a property descriptor's `.value` and `Reflect.get` — and the CTO's own
+Chromium probe confirmed that each of them empties the alternative text.
+
+The utility is now resolved through the **holders that carry it** (`HeldValues` in
+`src/lib/github.ts`), not through the spelling of its receiver. The **target is the
+utility's own first argument**, whatever holder it arrives through, and a holder the
+analyser cannot read **fails closed**.
+
+### 14.2 The target of a utility applied through `Reflect.apply` (21-W2)
+
+`Object.assign` is not a method of its receiver, so `Reflect.apply(Object.assign, null,
+[img, {alt:''}])` copies **into** the image while `Reflect.apply(Object.assign, img,
+[{alt:''}])` copies into a fresh object. The harmful spelling is refused, the harmless
+spelling stays writable — Chromium measured `alt="Photo"` in both directions.
+
+### 14.3 Parameter forwarding, bound methods, proxies and object-literal callees (21-W3, 21-W4, 21-W7)
+
+A function parameter holds the element the **call site** passes, so a write through a
+parameter (and through a call of a call) is followed. A **bound method** writes what the
+method it binds writes, and a **proxy** forwards to the element it wraps — a trap-less
+proxy throws `Illegal invocation` in Chromium, but a trapping proxy performs the write,
+so the model fails closed. A call whose callee is an **object literal** is read as a
+call.
+
+### 14.4 The markup read and the attribute observer (21-W5, 21-W6)
+
+The markup of the **element** (`outerHTML`) is a generic state read: it carries the
+attribute the fix adds. The markup of the **document** (`document.body.innerHTML`)
+deliberately stays out — the twentieth review recorded it as the customer's own
+unconditional runtime. An observer that watches **attributes** reacts to every
+attribute the fix adds; an observer that watches the child list alone is the benign
+twin.
+
+### 14.5 The destination reader judges the cascade winner (21-C1, 21-C2, 21-C3)
+
+The twenty-first review's premise about the document order was **wrong**:
+`collectDocumentStyleSources` already returns the `<style>` blocks and the
+`<link rel="stylesheet">` elements of a document in the order the browser applies them.
+The real defect was one step further down, and it explained all three findings at once:
+the reader judged the rule the fix **activates** instead of the rule the browser
+**keeps**.
+
+The cascade of the element is now computed once (`cascadeCandidates()` in
+`src/lib/css-context.ts`), and the **winner** of every property the activated rule
+declares is judged. A competing rule of the same specificity that comes **later** wins
+the tie, so the browser keeps the customer's own value and the fix is written again
+(21-C2); the same tie with the competing rule **first** keeps the fix refused (21-C3).
+When the activated rule **replaces** a custom property the element already computes and
+no applicable declaration reads it, the destination is unprovable and the fix is
+refused (21-C1).
+
+The reviewer's own specificity matrix declared its **button** remediations with
+`ruleId: 'image-alt'`, so the validator refused them before the CSS reader was ever
+reached — that group measured the validator, not the cascade. The CTO re-ran the group
+with `button-name` and every verdict is in the correct direction.
+
+The scope is pinned at the unit level (`21-C1a`–`21-C3b` in
+`src/lib/__tests__/css-context.test.ts`) **and end to end** (`21-C1d`–`21-C3c` in
+`src/lib/__tests__/github.test.ts`): the end-to-end pair puts the competing rule in a
+`<style>` block and in a linked stylesheet, so the **document order** the browser
+applies decides the verdict, and it runs through the whole repository plan. The CTO's
+fails-before run on that pair — with only `src/lib/css-context.ts` reverted to the
+tree before the scope — showed **2 failures** (`21-C1d` wrote a fix whose destination
+was unprovable; `21-C2c` refused a fix the browser would have kept) and the three
+benign twins passing before and after.
+
+### 14.6 The element-holder family (21-H)
+
+The writer decides whether a write reaches the patched element by resolving the
+**receiver** of the write. It resolved only three holder shapes — a variable that
+directly holds an element, an array element and a function parameter — so an element
+that reached the script through an **object member**, a **destructured name**, a
+**nested member** or a **function return value** was invisible and the fix was written
+although the script removed the attribute at runtime.
+
+The element family therefore gets a **value resolver** of its own, mirroring the
+utility family's: the receiver is resolved through the holders that carry the element,
+and a holder the analyser cannot read **fails closed** — the write may reach the
+patched element, so the fix must not be applied automatically.
+
+The rule the cycle enforces is stronger than "the known shapes are followed": **a holder
+shape must never end at a `written` verdict.** The CTO's extended probe measured 29
+harmful holder spellings and 7 benign twins; Chromium measured `alt=null` for every
+harmful shape and `alt="Photo"` for every benign twin. Before the closure **19 of the
+29 harmful shapes were still `written`** — the under-refusal this scope closes. The
+dynamic containers (a class instance field, a `Map` value, a `Set`, a `WeakMap`, a
+getter) are not followed, because their content cannot be read statically; they end at
+**`review`** (a human decides), never at `written` (`.ai/RISKS.md` row 92).
+
+Two root causes the CTO's own probe found inside the scope itself:
+
+- The new value resolver mapped `object` and `reflect` but **not** `document`, so
+  `document.querySelectorAll('img')` resolved to nothing, the iteration-callback
+  parameter was never bound as an element, and the writer could not see the element at
+  all. One line in the resolver's name branch turned **28 of the 29** harmful shapes
+  from `written` to `refused`.
+- The holder rewrite replaced the parsed receiver with a text helper
+  (`stripMembers(callee, 2)`) that cannot strip a member off a callee that ends with a
+  **call** (`img.removeAttribute.bind(img)('alt')` → `null`), so the receiver became
+  "other", the write was never recorded and the fix was **applied** although the script
+  destroys it. Two committed regressions (`21-W3a`, `21-W3b`) stopped refusing — an
+  under-refusal introduced by the closure itself. The receiver is now read from the
+  parsed chain.
+
+The final CTO probe on the shipped tree: **0 harmful `written`, 0 benign not
+`written`** (35 cases), and the fails-before proof — only `src/lib/github.ts` reverted,
+the regressions kept — is **37 failures**.
+
+### 14.7 A property read is read through its receiver (21-R1)
+
+The CTO's read-side hunt found a **fail-closed false positive** in the writer: a
+property read was matched by its **name** anywhere in the content (`\.\s*alt\b`), so a
+script that read `img.dataset.alt` lost **every** fix of the repository.
+
+The read was wrong. `img.dataset` is the `DOMStringMap` of the element, so `img.dataset.alt`
+names the **`data-alt`** attribute, not the `alt` attribute of the element. Chromium
+measured `img.dataset.alt` as `undefined` before **and** after the fix adds `alt`, while
+`img.alt` changes from `''` to `'Photo'`. The dataset path already knew the rule
+(`attributeOfDatasetKey`); the plain-property path did not.
+
+The fix makes the property read **receiver-aware**: a read on a `dataset` receiver names
+a dataset key. The spellings that are now receiver-aware are `img.dataset.alt`,
+`img.dataset?.alt`, `img.dataset['alt']`, `img['dataset'].alt` and `img['dataset']['alt']`.
+The **harmful twin** — a read of the element's own `alt` — stays refused, and a read on an
+**unknown** receiver (`config.alt`) stays refused too, because it may be the element.
+
+The dataset read is masked as a **chain**, not by the name of the receiver's last
+member: the `dataset` has to be a member of something (`img.dataset.alt`), so a variable
+that is merely named `dataset` (`dataset['alt']`) stays a property read and is refused.
+The first cut of the fix decided "is this a dataset receiver?" from the name alone and
+lost exactly that read — an under-refusal introduced by the closure itself.
+
+One spelling stays refused: `Reflect.get(img.dataset,'alt')` inside a script that
+**mutates** an element. The refusal does not come from the receiver-aware read — it comes
+from the content-wide state-read pattern (`Reflect.get(`) together with the crude word
+search (`\balt\b`), which cannot tell a dataset key from an attribute name
+(`.ai/RISKS.md` row 94).
+
+### 14.8 The template rule reads the opener, not the closer (21-T1)
+
+The holder scope exposed a family of its own. The destination rule listed the
+**closing** marker `}}` next to the openers of the template families, so a script that
+ends a **nested object literal** (`const o={get el(){return other}}`) read as
+server-template grammar — and every fix of that repository was left for a human, even
+though the writer had judged it safe. The verdict that mattered was the destination's,
+not the writer's.
+
+Only the **opener** of every family counts now: `{{` (Handlebars, Vue, Angular, Liquid,
+Twig, Blade), `{%` (Jinja, Twig), `{#` (Jinja comments), `<%` (ERB, ASP), `<?` (PHP) and
+`<#` (FreeMarker). A closing marker on its own has no expression for an engine to
+evaluate, so the file is patched like any other HTML. Every opener stays refused, in
+the destination file and in the remediation (`.ai/RISKS.md` row 95).
+
+### 14.9 What the CTO's own probes measured in this cycle
+
+| Probe | Cases | Result |
+|---|---|---|
+| the twenty-first reviewer's **writer matrix** | 123 | utility 27 refused / 6 written · parameter 6/6 refused · read 8 refused / 7 written · call 22 refused / 2 written · cascade 9 refused / 5 written · specificity 15/15 refused · benign 16/16 written — **no verdict changes** under the whole twenty-first closure |
+| the twenty-first reviewer's **CSS matrix** | 18 | every `K-*` verdict byte-identical to the baseline; `C-style-after-link` flips written → refused |
+| the twenty-first reviewer's **route harness** | 8 | the six harmful cases answer **HTTP 400** with no branch, no write, no pull request and no audit trail; the `document.body.innerHTML` case (the customer's own unconditional runtime) answers **HTTP 200** with the write, the pull request and the audit trail |
+| the CTO's **route harness with the holder cases** | 14 | every harmful case answers **HTTP 400** with no branch, no write, no pull request and no audit trail; the benign holder twin and the accepted `document.body.innerHTML` runtime answer **HTTP 200** with the write |
+| the CTO's **end-to-end CSS probe** | 24 | 24/24 in the expected direction — the harmful sheet applied after the local one is refused, applied before it is written; the specificity ties are judged in both directions |
+| the CTO's **holder probe** (the eleven spellings of the brief) | 11 | the harmful shapes are refused or reviewed; the benign twin (`const o={el:other}`) stays written |
+| the CTO's **extended holder probe** | 35 | **0 harmful `written` and 0 benign not `written`** — every harmful shape is refused and every benign twin is written. Before the closure **19 of the 29** harmful shapes were `written` |
+| the CTO's **read-side probe** | 32 | every read of the state the fix adds is refused (`img.alt`, `matches('[alt]')`, `closest`, `querySelector(All)`, `Reflect.get`, `getAttribute`, `hasAttribute`, `getAttributeNames`, `outerHTML`, `attributes`, `getAttributeNode`, `getNamedItem`, `hasAttributes`, `body.outerHTML`) — **no under-refusal**; the one false positive (the dataset receiver) is what 14.7 closes |
+| the CTO's **property-read probe** | 21 | every element-property read is refused; every **dataset-receiver** read is written; `Reflect.get(img.dataset,'alt')` stays refused inside a mutating script (row 94); a read on an unknown receiver stays refused |
+| the CTO's **focused dataset probe** | 11 | a dataset read with no runtime write → written; a dataset read whose script writes to the element → written (the write touches a class, not the attribute the fix adds); a dataset read whose script replaces the page → refused; the element's own `alt` read with a runtime write → refused |
+| the CTO's **destination probe** | 44 | 9 pseudo-elements, 17 resource shapes and 12 selector shapes are all judged in the safe direction — **no under-refusal**; the one false positive (an inline `data:` URL) is recorded as an accepted Low risk (row 93) |
+| the CTO's **verification-browser probe** | 21 | every remediation that hides the element, loads CSS content or introduces a remote URL is rejected before verification; the two that verify (`clip:rect(0,0,0,0)`, `zoom:0`) are **not** hiding vectors — Chromium measured `clip` on a static inline element as no clip (the element still paints 200×100) and `zoom:0` as computed `zoom:1` |
+| the CTO's **direct-selection probe** | 20 | the same verdicts on the pre-closure tree and on the holder tree — no regression and no new under-refusal; the differences are the shipped fail-closed policy (Chromium-measured) |
+
+### 14.10 The gate suite on the combined tree
+
+| Check | Result |
+|---|---|
+| `npm run lint` | PASS — exit 0, 0 errors |
+| `npx tsc -p tsconfig.check.json --noEmit` | PASS — exit 0 |
+| `npx vitest run --coverage` | PASS — 54 files, **1229 / 1229** tests (was 1098 on the twentieth-cycle tree) |
+| Coverage | PASS — 72.87 / 64.65 / 76.45 / 75.86 against 55 / 50 / 58 / 57 |
+| `npm run build` | PASS — exit 0, 116 static pages |
+| `npx playwright test --project=chromium` | PASS — 79 passed, 0 failed, 0 skipped |
+| `npm audit --audit-level=high` | PASS — exit 0, Critical 0 / High 0 (15 moderate advisories, all in the development tooling chain) |
+
+
 

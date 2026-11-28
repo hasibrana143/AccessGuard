@@ -6,22 +6,96 @@ Last verification: 2026-11-28
 
 | Check | Result |
 |---|---|
-| Reviewed tree | `c5a6c4c` was the reviewed base (identical to `origin/main`); the twentieth-review closure is committed on top of it — the review artifact `d482d5c`, the cascade / specificity / root-selector fix `e11832f`, the writer-side fix `2a3249e` |
+| Reviewed tree | `c5a6c4c` was the reviewed base (identical to `origin/main`); the twentieth-review closure is committed on top of it — the review artifact `d482d5c`, the cascade / specificity / root-selector fix `e11832f`, the writer-side fix `2a3249e`. The **twenty-first-cycle closure** is on top of that: the writer scope `5d06986`, the destination scope `f6d8790`, the element-holder scope, the dataset-receiver scope and the template-marker scope (one combined commit) |
 | Source-only typecheck | PASS — exit 0 |
 | Lint | PASS — exit 0, 0 errors |
-| Unit / integration suite | PASS — 54 files, 1098/1098 tests (23 new twentieth-review writer regressions, 11 new destination regressions) |
-| Coverage | PASS — 71.38 / 63.81 / 75.02 / 73.7 against 55 / 50 / 58 / 57 |
+| Unit / integration suite | PASS — 54 files, 1229/1229 tests (33 twenty-first writer regressions, 7 destination regressions, 72 element-holder regressions, 8 dataset-receiver regressions, 5 template-marker regressions, 5 destination end-to-end regressions) |
+| Coverage | PASS — 72.87 / 64.65 / 76.45 / 75.86 against 55 / 50 / 58 / 57 |
 | Production build | PASS — exit 0, 116 static pages |
-| Browser E2E | PASS — 79 passed, 0 failed, 0 skipped (4.1 min) |
+| Browser E2E | PASS — 79 passed, 0 failed, 0 skipped |
 | `npm audit --audit-level=high` | PASS — Critical 0 / High 0 (15 moderate advisories) |
-| CI security gates | PASS — the CI and Docker workflows succeeded on `53e2af0` (runs 45810724743 and 45810724518); the AccessGuard Scan workflow succeeded with its documented secret-gated skip |
-| Production deployment | NOT CLAIMED — the Vercel build/deploy steps were skipped because the credentials are absent |
+| CI security gates | The CI and Docker workflows of the **twentieth-review** tree succeeded; the twenty-first-cycle tree is verified locally (the same six checks) and the workflows are watched after the push |
+| Production deployment | NOT CLAIMED — the Vercel build/deploy steps are skipped because the credentials are absent |
 | Strix autonomous pentest | **NOT RUN** — no provider credit or usable model is available, so no Strix evidence is claimed for this cycle |
 | Seventeenth independent review | **NOT READY — Critical 0, High 1, Medium 1** (`.ai/SECURITY-REVIEW-17.md`); both root causes are closed at their root cause in the shipped source (`5e30641`) |
 | Eighteenth independent review | **NOT READY — Critical 0, High 1, Medium 1, Low 1** (`.ai/SECURITY-REVIEW-18.md`); **all three findings are closed at their root cause** in the shipped source (`b16dafd`) |
 | Nineteenth independent review | **NOT READY — Critical 0, High 3, Medium 2, Low 2** (`.ai/SECURITY-REVIEW-19.md`); the three High findings are **closed at their root cause** in the shipped source, the two Medium findings and the two Low findings are closed in the destination CSS reader (see the nineteenth-review section below) |
 | Twentieth independent review | **NOT READY — Critical 0, High 6, Medium 0, Low 2** (`.ai/SECURITY-REVIEW-20.md`); **all eight findings are closed at their root cause** in the shipped source (`e11832f`, `2a3249e`), together with the two residuals the closure exposed |
-| Twenty-first independent review | **PENDING** — the release gate opens only when it returns READY (Critical 0, High 0) |
+| Twenty-first independent review | **NO VERDICT** — the reviewer died on a provider network error (`getaddrinfo ENOTFOUND integrate.api.nvidia.com`) mid-run and returned no verdict, so the cycle could not close on it. Its hunt matrices survived; the CTO preserved them outside the repository (`sr21-harness`), proved them with a local Chromium probe and used them as the hunt list. They reduced to **8 root-cause families**, not 20 findings, and the CTO's own probes added **three** more — the **element-holder family** (an under-refusal), the **dataset-receiver family** (a fail-closed false positive) and the **template-marker family** (a destination rule that hid the writer's verdict) — none of which is in the twentieth review's non-findings. **All eleven families are closed at their root cause** in the shipped source, with **115 permanent regressions** |
+| Twenty-second independent review | **PENDING** — the release gate opens only when it returns READY (Critical 0, High 0) |
+
+
+## Twenty-first cycle (2026-11-28) — closure shipped
+
+**No reviewer verdict exists for this cycle.** The twenty-first reviewer died on a
+provider network error in the middle of its run and wrote no artifact, so the cycle
+was closed from **its own surviving matrices** plus the CTO's independent probe, not
+from a verdict. The matrices reduced to **8 root-cause families**; the CTO's probes
+found **three** more that no prior review had recorded — the element-holder family (an
+under-refusal), the dataset-receiver family (a fail-closed false positive) and the
+template-marker family (a destination rule that hid the writer's verdict). All
+**eleven** families are closed at their root cause, with **115 permanent regressions**.
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 21-W1 | **High** | The **object-utility family** on the write side | `Object.assign` reached through an alias of an alias, a destructured name, a renamed destructured name, a member of an object literal, a member assigned on a namespace, a property descriptor's `.value` and `Reflect.get` emptied the alternative text the fix adds; the direct spelling was refused, so the browser could not tell them apart | the utility was resolved by the **spelling of its receiver chain**, so every holder that is not the literal `Object` fell through to the generic branch and was dropped — the same defect the twentieth review reproduced in the receiver chain, one level deeper | **CLOSED** — the family is resolved by a **value resolver** (`HeldValues`), not by the spelling of the receiver: the utility is followed through a variable, an alias of an alias, a destructured name, a renamed destructured name, an object-literal member, a member assignment, a descriptor's `.value` and `Reflect.get`, and the **target is the utility's own first argument**, whatever holder it arrives through. A holder the analyser cannot read **fails closed**. Regressions `21-W1a`–`21-W1h` with the benign twins `21-W1i`–`21-W1k` |
+| 21-W2 | **High** | The **target rule** of a utility applied through `Reflect.apply` | `Reflect.apply(Object.assign, null, [img, {alt:''}])` emptied the alternative text the fix adds, while the same utility applied with the element as the receiver (`Reflect.apply(Object.assign, img, [{alt:''}])`) copies into a fresh object and leaves the attribute alone | `Reflect.apply`'s **receiver** was read as the target, but `Object.assign` is not a method of its receiver — it writes to its **first argument** | **CLOSED** — the target of a utility is its own first argument. The harmful spelling is refused, the harmless spelling stays writable (Chromium measured `alt="Photo"` in both directions). Regressions `21-W2a` with the twin `21-W2b` |
+| 21-W3 | **High** | **Parameter forwarding** | `function f(e){e.removeAttribute('alt')}; f(img)` emptied the alternative text the fix adds | a function parameter was bound to an **unknown** reach, so a write through it was not a write of the patched element | **CLOSED** — a parameter holds the element the **call site** passes, so the write is followed through the parameter and through a call of a call. Regressions `21-W3a`–`21-W3c` |
+| 21-W4 | **High** | The **call forms** | `img.removeAttribute.bind(img)('alt')`, `const f = img.setAttribute.bind(img); f('alt','')` and `new Proxy(img,{}).removeAttribute('alt')` emptied the alternative text the fix adds | a **bound** method and a **proxy** were not modelled: the chain ended at a member the reader could not follow | **CLOSED** — a bound method writes what the method it binds writes, and a proxy forwards to the element it wraps. A trap-less proxy throws `Illegal invocation` in Chromium, but a trapping proxy performs the write, so the model fails closed. Regressions `21-W4a`–`21-W4c` |
+| 21-W5 | **High** | The **markup read** | `img.outerHTML.indexOf('alt') > -1` gated a takeover on the attribute the fix adds | the generic-read pattern named three APIs and omitted the markup read | **CLOSED** — the markup of the **element** is a generic state read; the markup of the **document** (`document.body.innerHTML`) deliberately stays out (the twentieth review recorded it as the customer's own unconditional runtime). Regressions `21-W5a`–`21-W5c` with the twin `21-W5d` |
+| 21-W6 | **High** | The **attribute observer** | `new MutationObserver(cb).observe(body, {attributes: true})` reacts to the attribute the fix adds, so the callback runs after the merge | an observer was not a state read, so the runtime that watches the attributes was invisible | **CLOSED** — an observer that watches **attributes** reacts to every attribute the fix adds. An observer that watches the child list alone is the benign twin and does not fire. Regressions `21-W6a` with the twin `21-W6b` |
+| 21-W7 | **Medium** | The **callee** of a call | `({assign: Object.assign}).assign(img, {alt:''})` emptied the alternative text the fix adds | a call whose callee is an **object literal** was not read as a call | **CLOSED** — a call whose callee is an object literal is read as a call. Regressions `21-W7a` with the twin `21-W7b` |
+| 21-C1 | **High** | The **destination** CSS reader | A `<style>` block after a `<link rel="stylesheet">` that redefines a custom property the element already computes was written, although the browser keeps the **new** value after the merge | the reader judged the rule the fix **activates** instead of the rule the browser **keeps**, so the **replacement** of the customer's own value was never judged; a custom property is only judged through the declarations that read it, and in the reviewer's case nothing read it | **CLOSED** — the cascade of the element is computed once and the **winner** of every property the activated rule declares is judged. A fix that changes a custom property the element already computes and that **no applicable declaration reads** is unprovable and refused. The same page with the `<style>` block **before** the link stays writable — the browser keeps the customer's value there. Regressions `21-C1a`–`21-C1c` (reader) and `21-C1d`–`21-C1e` (end to end) |
+| 21-C2 | **Low** | A fail-closed false positive in the destination reader | `[aria-label]{font-family:Evil} .card{font-family:Local}` was refused although the browser keeps `Local` (later source order, equal specificity) and requests nothing | the activated-rule loop judged the **activated rule**, never the cascade winner | **CLOSED** — the winner of every property the activated rule declares is judged, in both directions and with an escaped identifier (`.md\:flex`, `.\000063ard`). Regressions `21-C2a`–`21-C2b` (reader) and `21-C2c` (end to end) |
+| 21-C3 | **Low** | The control of 21-C2 | The same tie with the competing rule **first**: the activated rule wins, the customer browser loads the font, the fix must stay refused | the same code path — the direction that was already correct | **CLOSED** — unchanged and locked by a regression. Regressions `21-C3a`–`21-C3b` (reader) and `21-C3c` (end to end) |
+
+**The CTO's own probe found a ninth family the reviewers had not recorded — the
+element-holder family — and it is closed in the same cycle.** The writer decides
+whether a write reaches the patched element by resolving the **receiver** of the
+write, and it resolved only three holder shapes: a variable that directly holds an
+element, an array element and a function parameter. An element that reached the
+script through an **object member**, a **destructured name**, a **nested member** or
+a **function return value** was invisible, so the fix was written although the
+script removed the attribute at runtime. The CTO's Chromium probe measured `alt=null`
+for **every** holder spelling it tried and `alt="Photo"` for the benign twin.
+
+**The CTO's read-side hunt found a tenth family — the dataset-receiver family — and it
+is a fail-closed false positive, closed in the same cycle.** A DOM-property read was
+matched by the **name** of the property anywhere in the content (`\.\s*alt\b`), so a
+script that read `img.dataset.alt` lost **every** fix of the repository. The read was
+wrong: `img.dataset` is the `DOMStringMap` of the element, so `img.dataset.alt` names
+the **`data-alt`** attribute, not the `alt` attribute of the element — Chromium measured
+it as `undefined` before **and** after the fix adds `alt`, while `img.alt` changes from
+`''` to `'Photo'`.
+
+**The CTO's holder scope then exposed an eleventh family — the template-marker family
+— and it is closed in the same cycle.** The destination rule read a bare `}}` as
+server-template grammar, so every fix of a repository whose script ends a nested
+object literal (`const o={get el(){return other}}`) was left for a human — the
+writer's verdict was right, and the destination rule hid it. The rule now reads the
+**opener** of every template family (`{{`, `{%`, `{#`, `<%`, `<?`, `<#`); a closing
+marker on its own is not grammar.
+
+| ID | Severity | Surface | Reproduced unsafe result | Root cause | Closure |
+|---|---|---|---|---|---|
+| 21-H | **High** | The **element-holder family** on the write side | An element that reached the script through an object member, a destructured name, a nested member, a class field, a `Set`, a `WeakMap`, a `Map` value, an array of arrays, an IIFE, a proxy, a conditional, a logical expression, a template member or an `Object.assign` holder was invisible to the writer, so the fix was written although the script removed the attribute at runtime (Chromium measured `alt=null` for every spelling) | the writer resolved the **receiver** of a write through three holder shapes only (a variable, an array item, a parameter), so every other holder fell through to an unrelated write | **CLOSED** — the writer resolves a **holder to a value** (an element, a member, a container, or unreadable) instead of matching holder spellings: an object member, a destructured name, a class field, a `Set` / `Map` / `WeakMap` entry, an array, a function return, a conditional, a logical expression, an IIFE and a proxy are all followed. A holder the analyser cannot read **fails closed** (refused, never `written`), and a dynamic container ends at a human review rather than at a write. The benign twin of every shape — the same holder carrying **another** element — stays writable. Regressions `21-H1a`–`21-H36b` (72 tests) |
+| 21-R1 | **Low** | The **DOM-property read** on the write side | A repository whose script reads `img.dataset.alt` lost **every** fix: the candidate was refused although the read does not react to the fix | the property read was matched by the **name** of the property, so a read on a `dataset` receiver — which names a **dataset key** (`data-alt`) — was read as a read of the element's `alt` attribute. The dataset path already knew the rule (`attributeOfDatasetKey`); the plain-property path did not | **CLOSED** — the property read is **receiver-aware**: a read on a `dataset` receiver names a dataset key, so it is not a read of the attribute the fix adds. The spellings `img.dataset.alt`, `img.dataset?.alt`, `img.dataset['alt']`, `img['dataset'].alt` and `img['dataset']['alt']` are receiver-aware, and the read is masked as a **chain** — a variable that is merely named `dataset` (`dataset['alt']`) stays a property read and is refused. The **harmful twin** (a read of the element's own `alt`, and a read of the `data-alt` attribute the fix adds) stays refused, and a read on an **unknown** receiver (`config.alt`) stays refused because it may be the element. One spelling stays refused inside a mutating script — the content-wide state-read pattern and the crude word search decide it (`.ai/RISKS.md` row 94). Regressions `21-R1a`–`21-R1h` |
+| 21-T1 | **Low** | The **destination** template rule | A repository whose script ends a nested object literal (`const o={get el(){return other}}`) lost **every** fix: the candidate was left for a human although the writer had judged it safe | the template-grammar rule listed the **closing** marker `}}` next to the openers, so the end of a nested object literal was read as server-template grammar | **CLOSED** — only the **opener** of every template family counts (`{{`, `{%`, `{#`, `<%`, `<?`, `<#`); a closing marker on its own has no expression for an engine to evaluate. Every opener is still refused, in the destination file and in the remediation. Regressions `21-T1a`–`21-T1f` |
+
+**The closure evidence** (every number is a run on this tree):
+
+| Proof | Result |
+|---|---|
+| Permanent regressions | **115** new tests — 33 writer (`21-W1…21-W7`), 7 destination reader (`21-C1a…21-C3b`), 5 destination end-to-end (`21-C1d…21-C3c`), 72 element-holder (`21-H1a…21-H36b`), 8 dataset-receiver (`21-R1a…21-R1h`), 5 template-marker (`21-T1a…21-T1f`) |
+| Fails-before — `src/lib/github.ts` reverted to `f6d8790` | **37 fail** / 313 pass — 34 holder regressions and the three dataset spellings that the reverted reader refused |
+| Fails-before — `src/lib/github-pr.ts` reverted to `f6d8790` | **6 fail** / 459 pass — `21-T1a`, `21-T1e` and the four dataset spellings the template rule had hidden |
+| The twenty-first reviewer's writer matrix (123 cases) | **0 verdict changes** against the recorded baseline — the closure changed no verdict the reviewer had measured |
+| The CTO's extended holder probe (35 cases) | 28 harmful → **all refused**, 7 benign → **all written**; 0 harmful `written`, 0 benign not `written` |
+| The CTO's property-read probe (21 cases) | every element-property read refused, every dataset-receiver read written, `Reflect.get(img.dataset,'alt')` still refused (row 94), `Reflect.get(img,'alt')` refused, an unknown receiver refused |
+| The CTO's focused dataset probe (11 cases) | the dataset reads written, the element-property twin refused, the page-writing twin refused |
+| The real-route harness (14 cases) | every harmful case HTTP 400 with no branch, no write, no pull request and no audit record; the benign twin and the accepted `document.body.innerHTML` runtime HTTP 200 with the write |
+| The direct-selection family (20 cases) | the verdicts are identical on the pre-closure tree and on the holder tree — no regression and no new under-refusal; Chromium confirms the three differences are the shipped fail-closed policy |
+
 
 ## Twentieth independent security review (2026-11-28) — closure shipped
 
