@@ -379,8 +379,15 @@ function checkStyleAttribute(value: string, isTarget: boolean): string | null {
  * file that carries them is a template and not HTML, and a fix that carries
  * them becomes executable code on the customer's server. `<#` is the FreeMarker
  * directive opener.
+ *
+ * Only the **opener** of every family counts: `{{` (Handlebars, Vue, Angular,
+ * Liquid, Twig, Blade), `{%` (Jinja, Twig), `{#` (Jinja comments), `<%` (ERB,
+ * ASP), `<?` (PHP) and `<#` (FreeMarker). A closing marker on its own is not
+ * grammar — `}}` is what a nested object literal ends with, and a script that
+ * holds one is still a script. A file that carries only `}}` has no expression
+ * for an engine to evaluate, so it is patched like any other HTML.
  */
-const TEMPLATE_MARKERS = /<%|%>|<\?|\?>|{%|%}|{{|}}|{#|#}|<#/;
+const TEMPLATE_MARKERS = /<%|%>|<\?|\?>|{%|%}|{{|{#|#}|<#/;
 
 /** True when the content carries server-template grammar. */
 export function containsTemplateGrammar(content: string): boolean {

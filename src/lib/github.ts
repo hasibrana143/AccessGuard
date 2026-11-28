@@ -468,7 +468,7 @@ const RUNTIME_STYLE_PATTERN =
 
 /** Reads that can gate an element mutation at runtime. */
 const RUNTIME_STATE_READ_PATTERN =
-  /\bgetAttributeNames\s*\(|\bgetNamedItem\s*\(|\bReflect\s*\.\s*(?:get|getOwnPropertyDescriptor)\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
+  /\bgetAttributeNames\s*\(|\bgetNamedItem\s*\(|\bmatches\s*\(|\bclosest\s*\(\s*['"`][^'"`]*\[|\b(?:querySelector|querySelectorAll)\s*\(\s*['"`][^'"`]*\[/i;
 
 /**
  * Reads of every attribute, which can react to any attribute the fix adds.
@@ -1003,9 +1003,32 @@ function scriptReadsDynamicAttribute(content: string): boolean {
 /** True when a computed property name cannot be read statically. */
 function scriptReadsDynamicProperty(content: string): boolean {
   return (
-    propertyNameReads(content).some(read => read.name === null) ||
+    computedPropertyReads(content).some(
+      read => read.name === null && !RESERVED_WORDS.has(read.object.toLowerCase())
+    ) ||
     reflectPropertyNameReads(content).some(read => read.name === null)
   );
+}
+
+/**
+ * True when a script reads a property of an element.
+ *
+ * A property read of the element may read the attribute the fix adds, so the
+ * script reacts to the fix and the writer fails closed. The receiver decides:
+ * a read of an object that holds another element is not a read of the patched
+ * element. A receiver the analyser cannot read may be the element, so it fails
+ * closed as well.
+ */
+function readsElementProperty(content: string, bindings: ElementBindings): boolean {
+  for (const read of reflectPropertyReads(content)) {
+    const target = read.receiver;
+    // A receiver the analyser cannot resolve may be the element.
+    if (target === '') return true;
+    const value = bindings.values.resolve(target);
+    if (value.kind === 'element' || value.kind === 'unreadable') return true;
+  }
+
+  return false;
 }
 
 /** True when a selector argument or its attribute name cannot be read. */
@@ -1111,33 +1134,33 @@ function runtimeMutations(content: string, bindings: ElementBindings): RuntimeMu
   let dynamic = false;
   const utilities = new HeldValues(content);
 
-  for (const match of content.matchAll(METHOD_CALL_PATTERN)) {
-    const members = calleeMembers(match[1] ?? '');
-    if (members.length === 0) continue;
+  for (const call of scriptCalls(content)) {
+    const methodName = call.method;
+    const args = call.args;
 
-    const method = members[members.length - 1] as { name: string | null; computed: boolean };
-    const receiver = members.length >= 2 ? members[members.length - 2] : null;
-    const args = readCallArguments(content, match.index + match[0].length);
-
-    if (method.name === null) {
+    if (methodName === null) {
       // A computed method name may be a DOM mutation the analyser cannot
       // follow: the script fails closed when it reads state as well. A
       // computed call on a receiver that cannot be an element (`fns[i]()`)
       // mutates nothing the fix adds.
-      const chain = members.slice(0, -1).map(member => ({ name: member.name, args: null }));
-      if (chainObject(chain, bindings).kind === 'element') {
+      if (call.receiver === null) continue;
+      const object = chainObject(call.receiver, bindings);
+      if (object.kind === 'element' || object.kind === 'unreadable') {
         mutates = true;
         dynamic = true;
       }
       continue;
     }
 
-    const name = method.name.toLowerCase();
-    const receiverName = receiver?.name?.toLowerCase() ?? null;
+    const name = methodName.toLowerCase();
+    const receiverName =
+      call.receiver === null
+        ? null
+        : (splitMember(call.receiver).member?.toLowerCase() ?? null);
 
     if (ATTRIBUTE_WRITING_METHODS.has(name)) {
       mutates = true;
-      if (writtenAttributeName(method.name, args) === null) dynamic = true;
+      if (writtenAttributeName(methodName, args) === null) dynamic = true;
       continue;
     }
 
@@ -1169,7 +1192,7 @@ function runtimeMutations(content: string, bindings: ElementBindings): RuntimeMu
 
     // `Object.assign(element, source)` and its spellings write to the element
     // they receive as an argument, not to their receiver.
-    const utility = objectUtilityCall(match[1] ?? '', args, utilities);
+    const utility = objectUtilityCall(call.callee, args, utilities);
     if (utility && utility.method !== null && OBJECT_UTILITY_METHODS.has(utility.method)) {
       mutates = true;
       // The written names are the keys of the object: a literal without a
@@ -1378,7 +1401,7 @@ function parseChain(text: string): ChainSegment[] {
 
 /** The object a chain reads. */
 interface ChainObject {
-  kind: 'document' | 'element' | 'other';
+  kind: 'document' | 'element' | 'other' | 'unreadable';
   reach: ElementReach | null;
 }
 
@@ -1430,71 +1453,1288 @@ function documentCallObject(name: string | null, args: string[]): ChainObject {
 }
 
 /**
- * The object a chain reads, and what it may reach.
+ * A value the script holds.
  *
- * The chain is read from its root: a selection call produces an element, a
- * member of an element stays element-ish, and everything else is an object
- * the analyser knows nothing about.
+ * The writer decides by the VALUE a receiver holds: an element (with the
+ * reach it may have), an object (by the members it holds), an array (by the
+ * items it holds), a function (by the expressions it returns), or a value the
+ * analyser cannot read.
  */
-function chainObject(segments: ChainSegment[], bindings: ElementBindings): ChainObject {
-  let object: ChainObject = { kind: 'other', reach: null };
-  let first = true;
+type ElementValue =
+  | { kind: 'element'; reach: ElementReach | null }
+  | { kind: 'document' }
+  | { kind: 'namespace' }
+  | { kind: 'reflect' }
+  | { kind: 'object'; members: Map<string, string>; root: string | null; path: string[] }
+  | { kind: 'array'; items: string[] }
+  | { kind: 'function'; returns: string[] }
+  | { kind: 'set'; items: string[] }
+  | { kind: 'iterator'; items: string[] }
+  | { kind: 'map'; entries: Array<[string, string]> }
+  | { kind: 'none' }
+  | { kind: 'unreadable' };
 
-  for (const segment of segments) {
-    const name = segment.name?.toLowerCase() ?? null;
+/** One step of a value chain: a member access or a call. */
+interface ValueStep {
+  /** The name of the member, when the analyser can read it. */
+  name: string | null;
+  /** The arguments of the call, when the step is a call. */
+  args: string[] | null;
+}
 
-    if (first) {
-      first = false;
-      if (name === 'document') {
-        object = { kind: 'document', reach: null };
-      } else if (name && bindings.elements.has(name)) {
-        object = { kind: 'element', reach: bindings.elements.get(name) ?? null };
-      } else if (name && /^(?:html[a-z]*)?element$/.test(name)) {
-        // `Element.prototype` and `HTMLImageElement.prototype` are elements.
-        object = { kind: 'element', reach: unknownReach() };
-      } else if (name === 'proxy' && segment.args && segment.args.length > 0) {
-        // A proxy forwards to its target: `new Proxy(element, handler)` writes
-        // the element it wraps.
-        const reach = expressionReach(segment.args[0] ?? '', bindings);
-        object = reach === null ? { kind: 'other', reach: null } : { kind: 'element', reach };
-      } else {
-        object = { kind: 'other', reach: null };
+/** A chain of a value: the expression it starts with and the steps after it. */
+interface ValueChain {
+  /** The expression the chain starts with. */
+  head: string;
+  /** The steps that follow the head. */
+  steps: ValueStep[];
+}
+
+/**
+ * A name assigned an expression.
+ *
+ * The name is a variable of the script: a member of another name (`o.el = img`)
+ * is not, so it is read as a member assignment instead. An arrow (`x => y`) and
+ * a comparison (`x == y`) are not assignments either.
+ */
+const NAMED_ASSIGNMENT_PATTERN = /(?<![\w$.])([A-Za-z_$][\w$]*)\s*=(?![=><])([^;\n]+)/g;
+
+/**
+ * A member assigned on a name, with the path it is assigned at.
+ *
+ * `o.el = img` assigns the member `el` of `o`, and `o.a.b = img` assigns the
+ * member `b` of the member `a` of `o`.
+ */
+const MEMBER_PATH_ASSIGNMENT_PATTERN =
+  /(?<![\w$.])([A-Za-z_$][\w$]*)((?:\s*\.\s*[A-Za-z_$][\w$]*)+)\s*=(?![=><])([^;\n]+)/g;
+
+/** A name destructured from an object. */
+const OBJECT_DESTRUCTURING_PATTERN =
+  /\b(?:const|let|var)\s*\{([^}]*)\}\s*=(?!=)\s*([^;\n]+)/g;
+
+/** A name destructured from an array. */
+const ARRAY_DESTRUCTURING_PATTERN =
+  /\b(?:const|let|var)\s*\[([^\]]*)\]\s*=(?!=)\s*([^;\n]+)/g;
+
+/** A name bound by a for-of loop. */
+const FOR_OF_PATTERN =
+  /\bfor\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s+of\s+([^)]*)\)/g;
+
+/** An item pushed onto an array. */
+const ARRAY_PUSH_PATTERN = /\b([A-Za-z_$][\w$]*)\s*\.\s*push\s*\(([^)]*)\)/g;
+
+/** A class the script declares. */
+const CLASS_PATTERN =
+  /\bclass\s+([A-Za-z_$][\w$]*)\s*(?:extends\s+[A-Za-z_$][\w$]*\s*)?\{/g;
+
+/** A function the script declares. */
+const FUNCTION_BODY_PATTERN =
+  /\b(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/g;
+
+/** An arrow function, with the body it holds. */
+const ARROW_FUNCTION_PATTERN = /^(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>\s*([\s\S]+)$/;
+
+/** A property set through a reflective write. */
+const REFLECT_SET_PATTERN =
+  /\bReflect\s*\.\s*set\s*\(\s*([A-Za-z_$][\w$]*)\s*,\s*([^,]+),\s*([^)]+)\)/g;
+
+/** The words that cannot be the object of a computed property read. */
+const RESERVED_WORDS = new Set([
+  'await',
+  'case',
+  'const',
+  'delete',
+  'do',
+  'else',
+  'in',
+  'instanceof',
+  'let',
+  'new',
+  'of',
+  'return',
+  'throw',
+  'typeof',
+  'var',
+  'void',
+  'yield',
+]);
+
+/**
+ * The bodies the functions nested in a text hold, with the ranges they cover.
+ *
+ * A nested function has a name and a parameter list, or a block body, so the
+ * body of a nested function is the block that follows its head.
+ */
+function nestedFunctionBodies(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+
+  for (const match of text.matchAll(/\bfunction\b|=>/g)) {
+    let index = match.index + match[0].length;
+    while (index < text.length && /\s/.test(text[index] as string)) index++;
+
+    if (match[0] === '=>') {
+      // The body of an arrow with a block.
+      if (text[index] !== '{') continue;
+    } else {
+      // A generator: `function* name(`.
+      if (text[index] === '*') {
+        index++;
+        while (index < text.length && /\s/.test(text[index] as string)) index++;
       }
-      continue;
+      // The name of the function.
+      const name = /^[A-Za-z_$][\w$]*/.exec(text.slice(index));
+      if (name) index += name[0].length;
+      while (index < text.length && /\s/.test(text[index] as string)) index++;
+      // The parameters of the function.
+      if (text[index] !== '(') continue;
+      const parameters = matchingBracket(text.slice(index));
+      if (parameters === -1) continue;
+      index += parameters + 1;
+      while (index < text.length && /\s/.test(text[index] as string)) index++;
     }
 
-    if (segment.args === null) {
-      // A member of the current object.
-      if (
-        object.kind === 'document' &&
-        (name === 'body' || name === 'head' || name === 'documentelement')
-      ) {
-        object = { kind: 'element', reach: unknownReach() };
+    // The body of the function.
+    if (text[index] !== '{') continue;
+    const end = matchingBracket(text.slice(index));
+    if (end === -1) continue;
+    ranges.push([index + 1, index + end]);
+  }
+
+  return ranges;
+}
+
+/**
+ * A body with the bodies of the functions it nests removed.
+ *
+ * The `return` of a nested function belongs to that function, so the nested
+ * bodies are blanked out before the returns of the body are read.
+ */
+function withoutNestedFunctions(body: string): string {
+  const ranges = nestedFunctionBodies(body);
+  let text = body;
+  for (const [start, end] of ranges.reverse()) {
+    text = `${text.slice(0, start)}${' '.repeat(end - start)}${text.slice(end)}`;
+  }
+  return text;
+}
+
+/**
+ * The expressions a function body returns.
+ *
+ * A `return` statement names the value the function gives back. The statement
+ * ends at the semicolon, at the end of the line or at the brace that closes
+ * the block the `return` belongs to, so the `return` of a nested function is
+ * not read as the return of the outer one.
+ */
+function returnedExpressions(body: string): string[] {
+  const returned: string[] = [];
+  const text = withoutNestedFunctions(body);
+
+  for (const match of text.matchAll(/\breturn\b/g)) {
+    let index = match.index + match[0].length;
+    let depth = 0;
+    let quote: string | null = null;
+    let expression = '';
+
+    while (index < text.length) {
+      const character = text[index] as string;
+
+      if (quote !== null) {
+        expression += character;
+        if (character === quote) quote = null;
+        index++;
+        continue;
       }
+
+      if (character === '"' || character === "'" || character === '`') {
+        quote = character;
+        expression += character;
+        index++;
+        continue;
+      }
+
+      if (character === '(' || character === '[' || character === '{') {
+        depth++;
+        expression += character;
+        index++;
+        continue;
+      }
+
+      if (character === ')' || character === ']' || character === '}') {
+        // The brace that closes the block ends the statement; a bracket that
+        // closes an expression does not.
+        if (depth === 0) break;
+        depth--;
+        expression += character;
+        index++;
+        continue;
+      }
+
+      if (depth === 0 && (character === ';' || character === '\n')) break;
+
+      expression += character;
+      index++;
+    }
+
+    const trimmed = expression.trim();
+    if (trimmed) returned.push(trimmed);
+  }
+
+  return returned;
+}
+
+/**
+ * The body of a function whose head ends at `from`.
+ *
+ * A body with braces is read to its closing brace; an arrow with an
+ * expression body returns that expression.
+ */
+function functionBody(content: string, from: number): string | null {
+  let index = from;
+  while (index < content.length && /\s/.test(content[index] as string)) index++;
+  if (content[index] === '{') {
+    const end = matchingBracket(content.slice(index));
+    if (end === -1) return null;
+    return content.slice(index + 1, index + end);
+  }
+  const end = content.indexOf(';', index);
+  return content.slice(index, end === -1 ? content.length : end);
+}
+
+/**
+ * An expression without the braces that close a block around it.
+ *
+ * A class body holds `this.el=element` in a constructor, and the brace that
+ * closes the constructor is not part of the expression the field holds.
+ */
+function trimBlockBraces(expression: string): string {
+  let text = expression.trim();
+  while (text.endsWith('}')) {
+    const opens = (text.match(/\{/g) ?? []).length;
+    const closes = (text.match(/\}/g) ?? []).length;
+    if (closes <= opens) break;
+    text = text.slice(0, -1).trim();
+  }
+  return text;
+}
+
+/**
+ * The fields a class body declares.
+ *
+ * A field holds the expression it is given, and a constructor that assigns
+ * `this.name` gives the instance the same field.
+ */
+function classFields(body: string): Map<string, string> {
+  const fields = new Map<string, string>();
+
+  for (const match of body.matchAll(/\bthis\s*\.\s*([A-Za-z_$][\w$]*)\s*=(?![=><])([^;\n]+)/g)) {
+    const name = match[1] ?? '';
+    const expression = trimBlockBraces(match[2] ?? '');
+    if (!name || !expression) continue;
+    fields.set(name.toLowerCase(), expression);
+  }
+
+  for (const match of body.matchAll(/(?:^|[;{}\n])\s*([A-Za-z_$][\w$]*)\s*=(?![=><])([^;\n]+)/g)) {
+    const name = match[1] ?? '';
+    const expression = trimBlockBraces(match[2] ?? '');
+    if (!name || !expression) continue;
+    if (fields.has(name.toLowerCase())) continue;
+    fields.set(name.toLowerCase(), expression);
+  }
+
+  return fields;
+}
+
+/**
+ * The members an object literal holds.
+ *
+ * A getter holds the expression it returns, a shorthand member holds the
+ * variable of the same name and a spread makes the literal unreadable: the
+ * analyser cannot tell what it holds.
+ */
+function literalMembers(text: string): Map<string, string> | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{')) return null;
+  const end = matchingBracket(trimmed);
+  if (end === -1) return null;
+
+  const members = new Map<string, string>();
+  for (const part of splitTopLevel(trimmed.slice(1, end))) {
+    const entry = part.trim();
+    if (entry === '') continue;
+
+    // A spread holds what it spreads, and the analyser cannot read it.
+    if (entry.startsWith('...')) return null;
+
+    // A getter holds the expression it returns.
+    const getter = /^(?:get\s+([A-Za-z_$][\w$]*|'[^']*'|"[^"]*")|set\s+[A-Za-z_$][\w$]*)\s*\(\s*\)\s*\{([\s\S]*)\}$/.exec(
+      entry
+    );
+    if (getter) {
+      const key = getter[1];
+      if (key === undefined) return null;
+      const returned = returnedExpressions(getter[2] ?? '');
+      if (returned.length === 0) return null;
+      members.set(key.toLowerCase(), returned[0] as string);
       continue;
     }
 
-    // A call on the current object.
-    if (object.kind === 'document') {
-      object = documentCallObject(name, segment.args);
+    // A plain member: `el: img`.
+    const named = /^(?:'([^']*)'|"([^"]*)"|([A-Za-z_$][\w$]*))\s*:\s*([\s\S]+)$/.exec(entry);
+    if (named) {
+      const key = named[1] ?? named[2] ?? named[3] ?? '';
+      members.set(key.toLowerCase(), (named[4] ?? '').trim());
       continue;
     }
-    if (object.kind === 'element') {
+
+    // A shorthand member holds the variable of the same name.
+    const shorthand = /^([A-Za-z_$][\w$]*)$/.exec(entry);
+    if (!shorthand) return null;
+    members.set((shorthand[1] ?? '').toLowerCase(), shorthand[1] ?? '');
+  }
+
+  return members;
+}
+
+/**
+ * Split a chain into the expression it starts with and the steps after it.
+ *
+ * A chain starts with a name, a group, an array literal, an object literal or
+ * a `new` expression. Every member access and every call after it is a step.
+ * A text that is not a chain is null.
+ */
+function parseValueChain(text: string): ValueChain | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  let index = 0;
+  let head = '';
+
+  const created = /^new\s+([A-Za-z_$][\w$]*)/.exec(trimmed);
+  if (created) {
+    const name = created[1] as string;
+    index = created[0].length;
+    let argumentsText = '';
+    let after = index;
+    while (after < trimmed.length && /\s/.test(trimmed[after] as string)) after++;
+    if (trimmed[after] === '(') {
+      const end = matchingBracket(trimmed.slice(after));
+      if (end === -1) return null;
+      argumentsText = trimmed.slice(after, after + end + 1);
+      after = after + end + 1;
+    }
+    head = `new ${name}${argumentsText}`;
+    index = after;
+  } else if (trimmed[0] === '(' || trimmed[0] === '[' || trimmed[0] === '{') {
+    const end = matchingBracket(trimmed);
+    if (end === -1) return null;
+    head = trimmed.slice(0, end + 1);
+    index = end + 1;
+  } else {
+    const name = /^[A-Za-z_$][\w$]*/.exec(trimmed);
+    if (!name) return null;
+    head = name[0];
+    index = name[0].length;
+  }
+
+  const steps: ValueStep[] = [];
+  while (index < trimmed.length) {
+    const character = trimmed[index] as string;
+    if (/\s/.test(character)) {
+      index++;
+      continue;
+    }
+
+    if (character === '.') {
+      index++;
+      while (index < trimmed.length && /\s/.test(trimmed[index] as string)) index++;
+      const member = /^[A-Za-z_$][\w$]*/.exec(trimmed.slice(index));
+      if (!member) return null;
+      steps.push({ name: member[0], args: null });
+      index += member[0].length;
+      continue;
+    }
+
+    if (character === '?') {
+      index++;
+      while (index < trimmed.length && /\s/.test(trimmed[index] as string)) index++;
+      if (trimmed[index] === '.') index++;
+      continue;
+    }
+
+    if (character === '[') {
+      const end = matchingBracket(trimmed.slice(index));
+      if (end === -1) return null;
+      const key = trimmed.slice(index + 1, index + end);
+      steps.push({ name: resolveMemberName(key.trim()), args: null });
+      index += end + 1;
+      continue;
+    }
+
+    if (character === '(') {
+      const end = matchingBracket(trimmed.slice(index));
+      if (end === -1) return null;
+      const args = splitTopLevel(trimmed.slice(index + 1, index + end));
+      const last = steps[steps.length - 1];
+      if (last) last.args = args;
+      else steps.push({ name: null, args });
+      index += end + 1;
+      continue;
+    }
+
+    return null;
+  }
+
+  return { head, steps };
+}
+
+/**
+ * The sides of a conditional or a logical expression.
+ *
+ * `a ? b : c`, `a || b`, `a && b` and `a ?? b` hold one of their sides, so
+ * the analyser reads every side of them.
+ */
+function splitAlternatives(text: string): string[] | null {
+  let depth = 0;
+  let quote: string | null = null;
+  let question = -1;
+  let colon = -1;
+
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index] as string;
+    if (quote !== null) {
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '(' || character === '[' || character === '{') {
+      depth++;
+      continue;
+    }
+    if (character === ')' || character === ']' || character === '}') {
+      depth--;
+      continue;
+    }
+    if (depth !== 0) continue;
+
+    if (character === '?' && text[index + 1] === '?') {
+      return [text.slice(0, index), text.slice(index + 2)];
+    }
+    if (character === '|' && text[index + 1] === '|') {
+      return [text.slice(0, index), text.slice(index + 2)];
+    }
+    if (character === '&' && text[index + 1] === '&') {
+      return [text.slice(0, index), text.slice(index + 2)];
+    }
+    if (character === '?') {
+      if (text[index + 1] === '.') continue;
+      question = index;
+      continue;
+    }
+    if (character === ':' && question !== -1 && colon === -1) colon = index;
+  }
+
+  if (question !== -1 && colon !== -1) {
+    return [text.slice(question + 1, colon), text.slice(colon + 1)];
+  }
+  return null;
+}
+
+/** The reach that covers two reaches. */
+function mergeReach(left: ElementReach | null, right: ElementReach | null): ElementReach | null {
+  if (left === null) return right;
+  if (right === null) return left;
+  if (left.any || right.any) return unknownReach();
+  return {
+    ids: new Set([...left.ids, ...right.ids]),
+    tags: new Set([...left.tags, ...right.tags]),
+    classes: new Set([...left.classes, ...right.classes]),
+    any: false,
+  };
+}
+
+/**
+ * The values the script holds, by the holders they arrive through.
+ *
+ * An element reaches a script through many holders: a member of an object
+ * literal, a destructured name, a member assigned on a variable, an item of
+ * an array, a value a function returns, a class field, a map entry. The
+ * resolver follows those holders, so the writer decides by the VALUE a
+ * receiver holds and not by the spelling of the receiver.
+ *
+ * A value the analyser cannot read is `unreadable`: the write may reach the
+ * patched element, so it fails closed. A name the analyser cannot relate to
+ * the patched element holds `none`: it is another element, and the write
+ * leaves the patched element alone.
+ */
+class ElementValues {
+  /** The expression every name holds. */
+  private readonly expressions = new Map<string, string>();
+
+  /** The members every name is given, by the path they are given at. */
+  private readonly assignments = new Map<string, Map<string, string>>();
+
+  /** The expressions every function returns. */
+  private readonly returns = new Map<string, string[]>();
+
+  /** The fields every class declares. */
+  private readonly classes = new Map<string, Map<string, string>>();
+
+  /** The iterable every for-of binding walks. */
+  private readonly iterables = new Map<string, string>();
+
+  /** The items every array is given. */
+  private readonly pushed = new Map<string, string[]>();
+
+  /** The element every name holds, when the name holds an element. */
+  private readonly reachOf: (name: string) => ElementReach | null;
+
+  constructor(content: string, reachOf: (name: string) => ElementReach | null) {
+    this.reachOf = reachOf;
+
+    // The parameter lists the script declares.
+    const parameterLists = parameterListRanges(content);
+
+    for (const match of content.matchAll(NAMED_ASSIGNMENT_PATTERN)) {
+      const name = match[1] ?? '';
+      const expression = (match[2] ?? '').trim();
+      if (!name || !expression) continue;
+      // The default of a parameter is not the assignment of a variable.
+      if (parameterLists.some(([open, close]) => match.index > open && match.index < close)) continue;
+      this.expressions.set(name, expression);
+    }
+
+    // A parameter with a default holds the default it is given.
+    for (const [name, value] of parameterDefaults(content)) {
+      if (this.expressions.has(name)) continue;
+      this.expressions.set(name, value);
+    }
+
+    for (const match of content.matchAll(MEMBER_PATH_ASSIGNMENT_PATTERN)) {
+      const root = match[1] ?? '';
+      const path = (match[2] ?? '')
+        .split('.')
+        .map(part => part.trim())
+        .filter(part => part !== '');
+      const expression = (match[3] ?? '').trim();
+      if (!root || path.length === 0 || !expression) continue;
+      const members = this.assignments.get(root) ?? new Map<string, string>();
+      members.set(path.join('.'), expression);
+      this.assignments.set(root, members);
+    }
+
+    for (const match of content.matchAll(REFLECT_SET_PATTERN)) {
+      const root = match[1] ?? '';
+      const key = resolveStringExpression((match[2] ?? '').trim());
+      const expression = (match[3] ?? '').trim();
+      if (!root || key === null || !expression) continue;
+      const members = this.assignments.get(root) ?? new Map<string, string>();
+      members.set(key.toLowerCase(), expression);
+      this.assignments.set(root, members);
+    }
+
+    for (const match of content.matchAll(OBJECT_DESTRUCTURING_PATTERN)) {
+      const source = (match[2] ?? '').trim();
+      if (!source) continue;
+      for (const raw of (match[1] ?? '').split(',')) {
+        const parts = raw.split(':');
+        const property = (parts[0] ?? '').split('=')[0]?.trim() ?? '';
+        const name = (parts[1] ?? parts[0] ?? '').split('=')[0]?.trim() ?? '';
+        if (!/^[A-Za-z_$][\w$]*$/.test(property)) continue;
+        if (!/^[A-Za-z_$][\w$]*$/.test(name)) continue;
+        this.expressions.set(name, `${source}.${property}`);
+      }
+    }
+
+    for (const match of content.matchAll(ARRAY_DESTRUCTURING_PATTERN)) {
+      const source = (match[2] ?? '').trim();
+      if (!source) continue;
+      let index = 0;
+      for (const raw of (match[1] ?? '').split(',')) {
+        const name = raw.split('=')[0]?.trim() ?? '';
+        if (/^[A-Za-z_$][\w$]*$/.test(name)) {
+          this.expressions.set(name, `${source}[${index}]`);
+        }
+        index++;
+      }
+    }
+
+    for (const match of content.matchAll(FOR_OF_PATTERN)) {
+      const name = match[1] ?? '';
+      const iterable = (match[2] ?? '').trim();
+      if (!name || !iterable) continue;
+      this.iterables.set(name, iterable);
+    }
+
+    for (const match of content.matchAll(ARRAY_PUSH_PATTERN)) {
+      const name = match[1] ?? '';
+      if (!name) continue;
+      const items = splitTopLevel(match[2] ?? '')
+        .map(item => item.trim())
+        .filter(item => item !== '');
+      if (items.length === 0) continue;
+      this.pushed.set(name, [...(this.pushed.get(name) ?? []), ...items]);
+    }
+
+    for (const match of content.matchAll(FUNCTION_BODY_PATTERN)) {
+      const name = match[1] ?? '';
+      if (!name) continue;
+      // The head of the function ends with the brace that opens its body.
+      const body = functionBody(content, match.index + match[0].length - 1);
+      if (body === null) continue;
+      this.returns.set(name, returnedExpressions(body));
+    }
+
+    for (const match of content.matchAll(FUNCTION_ASSIGNMENT_PATTERN)) {
+      const name = match[1] ?? '';
+      if (!name || this.returns.has(name)) continue;
+      const body = functionBody(content, match.index + match[0].length);
+      if (body === null) continue;
+      const returned = body.trim().startsWith('{')
+        ? returnedExpressions(body)
+        : [body.trim()];
+      if (returned.length === 0) continue;
+      this.returns.set(name, returned);
+    }
+
+    for (const match of content.matchAll(CLASS_PATTERN)) {
+      const name = match[1] ?? '';
+      if (!name) continue;
+      const open = match.index + match[0].length - 1;
+      const end = matchingBracket(content.slice(open));
+      if (end === -1) continue;
+      this.classes.set(name, classFields(content.slice(open + 1, open + end)));
+    }
+  }
+
+  /** What an expression holds. */
+  resolve(text: string, depth = 0): ElementValue {
+    if (depth > 6) return { kind: 'unreadable' };
+    const trimmed = text.trim();
+    if (!trimmed) return { kind: 'none' };
+
+    // A conditional or a logical expression holds one of its sides.
+    const alternatives = splitAlternatives(trimmed);
+    if (alternatives) {
+      return this.merge(alternatives.map(part => this.resolve(part, depth + 1)));
+    }
+
+    // An arrow function holds the expressions it returns.
+    const arrow = ARROW_FUNCTION_PATTERN.exec(trimmed);
+    if (arrow) return this.functionValue(arrow[1] ?? '', depth);
+
+    const chain = parseValueChain(trimmed);
+    if (!chain) return { kind: 'unreadable' };
+
+    let value = this.resolveHead(chain.head, depth);
+    for (const step of chain.steps) {
+      value = this.applyStep(value, step, depth);
+      if (value.kind === 'unreadable') return value;
+    }
+    return value;
+  }
+
+  /** The value that covers several values. */
+  private merge(values: ElementValue[]): ElementValue {
+    let reach: ElementReach | null = null;
+    let found = false;
+    for (const value of values) {
+      if (value.kind === 'unreadable') return { kind: 'unreadable' };
+      if (value.kind !== 'element') continue;
+      found = true;
+      reach = mergeReach(reach, value.reach);
+    }
+    if (found) return { kind: 'element', reach };
+    return { kind: 'none' };
+  }
+
+  /** What an arrow function holds: the expressions it returns. */
+  private functionValue(body: string, depth: number): ElementValue {
+    const trimmed = body.trim();
+    if (trimmed.startsWith('{')) {
+      const end = matchingBracket(trimmed);
+      if (end === -1) return { kind: 'unreadable' };
+      return { kind: 'function', returns: returnedExpressions(trimmed.slice(1, end)) };
+    }
+    return { kind: 'function', returns: [trimmed] };
+  }
+
+  /** What the expression a chain starts with holds. */
+  private resolveHead(head: string, depth: number): ElementValue {
+    const trimmed = head.trim();
+    if (!trimmed) return { kind: 'none' };
+
+    // A `new` expression.
+    if (trimmed.startsWith('new ')) return this.resolveNew(trimmed, depth);
+
+    // An arrow function holds the expressions it returns.
+    const arrow = ARROW_FUNCTION_PATTERN.exec(trimmed);
+    if (arrow) return this.functionValue(arrow[1] ?? '', depth);
+
+    // A group holds the expression it wraps.
+    if (trimmed.startsWith('(')) {
+      const end = matchingBracket(trimmed);
+      if (end !== trimmed.length - 1) return { kind: 'unreadable' };
+      return this.resolve(trimmed.slice(1, end), depth + 1);
+    }
+
+    // An array literal holds its items.
+    if (trimmed.startsWith('[')) return this.arrayValue(trimmed, depth);
+
+    // An object literal holds its members.
+    if (trimmed.startsWith('{')) {
+      const members = literalMembers(trimmed);
+      if (!members) return { kind: 'unreadable' };
+      return { kind: 'object', members, root: null, path: [] };
+    }
+
+    // A name holds what it was given.
+    if (/^[A-Za-z_$][\w$]*$/.test(trimmed)) return this.resolveName(trimmed, depth);
+
+    // A literal value holds nothing the analyser can use.
+    if (/^['"`]/.test(trimmed)) return { kind: 'none' };
+    if (/^(?:true|false|null|undefined|NaN|Infinity|-?\d)/.test(trimmed)) return { kind: 'none' };
+
+    return { kind: 'unreadable' };
+  }
+
+  /** What a `new` expression holds. */
+  private resolveNew(text: string, depth: number): ElementValue {
+    const match = /^new\s+([A-Za-z_$][\w$]*)/.exec(text);
+    if (!match) return { kind: 'unreadable' };
+    const name = match[1] as string;
+    const lower = name.toLowerCase();
+    const args = this.newArguments(text);
+
+    // A proxy forwards to its target.
+    if (lower === 'proxy') {
+      return this.resolve(args[0] ?? '', depth + 1);
+    }
+
+    // A set holds the items it is given.
+    if (lower === 'set' || lower === 'weakset') {
+      const value = this.resolve(args[0] ?? '', depth + 1);
+      if (value.kind === 'array') return { kind: 'set', items: value.items };
+      if (value.kind === 'unreadable') return value;
+      return { kind: 'set', items: [] };
+    }
+
+    // A map holds the entries it is given.
+    if (lower === 'map' || lower === 'weakmap') {
+      const value = this.resolve(args[0] ?? '', depth + 1);
+      if (value.kind !== 'array') {
+        if (value.kind === 'unreadable') return value;
+        return { kind: 'map', entries: [] };
+      }
+      const entries: Array<[string, string]> = [];
+      for (const item of value.items) {
+        const pair = this.mapPair(item);
+        if (pair) entries.push(pair);
+      }
+      return { kind: 'map', entries };
+    }
+
+    // A class gives an instance its fields.
+    const fields = this.classes.get(name);
+    if (fields) return { kind: 'object', members: new Map(fields), root: null, path: [] };
+
+    // A DOM element.
+    if (/^(?:html[a-z]*)?element$/.test(lower) || lower === 'fragment' || lower === 'text') {
+      return { kind: 'element', reach: unknownReach() };
+    }
+
+    return { kind: 'unreadable' };
+  }
+
+  /** The arguments a `new` expression is given. */
+  private newArguments(text: string): string[] {
+    const open = text.indexOf('(', text.indexOf('new'));
+    if (open === -1) return [];
+    const end = matchingBracket(text.slice(open));
+    if (end === -1) return [];
+    return splitTopLevel(text.slice(open + 1, open + end));
+  }
+
+  /** The key and the value of an entry of a map. */
+  private mapPair(item: string): [string, string] | null {
+    const trimmed = item.trim();
+    if (!trimmed.startsWith('[')) return null;
+    const end = matchingBracket(trimmed);
+    if (end === -1) return null;
+    const parts = splitTopLevel(trimmed.slice(1, end));
+    if (parts.length < 2) return null;
+    return [(parts[0] ?? '').trim(), (parts[1] ?? '').trim()];
+  }
+
+  /** What an array literal holds. */
+  private arrayValue(text: string, depth: number): ElementValue {
+    const end = matchingBracket(text);
+    if (end === -1) return { kind: 'unreadable' };
+
+    const items: string[] = [];
+    for (const part of splitTopLevel(text.slice(1, end))) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith('...')) {
+        // A spread holds what it spreads.
+        const value = this.resolve(trimmed.slice(3), depth + 1);
+        if (value.kind === 'array' || value.kind === 'set') {
+          items.push(...value.items);
+          continue;
+        }
+        if (value.kind === 'unreadable') return value;
+        continue;
+      }
+      items.push(trimmed);
+    }
+    return { kind: 'array', items };
+  }
+
+  /** What a name holds. */
+  private resolveName(name: string, depth: number): ElementValue {
+    // A name that holds an element holds the patched element.
+    const reach = this.reachOf(name);
+    if (reach !== null) return { kind: 'element', reach };
+
+    const lower = name.toLowerCase();
+    if (lower === 'object') return { kind: 'namespace' };
+    if (lower === 'reflect') return { kind: 'reflect' };
+    // The document holds the elements its selection calls name.
+    if (lower === 'document') return { kind: 'document' };
+
+    // A variable holds the expression it was assigned.
+    const expression = this.expressions.get(name);
+    if (expression !== undefined) {
+      const value = this.withRoot(this.resolve(expression, depth + 1), name, []);
+      return this.withPushed(name, value);
+    }
+
+    // A name bound by a for-of loop holds an item of the iterable.
+    const iterable = this.iterables.get(name);
+    if (iterable !== undefined) {
+      const value = this.resolve(iterable, depth + 1);
+      if (value.kind === 'array' || value.kind === 'set') {
+        return this.merge(value.items.map(item => this.resolve(item, depth + 1)));
+      }
+      if (value.kind === 'unreadable') return value;
+      return { kind: 'none' };
+    }
+
+    // A function holds the expressions it returns.
+    const returns = this.returns.get(name);
+    if (returns !== undefined) return { kind: 'function', returns };
+
+    // A class holds the fields it declares.
+    const fields = this.classes.get(name);
+    if (fields !== undefined) {
+      return { kind: 'object', members: new Map(fields), root: null, path: [] };
+    }
+
+    // A name the analyser cannot relate to the patched element holds another
+    // value: it is not the patched element.
+    return { kind: 'none' };
+  }
+
+  /** The object a value belongs to, when the value is an object. */
+  private withRoot(value: ElementValue, root: string, path: string[]): ElementValue {
+    if (value.kind !== 'object') return value;
+    return { kind: 'object', members: value.members, root, path };
+  }
+
+  /**
+   * The array a name holds, with the items pushed onto it.
+   *
+   * `const a = []; a.push(element)` gives the array an item, so the array
+   * holds it from the push on.
+   */
+  private withPushed(name: string, value: ElementValue): ElementValue {
+    const pushed = this.pushed.get(name);
+    if (!pushed || pushed.length === 0) return value;
+    if (value.kind === 'array') return { kind: 'array', items: [...value.items, ...pushed] };
+    return value;
+  }
+
+  /** What a step of a chain holds. */
+  private applyStep(value: ElementValue, step: ValueStep, depth: number): ElementValue {
+    const name = step.name?.toLowerCase() ?? null;
+    const args = step.args;
+
+    if (args === null) return this.applyMember(value, name, depth);
+
+    // A direct call of the value: the value is the function.
+    if (name === null) {
+      if (value.kind === 'function') {
+        return this.merge(value.returns.map(expression => this.resolve(expression, depth + 1)));
+      }
+      if (value.kind === 'unreadable') return value;
+      return { kind: 'none' };
+    }
+
+    return this.applyCall(value, name, args, depth);
+  }
+
+  /** What a member of a value holds. */
+  private applyMember(value: ElementValue, name: string | null, depth: number): ElementValue {
+    if (name === null) return { kind: 'unreadable' };
+
+    if (value.kind === 'unreadable') return value;
+
+    // A member of an element stays an element: the element it may reach does
+    // not change.
+    if (value.kind === 'element') return value;
+
+    // The body of a document is an element.
+    if (value.kind === 'document') {
+      if (name === 'body' || name === 'head' || name === 'documentelement') {
+        return { kind: 'element', reach: unknownReach() };
+      }
+      return { kind: 'none' };
+    }
+
+    if (value.kind === 'object') {
+      const assigned = this.assignedMember(value, name);
+      const held = assigned ?? value.members.get(name);
+      if (held === undefined) {
+        // A member the literal does not hold may still be given by an
+        // assignment deeper in the path.
+        if (value.root !== null && this.hasPath(value.root, [...value.path, name])) {
+          return {
+            kind: 'object',
+            members: new Map(),
+            root: value.root,
+            path: [...value.path, name],
+          };
+        }
+        return { kind: 'none' };
+      }
+      const resolved = this.resolve(held, depth + 1);
+      if (resolved.kind === 'object' && value.root !== null) {
+        return {
+          kind: 'object',
+          members: resolved.members,
+          root: value.root,
+          path: [...value.path, name],
+        };
+      }
+      return resolved;
+    }
+
+    // An index of an array holds the item at that index.
+    if (value.kind === 'array') {
+      const index = Number(name);
+      if (!Number.isInteger(index)) return { kind: 'none' };
+      const item = value.items[index];
+      if (item === undefined) return { kind: 'none' };
+      return this.resolve(item, depth + 1);
+    }
+
+    // A bound method holds the function it binds.
+    if (value.kind === 'function' && name === 'bind') return value;
+
+    return { kind: 'none' };
+  }
+
+  /** What a call of a member holds. */
+  private applyCall(
+    value: ElementValue,
+    name: string,
+    args: string[],
+    depth: number
+  ): ElementValue {
+    if (value.kind === 'unreadable') return value;
+
+    // The global `Object`.
+    if (value.kind === 'namespace') {
+      if (name === 'assign') return this.assigned(args, depth);
+      if (name === 'values') return this.objectValues(args, depth);
+      if (name === 'entries') return this.objectEntries(args, depth);
+      if (name === 'keys') return this.objectKeys(args, depth);
+      return { kind: 'none' };
+    }
+
+    // The global `Reflect`.
+    if (value.kind === 'reflect') {
+      if (name === 'get') return this.reflected(args, depth);
+      return { kind: 'none' };
+    }
+
+    // A function called through `call` or `apply` returns what it returns.
+    if (value.kind === 'function') {
+      if (name === 'call' || name === 'apply') {
+        return this.merge(value.returns.map(expression => this.resolve(expression, depth + 1)));
+      }
+      return { kind: 'none' };
+    }
+
+    // A set gives its items to an iterator.
+    if (value.kind === 'set') {
+      if (name === 'values' || name === 'keys' || name === 'entries') {
+        return { kind: 'iterator', items: value.items };
+      }
+      return { kind: 'none' };
+    }
+
+    // An iterator gives its first item to `next`.
+    if (value.kind === 'iterator') {
+      if (name === 'next') {
+        const members = new Map<string, string>();
+        const first = value.items[0];
+        if (first !== undefined) members.set('value', first);
+        return { kind: 'object', members, root: null, path: [] };
+      }
+      return { kind: 'none' };
+    }
+
+    // A map gives the value of a key to `get`.
+    if (value.kind === 'map') {
+      if (name === 'get') {
+        const key = args[0] ?? '';
+        for (const [entryKey, entryValue] of value.entries) {
+          if (this.sameKey(entryKey, key)) return this.resolve(entryValue, depth + 1);
+        }
+        return { kind: 'none' };
+      }
+      return { kind: 'none' };
+    }
+
+    // An array gives its items to the methods that read them.
+    if (value.kind === 'array') {
+      if (name === 'at') {
+        const index = Number((args[0] ?? '').trim());
+        const item = value.items[index];
+        if (item === undefined) return { kind: 'none' };
+        return this.resolve(item, depth + 1);
+      }
+      if (name === 'push' || name === 'unshift') {
+        return { kind: 'array', items: [...value.items, ...args] };
+      }
+      if (name === 'pop' || name === 'shift') {
+        return { kind: 'array', items: value.items.slice(1) };
+      }
+      return { kind: 'none' };
+    }
+
+    // A document gives the elements its selection calls name.
+    if (value.kind === 'document') {
+      const object = documentCallObject(name, args);
+      return object.kind === 'element' ? { kind: 'element', reach: object.reach } : { kind: 'none' };
+    }
+
+    // An element gives nothing the analyser can use.
+    if (value.kind === 'element') {
       if (name === 'queryselector' || name === 'queryselectorall') {
-        const selector = segment.args[0]
-          ? resolveStringExpression(segment.args[0].trim())
-          : null;
-        object = {
+        const selector = args[0] ? resolveStringExpression(args[0].trim()) : null;
+        return {
           kind: 'element',
           reach: selector === null ? unknownReach() : selectorReach(selector),
         };
       }
-      continue;
+      return { kind: 'none' };
     }
-    object = { kind: 'other', reach: null };
+
+    return { kind: 'none' };
   }
 
-  return object;
+  /** What `Object.assign` holds. */
+  private assigned(args: string[], depth: number): ElementValue {
+    const members = new Map<string, string>();
+    for (const source of args.slice(1)) {
+      const value = this.resolve(source, depth + 1);
+      if (value.kind === 'unreadable') return value;
+      if (value.kind !== 'object') continue;
+      for (const [name, expression] of value.members) members.set(name, expression);
+    }
+    return { kind: 'object', members, root: null, path: [] };
+  }
+
+  /** What `Object.values` holds. */
+  private objectValues(args: string[], depth: number): ElementValue {
+    const value = args[0] ? this.resolve(args[0], depth + 1) : ({ kind: 'none' } as ElementValue);
+    if (value.kind !== 'object') {
+      if (value.kind === 'unreadable') return value;
+      return { kind: 'array', items: [] };
+    }
+    return { kind: 'array', items: [...value.members.values()] };
+  }
+
+  /** What `Object.entries` holds. */
+  private objectEntries(args: string[], depth: number): ElementValue {
+    const value = args[0] ? this.resolve(args[0], depth + 1) : ({ kind: 'none' } as ElementValue);
+    if (value.kind !== 'object') {
+      if (value.kind === 'unreadable') return value;
+      return { kind: 'array', items: [] };
+    }
+    return {
+      kind: 'array',
+      items: [...value.members].map(([name, expression]) => `[${name},${expression}]`),
+    };
+  }
+
+  /** What `Object.keys` holds. */
+  private objectKeys(args: string[], depth: number): ElementValue {
+    const value = args[0] ? this.resolve(args[0], depth + 1) : ({ kind: 'none' } as ElementValue);
+    if (value.kind !== 'object') {
+      if (value.kind === 'unreadable') return value;
+      return { kind: 'array', items: [] };
+    }
+    return { kind: 'array', items: [...value.members.keys()].map(name => `'${name}'`) };
+  }
+
+  /** What `Reflect.get` holds. */
+  private reflected(args: string[], depth: number): ElementValue {
+    const target = args[0] ? this.resolve(args[0], depth + 1) : ({ kind: 'none' } as ElementValue);
+    if (target.kind !== 'object') {
+      if (target.kind === 'unreadable') return target;
+      return { kind: 'none' };
+    }
+    const key = args[1] ?? '';
+    const name = resolveStringExpression(key.trim());
+    if (name === null) return { kind: 'unreadable' };
+    const held = target.members.get(name.toLowerCase());
+    if (held === undefined) return { kind: 'none' };
+    return this.resolve(held, depth + 1);
+  }
+
+  /** The member a name was given at a path. */
+  private assignedMember(
+    value: { root: string | null; path: string[] },
+    name: string
+  ): string | null {
+    if (value.root === null) return null;
+    const members = this.assignments.get(value.root);
+    if (!members) return null;
+    return members.get([...value.path, name].join('.')) ?? null;
+  }
+
+  /** True when a name is given a member deeper than a path. */
+  private hasPath(root: string, path: string[]): boolean {
+    const members = this.assignments.get(root);
+    if (!members) return false;
+    const prefix = `${path.join('.')}.`;
+    for (const key of members.keys()) {
+      if (key.startsWith(prefix)) return true;
+    }
+    return false;
+  }
+
+  /** True when two keys of a map name the same entry. */
+  private sameKey(left: string, right: string): boolean {
+    if (left.trim() === right.trim()) return true;
+    const first = resolveStringExpression(left.trim());
+    const second = resolveStringExpression(right.trim());
+    return first !== null && second !== null && first === second;
+  }
+}
+
+/**
+ * The receiver and the member of a member access.
+ *
+ * `o.el` is the member `el` of the receiver `o` and `fns[index]` is a
+ * computed member. A callee that is not a member access has no receiver.
+ */
+function splitMember(text: string): { receiver: string | null; member: string | null } {
+  const trimmed = text.trim();
+  if (!trimmed) return { receiver: null, member: null };
+
+  // A computed member: `fns[index]`.
+  if (trimmed.endsWith(']')) {
+    const open = trimmed.lastIndexOf('[');
+    if (open === -1) return { receiver: null, member: null };
+    const key = trimmed.slice(open + 1, -1);
+    const receiver = trimmed.slice(0, open).trim();
+    return { receiver: receiver || null, member: resolveMemberName(key.trim()) };
+  }
+
+  // A named member: `o.el`.
+  const identifier = /[A-Za-z_$][\w$]*$/.exec(trimmed);
+  if (!identifier) return { receiver: null, member: null };
+  const name = identifier[0];
+  let head = trimmed.slice(0, trimmed.length - name.length).trimEnd();
+  if (!head.endsWith('.')) return { receiver: null, member: name };
+  head = head.slice(0, -1).trimEnd();
+  if (head.endsWith('?')) head = head.slice(0, -1).trimEnd();
+  return { receiver: head || null, member: name };
+}
+
+/**
+ * The text of a chain without its last members.
+ *
+ * `img.removeAttribute.bind` without two members is `img`. A trailing call is
+ * not a member: `img.removeAttribute.bind(img)` without two members is `img`
+ * as well, so the call is stripped before the members are.
+ */
+function stripMembers(text: string, count: number): string | null {
+  let trimmed = text.trim();
+
+  // A trailing call is stripped first: the members the count reaches are the
+  // ones before it.
+  if (trimmed.endsWith(')')) {
+    let depth = 0;
+    for (let index = trimmed.length - 1; index >= 0; index--) {
+      const character = trimmed[index] as string;
+      if (character === ')') {
+        depth++;
+        continue;
+      }
+      if (character !== '(') continue;
+      depth--;
+      if (depth === 0) {
+        trimmed = trimmed.slice(0, index).trim();
+        break;
+      }
+    }
+  }
+
+  for (let index = 0; index < count; index++) {
+    if (trimmed.endsWith(']')) {
+      const open = trimmed.lastIndexOf('[');
+      if (open === -1) return null;
+      trimmed = trimmed.slice(0, open).trim();
+      continue;
+    }
+    const identifier = /[A-Za-z_$][\w$]*$/.exec(trimmed);
+    if (!identifier) return null;
+    let head = trimmed.slice(0, trimmed.length - identifier[0].length).trimEnd();
+    if (!head.endsWith('.')) return null;
+    head = head.slice(0, -1).trimEnd();
+    if (head.endsWith('?')) head = head.slice(0, -1).trimEnd();
+    trimmed = head;
+  }
+  return trimmed || null;
+}
+
+/**
+ * A call whose callee starts with a group.
+ *
+ * `({el: img}).el.removeAttribute('alt')`, `[img][0].removeAttribute('alt')`
+ * and `(o.el || img).removeAttribute('alt')` call a method on a value the
+ * analyser can only read from the source, so the call has to be found from
+ * the group onwards.
+ */
+const GROUP_CALL_PATTERN = new RegExp(
+  `(?<![\\w$)\\]])((\\((?:[^()]|\\([^()]*\\))*\\)|\\[[^\\[\\]]*\\])` +
+    `(?:${MEMBER_ACCESS_SOURCE}|\\s*\\([^()\\n]*\\))*)\\s*(?:\\?\\.\\s*)?\\(`,
+  'g'
+);
+
+/**
+ * The object a chain reads, and what it may reach.
+ *
+ * The chain is read by the value it holds: the resolver follows the holders
+ * the element arrives through, so a member of an object, an item of an array
+ * or the value a function returns is read as the element it holds. A holder
+ * the analyser cannot read is `unreadable`, and the write fails closed.
+ */
+function chainObject(receiver: string, bindings: ElementBindings): ChainObject {
+  const value = bindings.values.resolve(receiver);
+
+  if (value.kind === 'element') return { kind: 'element', reach: value.reach };
+  if (value.kind === 'document') return { kind: 'document', reach: null };
+  if (value.kind === 'unreadable') return { kind: 'unreadable', reach: null };
+  return { kind: 'other', reach: null };
 }
 
 /** The elements a script can reach, by the variables that hold them. */
@@ -1505,6 +2745,8 @@ interface ElementBindings {
   bound: Map<string, BoundMethod>;
   /** The variables that hold an array of elements. */
   arrays: Map<string, string[]>;
+  /** The values the script holds, by the holders they arrive through. */
+  values: ElementValues;
 }
 /** A method bound to an element. */
 interface BoundMethod {
@@ -1548,8 +2790,10 @@ const HELD_ARRAY_INDEX_PATTERN =
 /**
  * The reach of an expression, when it can be an element.
  *
- * A selection call, a created element, an event target, a variable that
- * holds an element and a member of such a variable are elements.
+ * The reach comes from the value the expression holds: a selection call, a
+ * created element, an event target, a variable that holds an element and
+ * every holder the element arrives through — a member of an object, an item
+ * of an array, a destructured name, the value a function returns.
  */
 function expressionReach(expression: string, bindings: ElementBindings): ElementReach | null {
   const trimmed = expression.trim();
@@ -1559,31 +2803,11 @@ function expressionReach(expression: string, bindings: ElementBindings): Element
   const bind = /\.\s*bind\s*\(/.exec(trimmed);
   if (bind) return expressionReach(trimmed.slice(0, bind.index), bindings);
 
-  // A plain variable.
-  if (/^[A-Za-z_$][\w$]*$/.test(trimmed)) return bindings.elements.get(trimmed) ?? null;
-
   // The target of an event is an element.
   if (/\.\s*(?:currentTarget|target)$/.test(trimmed)) return unknownReach();
 
-  // An element of an array literal: `[element][0]`.
-  const literal = ARRAY_INDEX_PATTERN.exec(trimmed);
-  if (literal) {
-    const elements = splitTopLevel((literal[1] ?? '').trim());
-    const element = elements[Number(literal[2] ?? literal[3] ?? '0')];
-    return element === undefined ? null : expressionReach(element, bindings);
-  }
-
-  // An element of an array a variable holds: `array[0]`.
-  const held = HELD_ARRAY_INDEX_PATTERN.exec(trimmed);
-  if (held) {
-    const elements = bindings.arrays.get(held[1] ?? '');
-    if (!elements) return null;
-    const element = elements[Number(held[2] ?? held[3] ?? '0')];
-    return element === undefined ? null : expressionReach(element, bindings);
-  }
-
-  const object = chainObject(parseChain(trimmed), bindings);
-  return object.kind === 'element' ? object.reach : null;
+  const value = bindings.values.resolve(trimmed);
+  return value.kind === 'element' ? value.reach : null;
 }
 
 /** The parameters a named function declares. */
@@ -1600,6 +2824,49 @@ function parameterNames(list: string): string[] {
     .split(',')
     .map(raw => (raw.split('=')[0] ?? '').split(':')[0]?.replace(/^\.\.\./, '').trim() ?? '')
     .filter(name => /^[A-Za-z_$][\w$]*$/.test(name));
+}
+
+/**
+ * The default every parameter with one holds, by the name of the parameter.
+ *
+ * A parameter with a default holds the default it is given, so the writer
+ * reads the value the parameter holds when the call site passes none.
+ */
+function parameterDefaults(content: string): Map<string, string> {
+  const defaults = new Map<string, string>();
+
+  for (const match of content.matchAll(FUNCTION_DECLARATION_PATTERN)) {
+    for (const part of splitTopLevel(match[2] ?? '')) {
+      const equals = part.indexOf('=');
+      if (equals === -1) continue;
+      const name = part.slice(0, equals).trim();
+      const value = part.slice(equals + 1).trim();
+      if (!/^[A-Za-z_$][\w$]*$/.test(name) || !value) continue;
+      if (!defaults.has(name)) defaults.set(name, value);
+    }
+  }
+
+  return defaults;
+}
+
+/**
+ * The parameter lists the script declares, with the ranges they cover.
+ *
+ * The default of a parameter is not the assignment of a variable, so the
+ * assignment the default makes is not read as one.
+ */
+function parameterListRanges(content: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+
+  for (const match of content.matchAll(FUNCTION_DECLARATION_PATTERN)) {
+    const open = content.indexOf('(', match.index);
+    if (open === -1) continue;
+    const close = content.indexOf(')', open);
+    if (close === -1) continue;
+    ranges.push([open, close]);
+  }
+
+  return ranges;
 }
 
 /** The functions the script declares, and the parameters they declare. */
@@ -1627,10 +2894,14 @@ function functionParameters(content: string): Map<string, string[]> {
  * the call site passes.
  */
 function elementBindings(content: string): ElementBindings {
+  const elements = new Map<string, ElementReach>();
   const bindings: ElementBindings = {
-    elements: new Map(),
+    elements,
     bound: new Map(),
     arrays: new Map(),
+    // The resolver reads the elements the bindings hold, so it follows the
+    // bindings as they are found.
+    values: new ElementValues(content, name => elements.get(name) ?? null),
   };
   const functions = functionParameters(content);
 
@@ -2437,7 +3708,12 @@ function chainWrite(chain: string, bindings: ElementBindings): ScriptWrite | nul
 
   const property = segments[segments.length - 1]?.name ?? null;
   const receiver = segments.slice(0, -1);
-  const object = chainObject(receiver, bindings);
+  const receiverText = stripMembers(chain, 1);
+  if (receiverText === null) return null;
+  const object = chainObject(receiverText, bindings);
+  // A receiver the analyser cannot read may be the patched element: the
+  // write fails closed.
+  if (object.kind === 'unreadable') return unresolvedAttributeWrite(object.reach);
   if (object.kind !== 'element') return null;
 
   // `element.attributes.name.value = '…'` writes the attribute.
@@ -2468,6 +3744,65 @@ function chainWrite(chain: string, bindings: ElementBindings): ScriptWrite | nul
   };
 }
 
+/** A call the analyser reads. */
+interface ScriptCall {
+  /** The position of the call in the script. */
+  index: number;
+  /** The source text of the callee. */
+  callee: string;
+  /** The source text of the receiver, when the call has one. */
+  receiver: string | null;
+  /** The name of the method, when the analyser can read it. */
+  method: string | null;
+  /** The arguments, when the analyser can read them. */
+  args: string[] | null;
+}
+
+/** The call a match of a call pattern describes. */
+function buildScriptCall(
+  content: string,
+  index: number,
+  matched: string,
+  callee: string
+): ScriptCall {
+  const split = splitMember(callee);
+  let receiver = split.receiver;
+
+  // A `new` expression is written without its keyword in the callee, so the
+  // keyword is recovered from the source.
+  if (receiver !== null && /\bnew\s+$/.test(content.slice(Math.max(0, index - 8), index))) {
+    receiver = `new ${receiver}`;
+  }
+
+  return {
+    index,
+    callee,
+    receiver,
+    method: split.member,
+    args: readCallArguments(content, index + matched.length),
+  };
+}
+
+/**
+ * Every call the script performs.
+ *
+ * A call whose callee starts with a name and a call whose callee starts with
+ * a group are both calls, so both are read.
+ */
+function scriptCalls(content: string): ScriptCall[] {
+  const calls: ScriptCall[] = [];
+
+  for (const match of content.matchAll(METHOD_CALL_PATTERN)) {
+    calls.push(buildScriptCall(content, match.index, match[0], match[1] ?? ''));
+  }
+  for (const match of content.matchAll(GROUP_CALL_PATTERN)) {
+    calls.push(buildScriptCall(content, match.index, match[0], match[1] ?? ''));
+  }
+
+  calls.sort((left, right) => left.index - right.index);
+  return calls;
+}
+
 /**
  * The writes a script performs.
  *
@@ -2493,21 +3828,22 @@ function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[]
   }
 
   // A method call.
-  for (const match of content.matchAll(METHOD_CALL_PATTERN)) {
-    const args = readCallArguments(content, match.index + match[0].length) ?? [];
+  for (const call of scriptCalls(content)) {
+    const args = call.args ?? [];
+    const callee = call.callee;
 
     // `Object.assign(element, source)`, `Object.defineProperty(element, name,
     // descriptor)` and `Object.defineProperties(element, descriptors)` write
     // to the element they receive as an argument, not to their receiver. The
     // target is the first argument of the utility, whatever the spelling of
     // its receiver and whatever the holder it reaches it through.
-    const utility = objectUtilityCall(match[1] ?? '', args, utilities);
+    const utility = objectUtilityCall(callee, args, utilities);
     if (utility) {
       writes.push(...utilityWrites(utility, bindings));
       continue;
     }
 
-    const segments = parseChain(match[1] ?? '');
+    const segments = parseChain(callee);
     if (segments.length === 0) continue;
 
     const method = segments[segments.length - 1] as ChainSegment;
@@ -2537,8 +3873,15 @@ function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[]
         continue;
       }
       const bound = segments[segments.length - 2] ?? null;
-      const receiver = segments.slice(0, -2);
-      const object = chainObject(receiver, bindings);
+      const receiverText = stripMembers(callee, 2);
+      const object =
+        receiverText === null
+          ? ({ kind: 'other', reach: null } as ChainObject)
+          : chainObject(receiverText, bindings);
+      if (object.kind === 'unreadable') {
+        writes.push(unresolvedAttributeWrite(object.reach));
+        continue;
+      }
       if (object.kind !== 'element') continue;
       if (!bound?.name) {
         // The bound method cannot be read: it is a write the analyser cannot
@@ -2574,7 +3917,11 @@ function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[]
       }
 
       const target = methodName === 'set' ? args[0] ?? '' : args[1] ?? '';
-      const object = chainObject(parseChain(target), bindings);
+      const object = chainObject(target, bindings);
+      if (object.kind === 'unreadable') {
+        writes.push(unresolvedAttributeWrite(object.reach));
+        continue;
+      }
       if (object.kind !== 'element') continue;
 
       if (methodName === 'set') {
@@ -2628,7 +3975,11 @@ function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[]
       const bind = receiver[receiver.length - 1];
       const isBound = bind?.name?.toLowerCase() === 'bind';
       const boundTo = isBound ? bind?.args?.[0] ?? null : null;
-      const object = chainObject(parseChain(boundTo ?? args[0] ?? ''), bindings);
+      const object = chainObject(boundTo ?? args[0] ?? '', bindings);
+      if (object.kind === 'unreadable') {
+        writes.push(unresolvedAttributeWrite(object.reach));
+        continue;
+      }
       if (object.kind !== 'element') continue;
 
       // A bound alias: `f.apply(element, ['alt'])` calls the method it holds.
@@ -2672,14 +4023,26 @@ function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[]
     // A computed method name may be a DOM mutation the analyser cannot
     // follow: it is a write when the receiver can be an element.
     if (method.name === null) {
-      const object = chainObject(receiver, bindings);
+      if (call.receiver === null) continue;
+      const object = chainObject(call.receiver, bindings);
+      if (object.kind === 'unreadable') {
+        writes.push(unresolvedAttributeWrite(object.reach));
+        continue;
+      }
       if (object.kind === 'element') writes.push(unresolvedWrite(object.reach));
       continue;
     }
 
     if (isPureReadMethod(method.name)) continue;
 
-    const object = chainObject(receiver, bindings);
+    if (call.receiver === null) continue;
+    const object = chainObject(call.receiver, bindings);
+    // A receiver the analyser cannot read may be the patched element: the
+    // write fails closed.
+    if (object.kind === 'unreadable') {
+      writes.push(unresolvedAttributeWrite(object.reach));
+      continue;
+    }
     if (object.kind !== 'element') continue;
     writes.push(methodWrite(method.name, receiver, object.reach, args));
   }
@@ -2702,7 +4065,13 @@ function scriptWrites(content: string, bindings: ElementBindings): ScriptWrite[]
     if (segments.length === 0) continue;
     const method = segments[segments.length - 1] as ChainSegment;
     const receiver = segments.slice(0, -1);
-    const object = chainObject(receiver, bindings);
+    const receiverText = stripMembers(match[1] ?? '', 1);
+    if (receiverText === null) continue;
+    const object = chainObject(receiverText, bindings);
+    if (object.kind === 'unreadable') {
+      writes.push(unresolvedAttributeWrite(object.reach));
+      continue;
+    }
     if (object.kind !== 'element') continue;
     if (method.name === null) {
       // The called method cannot be read: it is a write the analyser cannot
@@ -3223,9 +4592,14 @@ function scriptSelectorNamesAttribute(content: string, names: Set<string>): bool
  * `'a' + 'lt'` is the name of the attribute the fix adds.
  */
 function scriptNamesAttribute(content: string, names: Set<string>): boolean {
+  // A property read on a `dataset` receiver names a dataset key, so the
+  // dataset reads are masked before the name is searched: `img.dataset.alt`
+  // names the `data-alt` attribute, not the attribute the fix adds.
+  const masked = maskDatasetMemberReads(content);
+
   for (const name of names) {
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`\\b${escaped}\\b`, 'i').test(content)) return true;
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(masked)) return true;
   }
 
   const wanted = new Set([...names].map(name => name.toLowerCase()));
@@ -3340,10 +4714,44 @@ function scriptReadsDatasetAttribute(content: string, names: Set<string>): boole
 }
 
 /**
+ * The content with every read of a `dataset` member masked.
+ *
+ * `img.dataset.alt`, `img.dataset?.alt`, `img.dataset['alt']`,
+ * `img['dataset'].alt` and `img['dataset']['alt']` read a `data-*` attribute
+ * of the element, not an attribute of the element itself, so the read must
+ * not be matched as a property of the element. The chain is read as a chain:
+ * the `dataset` has to be a member of something (`img.dataset.alt`), so a
+ * variable that is merely named `dataset` (`dataset['alt']`) stays a property
+ * read of the object it holds. The dataset path reads the key itself
+ * (`scriptReadsDatasetAttribute`), so masking the read loses nothing.
+ */
+function maskDatasetMemberReads(content: string): string {
+  let masked = content;
+
+  for (const match of content.matchAll(MEMBER_CHAIN_PATTERN)) {
+    const members = calleeMembers(match[0]);
+    for (let index = 1; index < members.length - 1; index++) {
+      const member = members[index];
+      if (member.name === null || member.name.toLowerCase() !== 'dataset') continue;
+      // The chain reads a member of the dataset: mask the whole read.
+      masked = masked.split(match[0]).join('__dataset_read__');
+      break;
+    }
+  }
+
+  return masked;
+}
+
+/**
  * True when a script reads an attribute through the DOM property that
  * reflects it.
  */
 function scriptReadsAttributeProperty(content: string, names: Set<string>): boolean {
+  // A property read on a `dataset` receiver names a dataset key, so the
+  // dataset reads are masked before the element's property aliases are
+  // matched.
+  const masked = maskDatasetMemberReads(content);
+
   for (const name of names) {
     for (const alias of attributePropertyAliases(name)) {
       const [object, property] = alias.includes('.') ? alias.split('.', 2) : ['', alias];
@@ -3351,11 +4759,11 @@ function scriptReadsAttributeProperty(content: string, names: Set<string>): bool
       const expression = object
         ? `\\.\\s*${object}\\s*\\.\\s*${escapedProperty}\\b`
         : `\\.\\s*${escapedProperty}\\b`;
-      if (new RegExp(expression, 'i').test(content)) return true;
+      if (new RegExp(expression, 'i').test(masked)) return true;
     }
   }
 
-  for (const read of propertyNameReads(content)) {
+  for (const read of propertyNameReads(masked)) {
     if (read.name === null) continue;
     const propertyName = read.name;
     for (const name of names) {
@@ -3666,7 +5074,11 @@ export async function planRepositoryFixes(
       // even without a state read, so the scripts are kept for the check
       // that decides whether the fix activates them.
       runtimeMutationScripts.push(content);
-      if (RUNTIME_STATE_READ_PATTERN.test(content) || attributeReadCalls(content).length > 0) {
+      if (
+        RUNTIME_STATE_READ_PATTERN.test(content) ||
+        attributeReadCalls(content).length > 0 ||
+        readsElementProperty(content, bindings)
+      ) {
         conditionalMutationScripts.push(content);
       }
       if (selectorNameReads(content).length > 0) {

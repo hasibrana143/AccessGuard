@@ -428,6 +428,16 @@ describe('validateRemediation', () => {
     expect(result.reason).toContain('template');
   });
 
+  it('21-T1d: rejects a remediation that carries a template expression', () => {
+    // `{{ … }}` is a Handlebars, Vue, Angular, Liquid, Twig or Blade
+    // expression: the engine of the customer's build evaluates it.
+    const result = validateRemediation(
+      '<img src="x" alt="Photo"><span data-note="{{ globalThis.__pwned = true }}"></span>'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain('template');
+  });
+
   it('rejects a remediation that adds a class the original element does not have', () => {
     // A class is a hook into the repository's stylesheet, whose effect the
     // isolated verification does not see.
@@ -908,6 +918,60 @@ describe('applyFixesToFile', () => {
 
     expect(result.fixesApplied).toBe(0);
     expect(result.content).toBe(original);
+  });
+
+  it('21-T1a: patches a file whose script ends a nested object literal', () => {
+    // `}}` is what a nested object literal ends with, not template grammar.
+    // Every template family opens with `{{`, `{%`, `{#`, `<%`, `<?` or `<#`,
+    // so a file that carries only the closing marker has no expression for an
+    // engine to evaluate — it is patched like any other HTML.
+    const original =
+      '<html><body><img src="a.jpg"><script>const o={get el(){return other}};</script></body></html>';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'image-alt',
+        elementHtml: '<img src="a.jpg">',
+        remediationCode: '<img src="a.jpg" alt="A">',
+      },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(1);
+    expect(result.content).toContain('alt="A"');
+  });
+
+  it('21-T1b: writes nothing into a file that carries a template expression', () => {
+    // The control of 21-T1a: `{{` opens a Handlebars, Vue, Angular, Liquid,
+    // Twig or Blade expression, and the engine of the customer's build
+    // evaluates it.
+    const original = '<html><body>{{ pageTitle }}<img src="a.jpg"></body></html>';
+    const result = applyFixesToFile(original, [
+      {
+        ruleId: 'image-alt',
+        elementHtml: '<img src="a.jpg">',
+        remediationCode: '<img src="a.jpg" alt="A">',
+      },
+    ], 'index.html');
+
+    expect(result.fixesApplied).toBe(0);
+    expect(result.content).toBe(original);
+  });
+
+  it('21-T1c: writes nothing into a file that carries a template block', () => {
+    // The control of 21-T1b for the other families: `{%` (Jinja, Twig), `{#`
+    // (Jinja comments), `<%` (ERB, ASP), `<?` (PHP) and `<#` (FreeMarker).
+    for (const marker of ['{% value %}', '{# value #}', '<% value %>', '<? value ?>', '<# value #>']) {
+      const original = `<html><body>${marker}<img src="a.jpg"></body></html>`;
+      const result = applyFixesToFile(original, [
+        {
+          ruleId: 'image-alt',
+          elementHtml: '<img src="a.jpg">',
+          remediationCode: '<img src="a.jpg" alt="A">',
+        },
+      ], 'index.html');
+
+      expect(result.fixesApplied).toBe(0);
+      expect(result.content).toBe(original);
+    }
   });
 
   it('patches the nth occurrence of the same element', () => {

@@ -3841,6 +3841,394 @@ describe('the twenty-first review regressions', () => {
   });
 });
 
+describe('the element-holder regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix(
+    remediationCode = '<img id="target" class="card" src="x" alt="Photo">',
+    elementHtml = '<img id="target" class="card" src="x">'
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml,
+        remediationCode,
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+  }
+
+  /** A refused candidate writes nothing. */
+  async function expectNoWrite(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).not.toHaveBeenCalled();
+    expect(result).toEqual({ filesModified: [], fixesAppliedTotal: 0, appliedFixIds: [] });
+  }
+
+  /** A written candidate writes the file it planned. */
+  async function expectOneWrite(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    const result = await applyRepositoryFixPlan('token', 'owner', 'repo', 'accessguard/fix-x', plan);
+    expect(mocks.createOrUpdateFileContents).toHaveBeenCalledTimes(1);
+    expect(result.filesModified).toEqual([{ path: 'index.html', fixesApplied: 1 }]);
+  }
+
+  /**
+   * A repository whose runtime code is the given script.
+   *
+   * The script lives in its own file: the destination of the fix is the
+   * markup, and markup that carries server-template grammar is left for a
+   * human to review — a rule of the destination, not of the holder.
+   */
+  function writerRepository(script: string) {
+    tree(['index.html', 'app.js']);
+    fileContent('index.html', '<html><body><img id="target" class="card" src="x"></body></html>');
+    fileContent('app.js', script);
+  }
+
+  /** A repository whose runtime writes to every image. */
+  function writerWriteRepository(script: string) {
+    writerRepository(`document.querySelectorAll('img').forEach(function(img){${script}})`);
+  }
+
+  /**
+   * The verdict a holder that carries another element must end at.
+   *
+   * `written` is the verdict of a holder the analyser reads: the script throws
+   * on the unbound name, so the fix survives. `refused` is the verdict of a
+   * holder the analyser cannot read: the write may reach the patched element,
+   * so it fails closed.
+   */
+  type BenignVerdict = 'written' | 'refused';
+
+  interface HolderCase {
+    /** The id of the pair of regressions. */
+    id: string;
+    /** The shape of the holder. */
+    shape: string;
+    /** The script that carries the patched element to the write. */
+    harmful: string;
+    /** The script that carries another element to the write. */
+    benign: string;
+    /** The verdict the benign twin must end at. */
+    benignVerdict: BenignVerdict;
+  }
+
+  /**
+   * Every holder of the element family.
+   *
+   * A holder that carries the patched element takes the alternative text away
+   * from it at runtime, so the fix must not be written. A holder that carries
+   * another element leaves the patched element alone, so the fix must be
+   * written. Every shape is read by the value the holder holds, not by the
+   * spelling of the receiver.
+   */
+  const HOLDERS: HolderCase[] = [
+    {
+      id: '21-H1',
+      shape: 'object member',
+      harmful: "const o={el:img};o.el.removeAttribute('alt')",
+      benign: "const o={el:other};o.el.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H2',
+      shape: 'object literal member',
+      harmful: "({el:img}).el.removeAttribute('alt')",
+      benign: "({el:other}).el.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H3',
+      shape: 'destructured member',
+      harmful: "const {el}={el:img};el.removeAttribute('alt')",
+      benign: "const {el}={el:other};el.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H4',
+      shape: 'renamed destructured member',
+      harmful: "const {el:e}={el:img};e.removeAttribute('alt')",
+      benign: "const {el:e}={el:other};e.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H5',
+      shape: 'array item',
+      harmful: "const a=[img];a[0].removeAttribute('alt')",
+      benign: "const a=[other];a[0].removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H6',
+      shape: 'array literal item',
+      harmful: "[img][0].removeAttribute('alt')",
+      benign: "[other][0].removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H7',
+      shape: 'destructured array item',
+      harmful: "const [e]=[img];e.removeAttribute('alt')",
+      benign: "const [e]=[other];e.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H8',
+      shape: 'function return',
+      harmful: "function get(){return img};get().removeAttribute('alt')",
+      benign: "function get(){return other};get().removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H9',
+      shape: 'nested member',
+      harmful: "const o={a:{b:img}};o.a.b.removeAttribute('alt')",
+      benign: "const o={a:{b:other}};o.a.b.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H10',
+      shape: 'class instance',
+      harmful: "class C{constructor(){this.el=img}};new C().el.removeAttribute('alt')",
+      benign: "class C{constructor(){this.el=other}};new C().el.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H11',
+      shape: 'map entry',
+      harmful: "new Map([['k',img]]).get('k').removeAttribute('alt')",
+      benign: "new Map([['k',other]]).get('k').removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H12',
+      shape: 'assigned member',
+      harmful: "const o={};o.el=img;o.el.removeAttribute('alt')",
+      benign: "const o={};o.el=other;o.el.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H13',
+      shape: 'assigned nested member',
+      harmful: "const o={a:{}};o.a.b=img;o.a.b.removeAttribute('alt')",
+      benign: "const o={a:{}};o.a.b=other;o.a.b.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H14',
+      shape: 'object values',
+      harmful: "const o={el:img};Object.values(o)[0].removeAttribute('alt')",
+      benign: "const o={el:other};Object.values(o)[0].removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H15',
+      shape: 'object entries',
+      harmful: "const o={el:img};Object.entries(o)[0][1].removeAttribute('alt')",
+      benign: "const o={el:other};Object.entries(o)[0][1].removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H16',
+      shape: 'assigned object',
+      harmful: "const o=Object.assign({}, {el:img});o.el.removeAttribute('alt')",
+      benign: "const o=Object.assign({}, {el:other});o.el.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H17',
+      shape: 'arrow return',
+      harmful: "const get=()=>img;get().removeAttribute('alt')",
+      benign: "const get=()=>other;get().removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H18',
+      shape: 'nested function return',
+      harmful:
+        "function outer(){function inner(){return img}return inner()};outer().removeAttribute('alt')",
+      benign:
+        "function outer(){function inner(){return other}return inner()};outer().removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H19',
+      shape: 'conditional expression',
+      harmful: "const o={el:img};(true?o.el:img).removeAttribute('alt')",
+      benign: "const o={el:other};(true?o.el:other).removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H20',
+      shape: 'logical expression',
+      harmful: "const o={el:img};(o.el||img).removeAttribute('alt')",
+      benign: "const o={el:other};(o.el||other).removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H21',
+      shape: 'computed member',
+      harmful: "const o={el:img};o[`el`].removeAttribute('alt')",
+      benign: "const o={el:other};o[`el`].removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H22',
+      shape: 'pushed array item',
+      harmful: "const a=[];a.push(img);a[0].removeAttribute('alt')",
+      benign: "const a=[];a.push(other);a[0].removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H23',
+      shape: 'spread set item',
+      harmful: "const s=new Set([img]);[...s][0].removeAttribute('alt')",
+      benign: "const s=new Set([other]);[...s][0].removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H24',
+      shape: 'set iterator item',
+      harmful: "new Set([img]).values().next().value.removeAttribute('alt')",
+      benign: "new Set([other]).values().next().value.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H25',
+      shape: 'weak map entry',
+      harmful: "new WeakMap([[img,img]]).get(img).removeAttribute('alt')",
+      benign: "new WeakMap([[other,other]]).get(other).removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H26',
+      shape: 'class field',
+      harmful: "class C{el=img};new C().el.removeAttribute('alt')",
+      benign: "class C{el=other};new C().el.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H27',
+      shape: 'object getter',
+      harmful: "const o={get el(){return img}};o.el.removeAttribute('alt')",
+      benign: "const o={get el(){return other}};o.el.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H28',
+      shape: 'proxy holder',
+      harmful: "const o=new Proxy({el:img},{});o.el.removeAttribute('alt')",
+      benign: "const o=new Proxy({el:other},{});o.el.removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H29',
+      shape: 'spread object',
+      harmful: "const o={...{el:img}};o.el.removeAttribute('alt')",
+      benign: "const o={...{el:other}};o.el.removeAttribute('alt')",
+      // A spread holds what it spreads, and the analyser cannot read it: the
+      // write may reach the patched element, so it fails closed.
+      benignVerdict: 'refused',
+    },
+    {
+      id: '21-H30',
+      shape: 'called arrow function',
+      harmful: "(()=>img).call(null).removeAttribute('alt')",
+      benign: "(()=>other).call(null).removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H31',
+      shape: 'called arrow function',
+      harmful: "(()=>img)().removeAttribute('alt')",
+      benign: "(()=>other)().removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H32',
+      shape: 'for-of binding',
+      harmful: "for(const el of [img]){el.removeAttribute('alt')}",
+      benign: "for(const el of [other]){el.removeAttribute('alt')}",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H33',
+      shape: 'default parameter',
+      harmful: "function f(e=img){e.removeAttribute('alt')};f()",
+      benign: "function f(e=other){e.removeAttribute('alt')};f()",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H34',
+      shape: 'rest parameter',
+      harmful: "function f(...xs){xs[0].removeAttribute('alt')};f(img)",
+      benign: "function f(...xs){xs[0].removeAttribute('alt')};f(other)",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H35',
+      shape: 'promise callback',
+      harmful: "Promise.resolve().then(()=>img.removeAttribute('alt'))",
+      benign: "Promise.resolve().then(()=>other.removeAttribute('alt'))",
+      benignVerdict: 'written',
+    },
+    {
+      id: '21-H36',
+      shape: 'reflected member',
+      harmful: "const o={el:img};Reflect.get(o,'el').removeAttribute('alt')",
+      benign: "const o={el:other};Reflect.get(o,'el').removeAttribute('alt')",
+      benignVerdict: 'written',
+    },
+  ];
+
+  for (const holder of HOLDERS) {
+    it(`${holder.id}a: does not patch an element a script takes the alternative text away from through the ${holder.shape}`, async () => {
+      writerWriteRepository(holder.harmful);
+
+      const plan = await planAltFix();
+      await expectRefused(plan);
+      await expectNoWrite(plan);
+    });
+
+    if (holder.benignVerdict === 'written') {
+      it(`${holder.id}b: writes a fix when the ${holder.shape} carries another element`, async () => {
+        writerWriteRepository(holder.benign);
+
+        const plan = await planAltFix();
+        await expectWritten(plan);
+        await expectOneWrite(plan);
+      });
+      continue;
+    }
+
+    it(`${holder.id}b: does not patch an element when the ${holder.shape} carries another element the analyser cannot read`, async () => {
+      writerWriteRepository(holder.benign);
+
+      const plan = await planAltFix();
+      await expectRefused(plan);
+      await expectNoWrite(plan);
+    });
+  }
+});
+
 describe('GitHub API helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -4088,5 +4476,305 @@ describe('GitHub API helpers', () => {
 
     expect(statuses.get('owner/repo/1')).toEqual({ state: 'closed', merged: true });
     expect(statuses.has('owner/repo/2')).toBe(false);
+  });
+});
+
+describe('the twenty-first review dataset regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix(
+    remediationCode = '<img id="target" class="card" src="x" alt="Photo">',
+    elementHtml = '<img id="target" class="card" src="x">'
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml,
+        remediationCode,
+      },
+    ]);
+  }
+
+  async function expectRefused(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual(['v1']);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toEqual([]);
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+  }
+
+  /** A repository whose runtime code is the given script. */
+  function writerRepository(script: string) {
+    tree(['index.html', 'styles.css']);
+    fileContent(
+      'index.html',
+      `<html><body><img id="target" class="card" src="x"><script>${script}</script></body></html>`
+    );
+    fileContent('styles.css', 'body{color:#000}');
+  }
+
+  it('21-R1a: writes a fix whose script reads a dataset key', async () => {
+    // `img.dataset.alt` reads the `data-alt` attribute, not the `alt`
+    // attribute of the element: Chromium measured `undefined` before and
+    // after the fix adds `alt`, so the read does not react to the fix and the
+    // fix survives.
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){if(img.dataset.alt){img.classList.add('x')}})"
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('21-R1b: writes a fix whose script reads a dataset key through an optional access', async () => {
+    // The same read through the optional access: `img.dataset?.alt` is the
+    // same dataset key.
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){if(img.dataset?.alt){img.classList.add('x')}})"
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('21-R1c: writes a fix whose script reads a dataset key through a computed access', async () => {
+    // The same read through the computed access: `img.dataset['alt']` is the
+    // same dataset key.
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){if(img.dataset['alt']){img.classList.add('x')}})"
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('21-R1d: writes a fix whose script reads a dataset key through a computed receiver', async () => {
+    // The same read through a computed receiver: `img['dataset']['alt']` is
+    // the same dataset key.
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){if(img['dataset']['alt']){img.classList.add('x')}})"
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('21-R1e: refuses a fix whose script reads the dataset attribute the fix adds', async () => {
+    // The harmful twin of 21-R1a: the fix adds `data-alt`, and the script
+    // reads that very attribute, so the runtime reacts to the fix and the
+    // candidate is refused.
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){if(img.dataset.alt){img.classList.add('x')}})"
+    );
+
+    await expectRefused(
+      await planAltFix('<img id="target" class="card" src="x" alt="Photo" data-alt="active">')
+    );
+  });
+
+  it('21-R1f: refuses a fix whose script reads the attribute the fix adds', async () => {
+    // The twin of 21-R1a on the element itself: `img.alt` is `''` before the
+    // fix and `'Photo'` after it, so the runtime reacts to the fix and the
+    // candidate is refused.
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){if(img.alt){img.classList.add('x')}})"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('21-R1g: refuses a fix whose script reads the element through Reflect.get on a dataset', async () => {
+    // `Reflect.get(img.dataset,'alt')` reads a dataset key, but the reader
+    // cannot follow the reflect call, so the candidate is refused: the
+    // accepted fail-closed boundary of the twenty-first review.
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){if(Reflect.get(img.dataset,'alt')){img.classList.add('x')}})"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+
+  it('21-R1h: refuses a fix whose script reads the element through a variable named dataset', async () => {
+    // A variable that is merely named `dataset` is not the DOMStringMap of
+    // the element: `dataset['alt']` reads the `alt` property of whatever the
+    // variable holds, and the analyser cannot prove that it is not the
+    // element.
+    writerRepository(
+      "document.querySelectorAll('img').forEach(function(img){const dataset=img;if(dataset['alt']){img.classList.add('x')}})"
+    );
+
+    await expectRefused(await planAltFix());
+  });
+});
+
+
+describe('the twenty-first review destination regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  /** The stylesheet that loads a font family the fix activates. */
+  const EVIL_CSS = '@font-face{font-family:Evil;src:url(/evil-font)}';
+
+  const IMAGE = '<img id="target" class="card" src="x">';
+  const IMAGE_FIX = '<img id="target" class="card" src="x" alt="Photo">';
+  const BUTTON = '<button id="target" class="card">Save</button>';
+  const BUTTON_FIX = '<button id="target" class="card" aria-label="Save">Save</button>';
+
+  async function plan(
+    ruleId: string,
+    elementHtml: string,
+    remediationCode: string
+  ) {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      { id: 'v1', ruleId, elementHtml, remediationCode },
+    ]);
+  }
+
+  async function expectRefused(result: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(result.refusedFixIds).toEqual(['v1']);
+    expect(result.appliedFixIds).toEqual([]);
+    expect(result.reviewFixIds).toEqual([]);
+    expect(result.fileWrites).toEqual([]);
+  }
+
+  async function expectWritten(result: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(result.refusedFixIds).toEqual([]);
+    expect(result.appliedFixIds).toEqual(['v1']);
+    expect(result.reviewFixIds).toEqual([]);
+    expect(result.fileWrites).toHaveLength(1);
+  }
+
+  it('21-C1d: does not write a fix when the later rule replaces a custom property the customer sees', async () => {
+    // The `<style>` block comes after the linked stylesheet, so the `[alt]`
+    // rule wins the specificity tie over `[class~="card"]` and replaces the
+    // value the element already computes. No declaration reads the property,
+    // so the destination cannot be judged.
+    tree(['index.html', 'local.css']);
+    fileContent(
+      'index.html',
+      '<html><head><link rel="stylesheet" href="local.css"><style>[alt]{--f:Evil}</style></head><body><img id="target" class="card" src="x"></body></html>'
+    );
+    fileContent('local.css', '[class~="card"]{--f:Local}');
+
+    await expectRefused(await plan('image-alt', IMAGE, IMAGE_FIX));
+  });
+
+  it('21-C1e: writes the same fix when the earlier rule keeps the custom property', async () => {
+    // The same page with the stylesheets in the other order: the local family
+    // wins the tie, so the element keeps the value it already computes and
+    // the fix changes nothing the customer sees.
+    tree(['index.html', 'local.css']);
+    fileContent(
+      'index.html',
+      '<html><head><style>[alt]{--f:Evil}</style><link rel="stylesheet" href="local.css"></head><body><img id="target" class="card" src="x"></body></html>'
+    );
+    fileContent('local.css', '[class~="card"]{--f:Local}');
+
+    await expectWritten(await plan('image-alt', IMAGE, IMAGE_FIX));
+  });
+
+  it('21-C2c: writes a fix when the competing rule wins the specificity tie', async () => {
+    // The rule the fix activates ties with the later `.card` rule, so the
+    // browser keeps `font-family: Local` and requests nothing.
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><head><style>${EVIL_CSS} [aria-label]{font-family:Evil} .card{font-family:Local}</style></head><body>${BUTTON}</body></html>`
+    );
+
+    await expectWritten(await plan('button-name', BUTTON, BUTTON_FIX));
+  });
+
+  it('21-C2d: writes a fix when the custom property spelling of the same tie wins', async () => {
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><head><style>${EVIL_CSS} [aria-label]{--f:Evil} .card{--f:Local} button{font-family:var(--f)}</style></head><body>${BUTTON}</body></html>`
+    );
+
+    await expectWritten(await plan('button-name', BUTTON, BUTTON_FIX));
+  });
+
+  it('21-C3c: does not write a fix when the rule the fix activates wins the tie', async () => {
+    // The competing rule comes first, so the rule the fix activates wins the
+    // tie and the customer browser loads the font.
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      `<html><head><style>${EVIL_CSS} .card{font-family:Local} [aria-label]{font-family:Evil}</style></head><body>${BUTTON}</body></html>`
+    );
+
+    await expectRefused(await plan('button-name', BUTTON, BUTTON_FIX));
+  });
+});
+
+
+describe('the twenty-first review template-marker regressions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fileContents.clear();
+    mocks.createOrUpdateFileContents.mockResolvedValue({ data: { content: {} } });
+  });
+
+  async function planAltFix() {
+    return planRepositoryFixes('token', 'owner', 'repo', 'main', [
+      {
+        id: 'v1',
+        ruleId: 'image-alt',
+        elementHtml: '<img id="target" class="card" src="x">',
+        remediationCode: '<img id="target" class="card" src="x" alt="Photo">',
+      },
+    ]);
+  }
+
+  async function expectWritten(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual(['v1']);
+    expect(plan.reviewFixIds).toEqual([]);
+    expect(plan.fileWrites).toHaveLength(1);
+  }
+
+  async function expectReviewed(plan: Awaited<ReturnType<typeof planRepositoryFixes>>) {
+    expect(plan.refusedFixIds).toEqual([]);
+    expect(plan.appliedFixIds).toEqual([]);
+    expect(plan.reviewFixIds).toEqual(['v1']);
+    expect(plan.fileWrites).toEqual([]);
+  }
+
+  it('21-T1e: writes a fix in a repository whose script ends a nested object literal', async () => {
+    // `}}` is what a nested object literal ends with, not server-template
+    // grammar: every template family opens with `{{`, `{%`, `{#`, `<%`, `<?`
+    // or `<#`. The destination rule used to read the closing marker as a
+    // template, so every fix of such a repository was left for a human.
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><body><img id="target" class="card" src="x"><script>const o={get el(){return other}};</script></body></html>'
+    );
+
+    await expectWritten(await planAltFix());
+  });
+
+  it('21-T1f: leaves a fix for a human in a repository whose file carries a template expression', async () => {
+    // The control of 21-T1e: `{{` opens a Handlebars, Vue, Angular, Liquid,
+    // Twig or Blade expression, and the engine of the customer's build
+    // evaluates it — so nothing is written into the file.
+    tree(['index.html']);
+    fileContent(
+      'index.html',
+      '<html><body>{{ pageTitle }}<img id="target" class="card" src="x"></body></html>'
+    );
+
+    await expectReviewed(await planAltFix());
   });
 });
